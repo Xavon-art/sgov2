@@ -106,14 +106,14 @@ export function Features() {
             key={f.id}
             as="article"
             delay={(i % 3) * 0.07}
-            className={`group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-paper/70 p-6 transition-[transform,border-color,box-shadow] duration-500 ease-out hover:-translate-y-1 hover:border-line-strong hover:shadow-lift sm:p-7 ${f.span}`}
+            className={`group relative flex flex-col overflow-hidden rounded-2xl border border-line bg-paper/70 p-6 transition-[transform,border-color,box-shadow] duration-500 ease-out hover:-translate-y-1 hover:border-line-strong hover:shadow-lift @container sm:p-7 ${f.span}`}
           >
             <span
               aria-hidden
               className="pointer-events-none absolute inset-0 bg-gradient-to-br from-ink/[0.035] via-transparent to-brass/[0.05] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
             />
             <div className="relative flex items-start justify-between gap-4">
-              <span className="grid size-10 place-items-center rounded-xl border border-line-strong/80 bg-canvas text-ink transition-colors duration-500 group-hover:border-brass/45 group-hover:text-ink-deep [&>svg]:h-[1.15rem] [&>svg]:w-[1.15rem]">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-line-strong/80 bg-canvas text-ink transition-colors duration-500 group-hover:border-brass/45 group-hover:text-ink-deep @lg:size-10 [&>svg]:h-[1.05rem] [&>svg]:w-[1.05rem] @lg:[&>svg]:h-[1.15rem] @lg:[&>svg]:w-[1.15rem]">
                 {f.icon}
               </span>
               <span
@@ -124,15 +124,15 @@ export function Features() {
               </span>
             </div>
 
-            <h3 className="relative mt-5 text-[1.0625rem] leading-snug sm:text-[1.125rem]">
+            <h3 className="relative mt-4 text-[0.875rem] leading-snug break-words text-balance text-ink-deep @2xs:mt-5 @2xs:text-[0.9375rem] @lg:text-[1.0625rem]">
               {f.title}
             </h3>
-            <p className="relative mt-2.5 text-[0.875rem] leading-relaxed text-body">
+            <p className="relative mt-2 text-[0.8125rem] leading-relaxed text-body text-pretty @2xs:text-[0.875rem]">
               {f.body}
             </p>
 
             {f.micro ? (
-              <div className="relative mt-6 flex-1">{f.micro}</div>
+              <div className="relative mt-5 flex-1 @2xs:mt-6">{f.micro}</div>
             ) : null}
           </Reveal>
         ))}
@@ -149,7 +149,7 @@ function MicroDashboard() {
       ref={ref}
       data-active={inView}
       aria-hidden
-      className="flex h-20 items-end gap-1.5 rounded-xl border border-line/70 bg-canvas/50 px-3 pt-3 pb-2.5"
+      className="mt-auto flex h-20 items-end gap-1.5 rounded-xl border border-line/70 bg-canvas/50 px-3 pt-3 pb-2.5"
     >
       {bars.map((h, i) => (
         <span
@@ -172,7 +172,7 @@ function MicroSubmission() {
       ref={ref}
       data-active={inView}
       aria-hidden
-      className="relative h-20 overflow-hidden rounded-xl border border-line/70 bg-canvas/50"
+      className="relative mt-auto h-20 overflow-hidden rounded-xl border border-line/70 bg-canvas/50"
     >
       <div
         className="absolute top-3 left-3 w-[7.5rem] rounded-lg border border-line-strong bg-paper px-2.5 py-2 shadow-lift transition-transform duration-1000 ease-out"
@@ -333,3 +333,4 @@ function MicroEvents() {
     </div>
   );
 }
+
