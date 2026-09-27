@@ -70,15 +70,18 @@ export function Nav() {
         </ul>
 
         <div className="flex items-center gap-2.5">
-          <ButtonLink
-            href="/create"
-            size="sm"
-            variant={scrolled ? "primary" : "outline"}
-            className="hidden sm:inline-flex"
-          >
-            Create Your Student Org
-            <IconArrowRight className="h-4 w-4 transition-transform duration-400 group-hover:translate-x-0.5" />
-          </ButtonLink>
+          {/* Visibility lives on this wrapper, not on the button: the button's own
+              `inline-flex` base class wins the cascade over a `hidden` utility. */}
+          <div className="hidden sm:block">
+            <ButtonLink
+              href="/create"
+              size="sm"
+              variant={scrolled ? "primary" : "outline"}
+            >
+              Create Your Student Org
+              <IconArrowRight className="h-4 w-4 transition-transform duration-400 group-hover:translate-x-0.5" />
+            </ButtonLink>
+          </div>
 
           <button
             type="button"
