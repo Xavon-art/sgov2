@@ -15,8 +15,15 @@ const inter = Inter({
   display: "swap",
 });
 
+const OG_IMAGE = {
+  url: "/og.jpg",
+  width: 1200,
+  height: 630,
+  alt: "SmartGov — one system for every student council. The university student government connected to its local councils.",
+};
+
 export const metadata: Metadata = {
-  metadataBase: new URL("https://smartgov.app"),
+  metadataBase: new URL("https://sgov.vercel.app"),
   title: {
     default: "SmartGov — One system. Every student council.",
     template: "%s · SmartGov",
@@ -34,8 +41,22 @@ export const metadata: Metadata = {
   openGraph: {
     title: "SmartGov — One system. Every student council.",
     description:
-      "Centralized, intelligent governance management for university student governments.",
+      "Centralized, intelligent governance management for university student governments. Resolutions, budgets, and feedback in one shared record.",
+    url: "/",
+    siteName: "SmartGov",
+    locale: "en_US",
     type: "website",
+    images: [
+      OG_IMAGE,
+      { ...OG_IMAGE, url: "/og.png", width: 2400, height: 1260 },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SmartGov — One system. Every student council.",
+    description:
+      "Connect your USG and every local student council beneath it — resolutions, budgets, and feedback in one shared record.",
+    images: [OG_IMAGE.url, "/og.png"],
   },
 };
 
