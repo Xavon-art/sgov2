@@ -4,7 +4,7 @@ Centralized and intelligent governance management for university student governm
 
 **Status:** UI/UX and flow prototype. No authentication, no encrypted credential handling, and no dashboard product surface yet. Organization creation does persist to Supabase through a single atomic RPC.
 
-**Live:** <https://smartgov-coral.vercel.app> · **Repo:** <https://github.com/dreamerdev-SYS/smartgov>
+**Live:** <https://smart-gov-lime.vercel.app> · **Repo:** <https://github.com/dreamerdev-SYS/smartgov>
 
 ## Governance models
 
