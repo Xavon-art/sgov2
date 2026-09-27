@@ -16,7 +16,7 @@ const inter = Inter({
 });
 
 const OG_IMAGE = {
-  url: "/og.jpg",
+  url: "/og-v2.jpg",
   width: 1200,
   height: 630,
   alt: "SmartGov — one system for every student council. Governance, academics, budgets, and verified public records for university student governments.",
