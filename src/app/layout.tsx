@@ -19,7 +19,7 @@ const OG_IMAGE = {
   url: "/og.jpg",
   width: 1200,
   height: 630,
-  alt: "SmartGov — one system for every student council. The university student government connected to its local councils.",
+  alt: "SmartGov — one system for every student council. Governance, academics, budgets, and verified public records for university student governments.",
 };
 
 export const metadata: Metadata = {
@@ -46,17 +46,14 @@ export const metadata: Metadata = {
     siteName: "SmartGov",
     locale: "en_US",
     type: "website",
-    images: [
-      OG_IMAGE,
-      { ...OG_IMAGE, url: "/og.png", width: 2400, height: 1260 },
-    ],
+    images: [OG_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
     title: "SmartGov — One system. Every student council.",
     description:
       "Connect your USG and every local student council beneath it — resolutions, budgets, and feedback in one shared record.",
-    images: [OG_IMAGE.url, "/og.png"],
+    images: [OG_IMAGE.url],
   },
 };
 
