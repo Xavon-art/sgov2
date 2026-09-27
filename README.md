@@ -2,7 +2,9 @@
 
 Centralized and intelligent governance management for university student governments — a landing page and a complete multi-step organization-creation flow.
 
-**Status:** UI/UX and flow prototype. No authentication, no encrypted credential handling, and no dashboard product surface yet.
+**Status:** UI/UX and flow prototype. No authentication, no encrypted credential handling, and no dashboard product surface yet. Organization creation does persist to Supabase through a single atomic RPC.
+
+**Live:** <https://smartgov-coral.vercel.app> · **Repo:** <https://github.com/dreamerdev-SYS/smartgov>
 
 ## Governance models
 
@@ -44,16 +46,31 @@ npm run dev
 
 ## Database
 
-Schema lives in `supabase/migrations/20260101000000_init_smartgov.sql` (enums, `organizations`, `organization_members`, `governance_units`, `submissions`, indexes, `updated_at` trigger, RLS).
+Migrations live in `supabase/migrations/`:
 
-Apply it once:
+| File | Contents |
+| --- | --- |
+| `20260101000000_init_smartgov.sql` | Enums, `organizations`, `organization_members`, `governance_units`, `submissions`, indexes, `updated_at` trigger, RLS enabled |
+| `20260101000100_create_organization_rpc.sql` | The `create_organization(jsonb)` RPC — the only write path the browser can reach |
 
-1. Open the Supabase dashboard → **SQL Editor** → paste the migration file → **Run**.
-2. Or, with the CLI linked: `supabase db push`.
+Apply both:
 
-Current RLS posture: `anon` may `INSERT` (so the unauthenticated setup flow can write), and no read/update/delete policy is granted. Dashboard reads come later behind an authenticated session.
+1. Supabase dashboard → **SQL Editor** → paste each file in order → **Run**.
+2. Or `supabase db push --db-url <connection string>`.
 
-Until the schema is applied the flow still completes end-to-end — the success step issues a charter locally and shows a prototype notice instead of failing.
+### Why an RPC instead of a public INSERT policy
+
+A bare `FOR INSERT ... WITH CHECK (true)` policy is still rejected at runtime on this project's Postgres (`new row violates row-level security policy`), and the only policy shape that does admit the row is `FOR ALL ... USING (true)` — which would hand the publishable key read, update, and delete on every table.
+
+So creation goes through `create_organization`, a `SECURITY DEFINER` function owned by `postgres` (which bypasses RLS by design). The resulting posture is tighter than the original intent:
+
+- RLS stays **enabled on all four tables with zero policies**, and `anon` holds no table grants, so the publishable key cannot touch any table directly.
+- `anon` may only `EXECUTE` this one function, which validates its input and writes the organization, its founding member, and its governance units in a **single transaction** — the earlier three-request client flow could leave an organization row behind when a later insert failed.
+- `slug` and `charter_number` collisions are resolved server-side, so two identically named councils both succeed and the client renders the values the database actually stored.
+
+Units are passed as a flat array; each entry may carry a zero-based `parentIndex` pointing at an earlier entry, which keeps the self-referencing `governance_units` tree flat on the wire.
+
+Until the migrations are applied the flow still completes end-to-end — the success step issues a charter locally and shows a prototype notice instead of failing.
 
 ## Environment variables
 
