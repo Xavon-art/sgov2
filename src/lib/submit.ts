@@ -87,3 +87,44 @@ export async function submitOrganization(
     persisted: true,
   };
 }
+
+export type RegisterAccountResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Turns the administrator details collected in the setup flow into a
+ * login-capable account.
+ *
+ * Runs after `submitOrganization` because the account is linked to the
+ * organization row. `accountKind` comes from the governance model: federated
+ * (decentralized) accounts land on the USG dashboard, unitary (centralized) on
+ * the central one.
+ */
+export async function registerAccount(
+  draft: OrgDraft,
+  organizationId: string,
+): Promise<RegisterAccountResult> {
+  const res = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: draft.account.email.trim(),
+      password: draft.account.password,
+      displayName: draft.account.fullName.trim(),
+      accountKind: draft.model === "unitary" ? "central" : "usg",
+      organizationId,
+      universityName: draft.institution.universityName.trim(),
+      campusName: draft.institution.campusName.trim(),
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || !data.ok) {
+    return {
+      ok: false,
+      reason: data.message ?? "The sign-in account could not be created.",
+    };
+  }
+
+  return { ok: true };
+}

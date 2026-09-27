@@ -12,7 +12,7 @@ import {
   IconMail,
 } from "@/components/ui/Icons";
 import { ROLE_LABELS, useOrgDraft, type MemberRole } from "@/lib/store";
-import { submitOrganization } from "@/lib/submit";
+import { registerAccount, submitOrganization } from "@/lib/submit";
 import { useStepGuard } from "@/lib/useStepGuard";
 
 type Phase = "submitting" | "done" | "local";
@@ -51,6 +51,7 @@ export default function SuccessPage() {
     organizationId ? "done" : "submitting",
   );
   const [note, setNote] = useState<string | null>(null);
+  const [signInNote, setSignInNote] = useState<string | null>(null);
 
   useEffect(() => {
     if (started.current) return;
@@ -58,16 +59,25 @@ export default function SuccessPage() {
     if (organizationId) return;
 
     submitOrganization(draft, charter)
-      .then((result) => {
+      .then(async (result) => {
         setCharter(result.charter);
-        if (result.status === "ok") {
-          setOrganizationId(result.organizationId);
-          markSubmitted();
-          setPhase("done");
-        } else {
+
+        if (result.status !== "ok") {
           setNote(result.reason);
           setPhase("local");
+          return;
         }
+
+        setOrganizationId(result.organizationId);
+        markSubmitted();
+
+        // The sign-in account is created only now that the organization row
+        // exists to attach it to. A failure here leaves the charter valid, so
+        // the flow reports it rather than pretending the whole thing failed.
+        const registered = await registerAccount(draft, result.organizationId);
+        if (!registered.ok) setSignInNote(registered.reason);
+
+        setPhase("done");
       })
       .catch((err: unknown) => {
         setNote(err instanceof Error ? err.message : "Unexpected error.");
@@ -144,6 +154,16 @@ export default function SuccessPage() {
             {note} The charter above is still valid for this session.
           </p>
         ) : null}
+
+        {signInNote ? (
+          <p
+            role="alert"
+            className="mt-4 max-w-md rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-4 py-3 text-left text-[0.75rem] leading-relaxed text-[#a5442c]"
+          >
+            <span className="font-semibold">Your organization was created, </span>
+            but the sign-in account was not: {signInNote}
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-10 rounded-2xl border border-line-strong/70 bg-paper/70 p-6 sm:p-7">
@@ -202,10 +222,17 @@ export default function SuccessPage() {
       </ol>
 
       <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
-        <ButtonLink href="/dashboard" size="lg" className="w-full sm:w-auto">
-          Go to Dashboard
-          <IconArrowRight className="h-4.5 w-4.5 transition-transform duration-500 group-hover:translate-x-1" />
-        </ButtonLink>
+        {signInNote ? (
+          <ButtonLink href="/login" size="lg" className="w-full sm:w-auto">
+            Sign in
+            <IconArrowRight className="h-4.5 w-4.5 transition-transform duration-500 group-hover:translate-x-1" />
+          </ButtonLink>
+        ) : (
+          <ButtonLink href="/dashboard" size="lg" className="w-full sm:w-auto">
+            Go to Dashboard
+            <IconArrowRight className="h-4.5 w-4.5 transition-transform duration-500 group-hover:translate-x-1" />
+          </ButtonLink>
+        )}
         <ButtonLink href="/" size="lg" variant="outline" className="w-full sm:w-auto">
           Back to home
         </ButtonLink>

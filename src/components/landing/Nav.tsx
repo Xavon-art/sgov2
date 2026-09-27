@@ -65,7 +65,13 @@ export function Nav() {
             </li>
           ))}
           <li>
-            <span className="text-[0.875rem] font-medium text-faint">Log in</span>
+            <Link
+              href="/login"
+              className="group relative text-[0.875rem] font-medium text-ink-soft transition-colors duration-300 hover:text-ink"
+            >
+              Log in
+              <span className="absolute -bottom-1 left-0 h-px w-full origin-left scale-x-0 bg-gradient-to-r from-brass to-brass/0 transition-transform duration-400 ease-out group-hover:scale-x-100" />
+            </Link>
           </li>
         </ul>
 
@@ -117,6 +123,15 @@ export function Nav() {
               </a>
             </li>
           ))}
+          <li>
+            <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className="block rounded-lg px-3 py-2.5 text-[0.9375rem] font-medium text-ink transition-colors hover:bg-ink/[0.04]"
+            >
+              Log in
+            </Link>
+          </li>
           <li>
             <ButtonLink
               href="/create"

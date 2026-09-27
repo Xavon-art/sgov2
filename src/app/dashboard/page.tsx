@@ -1,55 +1,106 @@
-"use client";
-
+import { redirect } from "next/navigation";
 import Link from "next/link";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import ShaderField from "@/components/fx/ShaderField";
 import { Reveal } from "@/components/fx/Reveal";
 import { Wordmark, Seal } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
-import { OrgDiagram } from "@/components/ui/OrgDiagram";
-import {
-  IconArchive,
-  IconArrowRight,
-  IconBudget,
-  IconCheck,
-  IconEvents,
-  IconMonitoring,
-  IconPyramid,
-  IconSubmission,
-} from "@/components/ui/Icons";
-import { ROLE_LABELS, useOrgDraft, type MemberRole } from "@/lib/store";
-import { useDraftHydrated } from "@/lib/useDraftHydrated";
+import { Workspace } from "@/components/dashboard/Workspace";
+import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { callRpc, type RpcResult } from "@/lib/auth/rpc";
+import { currentAccount, readSessionToken } from "@/lib/auth/session";
 
-const COMING = [
-  { icon: IconSubmission, label: "Requirements & Resolutions" },
-  { icon: IconArchive, label: "Document Storage" },
-  { icon: IconBudget, label: "Budget Tracking" },
-  { icon: IconMonitoring, label: "Monitoring & Reports" },
-  { icon: IconEvents, label: "Events" },
-];
+// The dashboard reads the session and live counters on every request, so it
+// must never be cached.
+export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const hydrated = useDraftHydrated();
-  const draft = useOrgDraft();
+type WorkspacePayload = RpcResult & {
+  email: string;
+  displayName: string;
+  accountKind: "usg" | "central";
+  accountScope: "owner" | "invited";
+  universityName: string;
+  campusName: string;
+  organizationName: string;
+  charterNumber: string;
+  academicYear: string;
+  accent: string;
+  governanceModel: string | null;
+  inviteCount: number;
+  pendingCount: number;
+  activatedCount: number;
+};
 
-  useEffect(() => {
-    if (hydrated && !draft.organization.name) router.replace("/");
-  }, [hydrated, draft.organization.name, router]);
+/**
+ * The two dashboards live on one route and differ by `account_kind`, which the
+ * database sets from the organization's governance model: federated (USG above
+ * its campuses) or unitary (central office above the units).
+ *
+ * The sign-in gate lives here on the server. `currentAccount` only resolves an
+ * `active` account, so someone halfway through the OTP step cannot reach this
+ * page even if their session cookie exists.
+ */
+export default async function DashboardPage() {
+  const account = await currentAccount();
+  if (!account) redirect("/login");
 
-  const federated = draft.model === "federated";
-  const hasOrg = Boolean(draft.organization.name);
+  let data: WorkspacePayload | null = null;
+  try {
+    const token = await readSessionToken();
+    data = await callRpc<WorkspacePayload>("account_workspace", {
+      p_session_token: token,
+    });
+  } catch {
+    data = null;
+  }
+
+  if (!data?.ok) {
+    return (
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+        <Seal size={48} />
+        <h1 className="text-[1.5rem] leading-tight">We could not load your workspace</h1>
+        <p className="text-[0.9375rem] leading-relaxed text-body">
+          The account database is not reachable yet. If the migration has not been
+          applied, sign in again once it has.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <ButtonLink href="/login" size="md">
+            Back to sign in
+          </ButtonLink>
+          <ButtonLink href="/" variant="outline" size="md">
+            Home
+          </ButtonLink>
+        </div>
+      </main>
+    );
+  }
+
+  const centralized = data.accountKind === "central";
+
+  const framing = centralized
+    ? {
+        eyebrow: "Centralized workspace",
+        title: data.organizationName || "Centralized student government office",
+        lede:
+          "The central office records every unit directly. Individual student governments are not in the chain, so onboarding never depends on them.",
+        chain: ["Central office", "Local units", "Officers"],
+      }
+    : {
+        eyebrow: "Decentralized workspace",
+        title: data.organizationName || "University student government",
+        lede:
+          "You sit above your local student governments. Invite an officer, name the campus they belong to, and they become part of your umbrella.",
+        chain: ["University", "Your USG", "Local governments"],
+      };
 
   const rows: Array<[string, string]> = [
-    ["Structure", federated ? "Federated / Decentralized" : "Unitary / Centralized"],
-    ["Institution", draft.institution.universityName],
-    ["Campus", federated ? draft.institution.campusName : "—"],
-    ["College", federated ? draft.institution.college : "—"],
-    ["Academic year", draft.organization.academicYear],
-    ["Administrator", draft.account.fullName],
-    ["Role", ROLE_LABELS[draft.account.role as MemberRole] ?? "—"],
-    ["Email", draft.account.email],
+    ["Account", data.email],
+    ["Signed in as", data.displayName],
+    ["Role", data.accountScope === "owner" ? "Account owner" : "Invited member"],
+    ["Workspace", centralized ? "Centralized" : "Decentralized"],
+    ["University", data.universityName || "—"],
+    ["Campus", data.campusName || "—"],
+    ["Charter", data.charterNumber || "—"],
+    ["Academic year", data.academicYear || "—"],
   ];
 
   return (
@@ -66,113 +117,66 @@ export default function DashboardPage() {
           </Link>
           <span aria-hidden className="hidden h-4 w-px bg-line sm:block" />
           <p className="hidden truncate text-[0.8125rem] font-medium text-ink-soft sm:block">
-            {draft.organization.name || "Workspace"}
+            {data.organizationName || "Workspace"}
           </p>
           <div className="ml-auto flex items-center gap-2.5">
-            <span className="rounded-full border border-brass/45 bg-brass-soft/35 px-3 py-1 text-[0.625rem] font-semibold tracking-[0.12em] text-ink uppercase">
-              Prototype
+            <span className="hidden rounded-full border border-brass/45 bg-brass-soft/35 px-3 py-1 text-[0.625rem] font-semibold tracking-[0.12em] text-ink uppercase sm:inline-flex">
+              {centralized ? "Centralized" : "Decentralized"}
             </span>
-            <ButtonLink href="/" size="sm" variant="ghost">
-              Exit
-            </ButtonLink>
+            <SignOutButton />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[82rem] flex-1 px-5 py-14 sm:px-8 sm:py-16">
-        {hydrated && hasOrg ? (
-          <>
-            <Reveal className="flex flex-col items-center text-center">
-              <Seal size={54} accent={draft.organization.accent} />
-              <h1 className="mt-6 text-[2rem] leading-tight sm:text-[2.5rem]">
-                {draft.organization.name}
-              </h1>
-              <p className="mt-3 max-w-lg text-[0.9375rem] leading-relaxed text-body">
-                {draft.organization.description ||
-                  "Your chartered student organization workspace."}
-              </p>
-              <p className="mt-4 font-mono text-[0.75rem] tracking-[0.14em] text-brass-deep">
-                {draft.charter ?? "—"}
-              </p>
-            </Reveal>
+      <main className="mx-auto w-full max-w-[82rem] flex-1 px-5 py-12 sm:px-8 sm:py-14">
+        <Reveal className="flex flex-col items-center text-center">
+          <Seal size={54} accent={data.accent} />
+          <p className="eyebrow mt-6">{framing.eyebrow}</p>
+          <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
+            {framing.title}
+          </h1>
+          <p className="mt-3 max-w-xl text-[0.9375rem] leading-relaxed text-body">
+            {framing.lede}
+          </p>
+        </Reveal>
 
-            <Reveal
-              delay={0.08}
-              className="mt-12 rounded-2xl border border-brass/40 bg-brass-soft/20 px-5 py-4"
-            >
-              <p className="flex items-center justify-center gap-2 text-[0.8125rem] font-medium text-ink">
-                <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
-                This is a dashboard placeholder. Setup is complete — the product
-                surface is the next build phase.
-              </p>
-            </Reveal>
+        <Reveal delay={0.06} className="mt-8 flex justify-center">
+          <ol className="flex flex-wrap items-center justify-center gap-2 text-[0.75rem] font-medium tracking-[0.08em] text-ink-soft uppercase">
+            {framing.chain.map((step, i) => (
+              <li key={step} className="flex items-center gap-2">
+                {i > 0 ? (
+                  <span aria-hidden className="text-brass">
+                    /
+                  </span>
+                ) : null}
+                {step}
+              </li>
+            ))}
+          </ol>
+        </Reveal>
 
-            <div className="mt-10 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-              <Reveal variant="scale" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-                <p className="eyebrow">Organization</p>
-                <dl className="mt-4 flex flex-col">
-                  {rows.map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="flex items-baseline justify-between gap-6 border-b border-line/70 py-2.5 last:border-b-0"
-                    >
-                      <dt className="text-[0.75rem] font-medium tracking-[0.06em] text-muted uppercase">
-                        {label}
-                      </dt>
-                      <dd className="truncate text-[0.875rem] text-ink-deep">
-                        {value || "—"}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </Reveal>
+        <Reveal delay={0.1} className="mt-10">
+          <Workspace account={account} variant={data.accountKind} />
+        </Reveal>
 
-              <Reveal delay={0.1} className="flex flex-col gap-6">
-                <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-                  <p className="eyebrow flex items-center gap-2">
-                    <IconPyramid className="h-3.5 w-3.5 text-brass" />
-                    Org chart
-                  </p>
-                  <div className="mt-4">
-                    <OrgDiagram
-                      model={federated ? "federated" : "unitary"}
-                      accent={draft.organization.accent}
-                    />
-                  </div>
+        <Reveal delay={0.14} className="mt-8">
+          <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <p className="eyebrow">Account</p>
+            <dl className="mt-4 flex flex-col">
+              {rows.map(([label, value]) => (
+                <div
+                  key={label}
+                  className="flex items-baseline justify-between gap-6 border-b border-line/70 py-2.5 last:border-b-0"
+                >
+                  <dt className="text-[0.75rem] font-medium tracking-[0.06em] text-muted uppercase">
+                    {label}
+                  </dt>
+                  <dd className="truncate text-[0.875rem] text-ink-deep">{value || "—"}</dd>
                 </div>
-
-                <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-                  <p className="eyebrow">Building next</p>
-                  <ul className="mt-4 flex flex-col gap-2.5">
-                    {COMING.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <li
-                          key={item.label}
-                          className="flex items-center gap-2.5 text-[0.875rem] text-body"
-                        >
-                          <Icon className="h-4 w-4 shrink-0 text-ink-muted" />
-                          {item.label}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <ButtonLink
-                    href="/create"
-                    size="sm"
-                    variant="outline"
-                    className="mt-6 w-full"
-                  >
-                    Back to setup flow
-                    <IconArrowRight className="h-3.5 w-3.5" />
-                  </ButtonLink>
-                </div>
-              </Reveal>
-            </div>
-          </>
-        ) : (
-          <div className="min-h-[50vh]" aria-hidden />
-        )}
+              ))}
+            </dl>
+          </section>
+        </Reveal>
       </main>
     </div>
   );

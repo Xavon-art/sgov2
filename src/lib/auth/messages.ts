@@ -1,0 +1,41 @@
+/**
+ * Maps the stable `reason` codes coming back from the `smartgov` functions to
+ * wording that is safe to show a person.
+ *
+ * A raw database message would leak table and function names, so routes never
+ * surface `reason` directly. Anything unmapped falls back to a generic line
+ * rather than echoing the original.
+ */
+const RPC_MESSAGES: Record<string, string> = {
+  invalid_credentials: "Email or password is incorrect.",
+  account_pending: "Finish activating your account using the code we emailed you.",
+  unauthenticated: "Your session has expired. Please sign in again.",
+  forbidden: "Your account is not allowed to do that.",
+  no_organization: "This workspace is not linked to an organization yet.",
+  invalid_email: "Enter a valid email address.",
+  weak_password: "Use a password of at least 8 characters.",
+  missing_name: "Enter your full name.",
+  email_taken: "That email already has an account.",
+  already_registered: "That email already has an account. Sign in instead.",
+  invalid_invite:
+    "This invitation is no longer valid. Ask the officer who invited you to send a new one.",
+  otp_expired: "That code has expired. Request a new one.",
+  otp_mismatch: "That code is not correct.",
+  too_many_attempts: "Too many wrong attempts. Ask your officer for a new invitation.",
+  verify_failed: "We could not verify that code. Please try again.",
+  invalid_organization: "That organization could not be found.",
+  invalid_request: "Something went wrong. Please try again.",
+  database_unavailable: "The database is not configured, so this cannot run yet.",
+};
+
+export function messageFor(reason?: string): string {
+  if (!reason) return "Something went wrong. Please try again.";
+  return RPC_MESSAGES[reason] ?? "Something went wrong. Please try again.";
+}
+
+/** Hides all but the first character of an address in UI and logs. */
+export function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  if (at <= 0) return "your email";
+  return `${email.slice(0, 1)}${"*".repeat(Math.min(6, at - 1))}${email.slice(at)}`;
+}
