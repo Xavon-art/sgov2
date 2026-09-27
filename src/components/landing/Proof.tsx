@@ -2,49 +2,62 @@
 
 import { Reveal } from "@/components/fx/Reveal";
 import { Section } from "@/components/landing/Section";
-import { initials } from "@/lib/utils";
 
-type Model = "federated" | "unitary";
+type Variant = "primary" | "neutral";
 
-const MODEL_LABEL: Record<Model, string> = {
-  federated: "Federated",
-  unitary: "Unitary",
-};
-
-const INSTITUTIONS: {
+/**
+ * The governance units the product actually models, straight from the
+ * `unit_type` / `member_role` enums. Deliberately not a customer list — the
+ * system has no users yet, and implying otherwise would be a false claim.
+ */
+const UNITS: {
+  code: string;
   name: string;
-  shape: string;
-  model: Model;
+  desc: string;
+  tag: string;
+  variant: Variant;
 }[] = [
   {
-    name: "Halcyon University",
-    shape: "Research university",
-    model: "federated",
+    code: "USG",
+    name: "University Student Government",
+    desc: "The central body — where officers, chairs, and the executive team sit.",
+    tag: "Root",
+    variant: "primary",
   },
   {
-    name: "Northgate Institute of Technology",
-    shape: "Institute of technology",
-    model: "federated",
+    code: "LSG",
+    name: "Local Student Government",
+    desc: "One per college or campus, nested under the USG instead of floating loose.",
+    tag: "Nested",
+    variant: "neutral",
   },
   {
-    name: "Verdant State University",
-    shape: "State university",
-    model: "unitary",
+    code: "CTL",
+    name: "Councils & cabinets",
+    desc: "The deliberative bodies where resolutions actually get voted on.",
+    tag: "Deliberative",
+    variant: "neutral",
   },
   {
-    name: "Ashcombe University",
-    shape: "Liberal arts university",
-    model: "unitary",
+    code: "COL",
+    name: "Colleges & schools",
+    desc: "Academic units that anchor each local government.",
+    tag: "Anchor",
+    variant: "neutral",
   },
   {
-    name: "Lakeshore Polytechnic",
-    shape: "Polytechnic institute",
-    model: "unitary",
+    code: "CAM",
+    name: "Campuses & branches",
+    desc: "Multi-site institutions keep every site distinct under one record.",
+    tag: "Multi-site",
+    variant: "neutral",
   },
   {
-    name: "Meridian College",
-    shape: "Community college",
-    model: "unitary",
+    code: "ROL",
+    name: "Officers & advisors",
+    desc: "Four seat types, each carrying its own permissions.",
+    tag: "Per-seat",
+    variant: "neutral",
   },
 ];
 
@@ -53,28 +66,28 @@ const INSTITUTIONS: {
  * different number of lines. `shrink-0` keeps it from being compressed on the
  * narrowest phones.
  */
-function Monogram({ name, model }: { name: string; model: Model }) {
+function Monogram({ code, variant }: { code: string; variant: Variant }) {
   return (
     <span
       aria-hidden
-      className="relative grid size-11 shrink-0 place-items-center rounded-full border border-brass/45 bg-brass-soft/45 font-display text-[0.75rem] leading-none font-semibold tracking-[0.04em] text-ink-deep transition-transform duration-300 ease-out group-hover:-rotate-3 group-hover:scale-105 sm:size-12 sm:text-[0.8125rem]"
+      className="relative grid size-11 shrink-0 place-items-center rounded-full border border-brass/45 bg-brass-soft/45 font-display text-[0.6875rem] leading-none font-semibold tracking-[0.04em] text-ink-deep transition-transform duration-300 ease-out group-hover:-rotate-3 group-hover:scale-105 sm:size-12 sm:text-[0.75rem]"
     >
-      {initials(name)}
+      {code}
       <span className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-white/70 ring-inset" />
-      {model === "federated" ? (
+      {variant === "primary" ? (
         <span className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-paper bg-ink/70" />
       ) : null}
     </span>
   );
 }
 
-function ModelTag({ model }: { model: Model }) {
+function UnitTag({ tag, variant }: { tag: string; variant: Variant }) {
   return (
     <span
       className={[
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1",
         "text-[0.6875rem] font-semibold tracking-[0.08em] uppercase whitespace-nowrap",
-        model === "federated"
+        variant === "primary"
           ? "border-brass/45 bg-brass-soft/35 text-ink-soft"
           : "border-line-strong bg-canvas text-ink-soft",
       ].join(" ")}
@@ -82,10 +95,10 @@ function ModelTag({ model }: { model: Model }) {
       <span
         aria-hidden
         className={`size-1.5 shrink-0 rounded-full ${
-          model === "federated" ? "bg-brass-deep" : "bg-ink-muted"
+          variant === "primary" ? "bg-brass-deep" : "bg-ink-muted"
         }`}
       />
-      {MODEL_LABEL[model]}
+      {tag}
     </span>
   );
 }
@@ -146,29 +159,30 @@ export function Proof() {
         <div className="mx-auto max-w-xl text-center">
           <p className="eyebrow">Designed around these shapes</p>
           <p className="mt-3 text-[0.9375rem] leading-relaxed text-body text-pretty">
-            Every institution arrives with a different governance shape. The org
-            chart, the roles, and the routing adapt to fit — no template to
-            fight.
+            SmartGov is not a template you bend to fit your constitution. You
+            declare your governance model, name the units you actually have, and
+            the org chart, the seats, and the routing build themselves around
+            it.
           </p>
         </div>
 
-        <ul className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-10 lg:grid-cols-3">
-          {INSTITUTIONS.map((institution, i) => (
-            <Reveal key={institution.name} delay={0.06 * i} as="li">
+        <ul
+          aria-label="Governance units SmartGov models"
+          className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:mt-10 lg:grid-cols-3"
+        >
+          {UNITS.map((unit, i) => (
+            <Reveal key={unit.code} delay={0.06 * i} as="li">
               <div className="group flex h-full min-w-0 items-center gap-4 rounded-2xl border border-line bg-paper p-4 transition-[transform,border-color,box-shadow] duration-300 ease-out hover:-translate-y-0.5 hover:border-brass/40 hover:shadow-[var(--shadow-lift)] sm:p-5 lg:flex-col lg:items-start lg:gap-5 lg:p-6">
-                <Monogram
-                  name={institution.name}
-                  model={institution.model}
-                />
+                <Monogram code={unit.code} variant={unit.variant} />
                 <div className="flex min-w-0 flex-1 flex-col">
                   <h3 className="font-display text-[clamp(0.9375rem,0.9rem+0.2vw,1.0625rem)] leading-snug font-medium break-words text-balance text-ink-deep">
-                    {institution.name}
+                    {unit.name}
                   </h3>
                   <p className="mt-1 text-[0.8125rem] leading-relaxed text-ink-soft text-pretty">
-                    {institution.shape}
+                    {unit.desc}
                   </p>
                   <div className="mt-3 lg:mt-auto lg:pt-5">
-                    <ModelTag model={institution.model} />
+                    <UnitTag tag={unit.tag} variant={unit.variant} />
                   </div>
                 </div>
               </div>
@@ -177,7 +191,8 @@ export function Proof() {
         </ul>
 
         <p className="mt-8 text-center text-[0.6875rem] leading-relaxed text-ink-soft text-pretty">
-          Placeholder institutions shown for prototype purposes.
+          A preview of the structures SmartGov models — not a list of
+          institutions using it.
         </p>
       </Reveal>
     </Section>
