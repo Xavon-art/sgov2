@@ -82,6 +82,22 @@ const flat = (text) => text.replace(/\s+/g, " ");
 const readMigration = (name) =>
   withoutSqlComments(readFileSync(join(ROOT, `supabase/migrations/${name}`), "utf8"));
 
+/**
+ * The same read for a migration whose guard is written before the migration is.
+ * A file that has not landed yet reads as empty instead of throwing, so the
+ * guards below report FAIL and the other 75 assertions still get to report. A
+ * stack trace is not a red state, it is an absence of one -- it would take the
+ * whole contract dark along with the new item, which is the one thing a TDD
+ * red step must not do.
+ */
+const readPendingMigration = (name) => {
+  try {
+    return readMigration(name);
+  } catch {
+    return "";
+  }
+};
+
 const m5 = readMigration("20260101000500_add_department_unit_type.sql");
 const m6 = readMigration("20260101000600_unit_hierarchy_tables.sql");
 const m7 = readMigration("20260101000700_create_organization_unit_tree.sql");
@@ -90,6 +106,7 @@ const m9 = readMigration("20260101000900_roster_invites.sql");
 const m10 = readMigration("20260101001000_list_roster.sql");
 const m11 = readMigration("20260101001100_owner_otp_approval.sql");
 const m12 = readMigration("20260101001200_password_reset.sql");
+const m14 = readPendingMigration("20260101001400_add_unit_and_seatless_invites.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -576,6 +593,76 @@ check(
   "the public password-reset wrappers are granted to anon, authenticated",
   /grant execute on function public\.begin_password_reset\(text, text, integer\)\s+to anon, authenticated/.test(m12) &&
     /grant execute on function public\.complete_password_reset\(text, text, text\)\s+to anon, authenticated/.test(m12),
+);
+
+// --- 12. Dashboard units-first invites ---
+// A USG owner has to be able to create a real governance_units row -- a campus,
+// a department -- from the dashboard, and then invite an officer into it with
+// no position seat at all. The second half is the load-bearing half: dropping
+// the NOT NULL on unit_memberships.position_id is a relaxation, and a
+// relaxation is only safe in one direction. Unit without a position is the new
+// case and must be allowed; position without a unit is the dangling-row case
+// and must stay illegal, or the chart has a membership pointing at a seat that
+// resolves to nothing.
+const m14Flat = flat(m14);
+const addUnit = functionBlocks(m14).find((b) => b.name === "smartgov.add_unit")?.body ?? "";
+const addUnitFlat = flat(addUnit);
+const relaxedInvite =
+  functionBlocks(m14).find((b) => b.name === "smartgov.create_invite")?.body ?? "";
+// Comment-stripped before it is flattened, so a relaxed guard that was only
+// commented out -- `-- or (p_unit_id is not null and p_position_id is null)` --
+// cannot be mistaken for the relaxation having landed.
+const relaxedNoComments = withoutSqlComments(relaxedInvite);
+const relaxedFlat = flat(relaxedNoComments);
+
+check(
+  "001400 drops the NOT NULL on unit_memberships.position_id",
+  /alter table smartgov\.unit_memberships\s+alter column position_id\s+drop not null/.test(m14Flat),
+  "an officer invited into a unit with no seat cannot be represented while the column still refuses null",
+);
+check("001400 creates smartgov.add_unit", addUnit.length > 0);
+check(
+  "add_unit proves ownership through the founding-member row",
+  /from public\.organization_members m/.test(addUnitFlat) && /m\.is_founding/.test(addUnitFlat),
+  "an organization id in the request body is not authority",
+);
+check(
+  "add_unit allows only college, campus, department",
+  /v_type not in \('college', 'campus', 'department'\)/.test(addUnitFlat),
+  "a unit below the organization is a college, a campus, or a department; anything else invents a layer the chart cannot draw",
+);
+check(
+  "add_unit rejects duplicate names within the org",
+  /duplicate_unit_name/.test(addUnitFlat),
+  "two campuses of the same name make the officer's unit unreadable in the chart",
+);
+check(
+  "add_unit charges a rate-limit bucket",
+  /consume_rate_limit/.test(addUnitFlat),
+  "a new table is a new write surface, and a new write surface is a new thing to hammer",
+);
+check(
+  "001400 keeps the six-argument public.create_invite wrapper",
+  /create or replace function public\.create_invite\(\s*p_session_token text, p_email text, p_campus_name text, p_unit_type text, p_unit_id uuid default null, p_position_id uuid default null/.test(
+    m14Flat,
+  ),
+  "the dashboard's existing organization-wide invite sends four named arguments; dropping the trailing two breaks it",
+);
+check(
+  "001400 creates smartgov.create_invite",
+  relaxedInvite.length > 0,
+  "the relaxation lives in this function; without it there is nothing for the next two checks to read",
+);
+check(
+  "the relaxed create_invite allows unit without position",
+  relaxedInvite.length > 0 &&
+    !/or \(p_unit_id is not null and p_position_id is null\)/.test(relaxedFlat),
+  "this is the guard that has to go: it is what currently makes a seatless invite impossible",
+);
+check(
+  "the relaxed create_invite still forbids position without unit",
+  /p_unit_id is null and p_position_id is not null/.test(relaxedFlat),
+  "relaxing the pair must not take the other half with it; a position with no unit is a membership the chart cannot resolve",
 );
 
 console.log(
