@@ -1,5 +1,3 @@
-"use client";
-
 import ShaderField from "@/components/fx/ShaderField";
 import { FloatingField, type FloatingChip } from "@/components/fx/FloatingField";
 import { Reveal } from "@/components/fx/Reveal";

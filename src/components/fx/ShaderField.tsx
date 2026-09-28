@@ -124,6 +124,21 @@ const STATIC_TIME = 14.2;
  */
 const FRAME_MS = 1000 / 20;
 
+/**
+ * Intervals to average before judging the device. Kept deliberately short: the
+ * previous window of 45 meant a device actually drawing at 12fps had to run for
+ * 3.6s before the first downscale landed, so most of a first visit was spent
+ * paying for a frame rate the device was never going to reach.
+ */
+const SAMPLE_FRAMES = 10;
+
+/**
+ * A single frame interval this far over budget means no cheaper tier will
+ * rescue the frame either, so drop straight to the floor rather than spending a
+ * second sample window rediscovering the same thing.
+ */
+const BAIL_GAP = FRAME_MS * 4;
+
 function compileShader(
   gl: WebGLRenderingContext,
   type: number,
@@ -235,8 +250,9 @@ export default function ShaderField({
     let firstFrame = true;
     let lastDraw = 0;
     let acc = 0;
-    let frames = 0;
+    let samples = 0;
     let downgrades = 0;
+    let warmup = 2;
 
     const draw = (time: number) => {
       gl.uniform2f(uRes, canvas.width, canvas.height);
@@ -320,8 +336,18 @@ export default function ShaderField({
 
         if (!started) started = now;
         const seconds = (now - started) / 1000;
+        const gap = lastDraw ? now - lastDraw : 0;
 
-        if (lastDraw) acc += now - lastDraw;
+        // The first couple of gaps are dominated by shader compilation and the
+        // first-frame JIT, not by steady-state cost. Averaging them in would
+        // downgrade machines that are in fact keeping up, which is a real
+        // quality regression, so they are dropped instead. `samples` counts only
+        // the gaps that reach `acc`, so the two stay in step.
+        if (gap > 0 && warmup > 0) warmup--;
+        else if (gap > 0) {
+          acc += gap;
+          samples++;
+        }
         lastDraw = now;
 
         pointer.x += (target.x - pointer.x) * 0.045;
@@ -335,16 +361,19 @@ export default function ShaderField({
         }
 
         if (downgrades < 2) {
-          frames++;
-          if (frames >= 45) {
-            const avg = acc / frames;
+          // Judged on a single interval, not the running total: a device holding
+          // the 20fps cap accumulates past any fixed total within a few frames
+          // while every one of its intervals is perfectly healthy.
+          const hopeless = gap > BAIL_GAP;
+          if (hopeless || samples >= SAMPLE_FRAMES) {
+            const avg = acc / samples;
             acc = 0;
-            frames = 0;
+            samples = 0;
             // Compare against our own budget: the 20fps cap makes the average
             // spacing FRAME_MS by design, so the old 21ms threshold would
             // downscale on every capable machine.
-            if (avg > FRAME_MS * 1.5) {
-              downgrades++;
+            if (hopeless || avg > FRAME_MS * 1.5) {
+              downgrades = hopeless ? 2 : downgrades + 1;
               resScale = downgrades === 1 ? 0.72 : 0.5;
               resize();
             } else {
@@ -367,6 +396,12 @@ export default function ShaderField({
         raf = 0;
         running = false;
       };
+      // The loop is the only thing holding this component's work alive, and
+      // nothing else in the teardown reaches it: the IntersectionObserver is
+      // disconnected and the context is lost, so no callback would ever fire
+      // again to park it. Without this the chain kept re-arming at 60fps
+      // after navigation, drawing into a context that no longer exists.
+      teardown.push(stop);
 
       // Park the loop whenever the field is scrolled away or the tab is in the
       // background. Previously it kept re-arming requestAnimationFrame at 60fps

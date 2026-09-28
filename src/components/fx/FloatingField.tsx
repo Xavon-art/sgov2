@@ -57,27 +57,48 @@ export function FloatingField({
     if (!fine) return;
 
     let raf = 0;
+    let running = false;
+
+    const start = () => {
+      if (running) return;
+      running = true;
+      raf = requestAnimationFrame(loop);
+    };
 
     const onMove = (e: PointerEvent) => {
       pointer.current.x = (e.clientX / Math.max(window.innerWidth, 1) - 0.5) * 2;
       pointer.current.y = (e.clientY / Math.max(window.innerHeight, 1) - 0.5) * 2;
+      start();
     };
     window.addEventListener("pointermove", onMove, { passive: true });
 
     const io = new IntersectionObserver(
       ([entry]) => {
         visible.current = entry.isIntersecting;
+        if (visible.current) start();
       },
       { threshold: 0 },
     );
     io.observe(root);
 
+    /*
+     * Motion this small cannot be seen, and past it the eased transform stops
+     * changing at the two decimals the chips are written with. Scaled by the
+     * widest offset a chip can take, so a chip parked here sits within 0.05px
+     * of where the pointer left it.
+     */
+    const STILL = 0.05 / (range * 1.2);
+
     const loop = () => {
-      raf = requestAnimationFrame(loop);
-      if (!visible.current || document.hidden) return;
+      raf = 0;
+      running = false;
+      if (document.hidden || !visible.current) return;
+
       const c = current.current;
-      c.x += (pointer.current.x - c.x) * 0.055;
-      c.y += (pointer.current.y - c.y) * 0.055;
+      const gapX = pointer.current.x - c.x;
+      const gapY = pointer.current.y - c.y;
+      c.x += gapX * 0.055;
+      c.y += gapY * 0.055;
 
       for (let i = 0; i < itemRefs.current.length; i++) {
         const el = itemRefs.current[i];
@@ -89,20 +110,40 @@ export function FloatingField({
           2,
         )}px, 0)`;
       }
+
+      /*
+       * Re-arm only while the eased offset is still travelling. The chips sit
+       * above a live WebGL canvas and a stack of backdrop blurs, so a 60Hz loop
+       * rewriting six identical transform strings keeps invalidating style for
+       * the whole section long after the pointer has settled. `running` is
+       * cleared above, which is what lets the next pointermove or intersection
+       * change pick the field back up.
+       */
+      if (Math.abs(gapX) > STILL || Math.abs(gapY) > STILL) start();
     };
+
+    // A tab restored from the background can leave the chips parked part-way
+    // through an eased move, so resume rather than wait for the next pointer
+    // event to correct them.
+    const onVisibility = () => {
+      if (!document.hidden) start();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     if (reduced) {
       for (const el of itemRefs.current) {
         if (el) el.style.transform = "translate3d(0,0,0)";
       }
     } else {
-      raf = requestAnimationFrame(loop);
+      start();
     }
 
     return () => {
-      cancelAnimationFrame(raf);
+      if (raf) cancelAnimationFrame(raf);
+      running = false;
       io.disconnect();
       window.removeEventListener("pointermove", onMove);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [chips, range]);
 
