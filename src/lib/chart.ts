@@ -61,7 +61,7 @@ export type RosterEntry = {
 };
 
 /** The function answers one of two shapes: a chart, or a machine reason. */
-type ChartResponse = ({ ok: true } & UnitChart) | { ok: false; reason: string };
+export type ChartResponse = ({ ok: true } & UnitChart) | { ok: false; reason: string };
 
 type RosterResponse = { ok: true; roster: RosterEntry[] } | { ok: false; reason: string };
 
@@ -84,6 +84,26 @@ export function unitTypeLabel(unitType: string | null | undefined): string {
 }
 
 /**
+ * Reads the caller's chart answer verbatim, or null when the call itself
+ * failed. Unlike `fetchUnitChart`, a refused call keeps its `reason`, so a
+ * page can tell "this officer holds no seat" from "the database is down" --
+ * the two render differently, and collapsing them would pick one state for
+ * both.
+ */
+export async function fetchUnitChartResult(
+  sessionToken: string,
+): Promise<ChartResponse | null> {
+  try {
+    return await callRpc<ChartResponse>("unit_chart", {
+      p_session_token: sessionToken,
+    });
+  } catch (error) {
+    console.error("[org-chart:read]", error);
+    return null;
+  }
+}
+
+/**
  * Reads the caller's chart, or null when it could not be read.
  *
  * A null answer is deliberately indistinguishable between a refused call and an
@@ -91,16 +111,7 @@ export function unitTypeLabel(unitType: string | null | undefined): string {
  * machine code that never reaches a person -- goes to the server log only.
  */
 export async function fetchUnitChart(sessionToken: string): Promise<UnitChart | null> {
-  let payload: ChartResponse;
-
-  try {
-    payload = await callRpc<ChartResponse>("unit_chart", {
-      p_session_token: sessionToken,
-    });
-  } catch (error) {
-    console.error("[org-chart:read]", error);
-    return null;
-  }
+  const payload = await fetchUnitChartResult(sessionToken);
 
   if (!payload?.ok) {
     console.error(`[org-chart:read] refused: ${payload?.reason ?? "unknown"}`);
@@ -108,6 +119,15 @@ export async function fetchUnitChart(sessionToken: string): Promise<UnitChart | 
   }
 
   return payload;
+}
+
+/**
+ * Narrows a chart to the LSG-officer scope, the only scope the council page
+ * renders. The database has already excluded every unit but the caller's own
+ * and its parent, so a chart that fails this guard is never drawn there.
+ */
+export function isUnitScopeChart(chart: UnitChart): chart is UnitChart & { scope: "unit" } {
+  return chart.scope === "unit";
 }
 
 /**
