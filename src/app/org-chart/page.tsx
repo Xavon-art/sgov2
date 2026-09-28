@@ -7,47 +7,34 @@ import { ButtonLink } from "@/components/ui/Button";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import {
   AddPositionControl,
+  SeatRow,
   UnitSeatToggles,
 } from "@/components/org-chart/OrgChartControls";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 import {
+  fetchRoster,
   fetchUnitChart,
   unitTypeLabel,
   type ChartPosition,
-  type ChartSeat,
   type ChartUnit,
+  type RosterEntry,
 } from "@/lib/chart";
 
 // The chart is scoped in Postgres to whatever the session token resolves to, so
 // it changes with the cookie and must never be cached.
 export const dynamic = "force-dynamic";
 
-function SeatRow({ seat }: { seat: ChartSeat }) {
-  const held = Boolean(seat.rosterId);
-
-  return (
-    <li className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-line/70 py-2.5 last:border-b-0">
-      <span className="text-[0.875rem] text-ink-deep">{seat.label}</span>
-
-      {held ? (
-        <span className="min-w-0 text-right">
-          <span className="block truncate text-[0.8125rem] font-medium text-ink">
-            {seat.fullName || seat.email}
-          </span>
-          {seat.email ? (
-            <span className="block truncate text-[0.75rem] text-muted">{seat.email}</span>
-          ) : null}
-        </span>
-      ) : (
-        <span className="rounded-full border border-line px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-muted uppercase">
-          Vacant
-        </span>
-      )}
-    </li>
-  );
-}
-
-function UnitCard({ unit, positions }: { unit: ChartUnit; positions: ChartPosition[] }) {
+function UnitCard({
+  unit,
+  positions,
+  roster,
+  rosterAvailable,
+}: {
+  unit: ChartUnit;
+  positions: ChartPosition[];
+  roster: RosterEntry[];
+  rosterAvailable: boolean;
+}) {
   return (
     <article className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -60,7 +47,14 @@ function UnitCard({ unit, positions }: { unit: ChartUnit; positions: ChartPositi
       {unit.seats.length > 0 ? (
         <ul className="mt-4 flex flex-col">
           {unit.seats.map((seat) => (
-            <SeatRow key={seat.positionId} seat={seat} />
+            <SeatRow
+              key={seat.positionId}
+              seat={seat}
+              unitId={unit.id}
+              unitType={unit.unitType}
+              roster={roster}
+              rosterAvailable={rosterAvailable}
+            />
           ))}
         </ul>
       ) : (
@@ -96,6 +90,7 @@ export default async function OrgChartPage() {
   if (!token) redirect("/login");
 
   const chart = await fetchUnitChart(token);
+  const roster = await fetchRoster(token);
 
   if (!chart) {
     return (
@@ -202,7 +197,12 @@ export default async function OrgChartPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               {children.map((unit, i) => (
                 <Reveal key={unit.id} delay={i * 0.02}>
-                  <UnitCard unit={unit} positions={chart.positions} />
+                  <UnitCard
+                    unit={unit}
+                    positions={chart.positions}
+                    roster={roster ?? []}
+                    rosterAvailable={roster !== null}
+                  />
                 </Reveal>
               ))}
             </div>

@@ -53,8 +53,17 @@ export type UnitChart = {
   positions: ChartPosition[];
 };
 
+/** One person on the organization roster, as `public.list_roster` returns it. */
+export type RosterEntry = {
+  rosterId: string;
+  fullName: string;
+  email: string;
+};
+
 /** The function answers one of two shapes: a chart, or a machine reason. */
 type ChartResponse = ({ ok: true } & UnitChart) | { ok: false; reason: string };
+
+type RosterResponse = { ok: true; roster: RosterEntry[] } | { ok: false; reason: string };
 
 const UNIT_TYPE_LABELS: Record<string, string> = {
   usg: "University Student Government",
@@ -99,4 +108,33 @@ export async function fetchUnitChart(sessionToken: string): Promise<UnitChart | 
   }
 
   return payload;
+}
+
+/**
+ * Reads the organization roster for the seat-assignment picker, or null when
+ * it could not be read.
+ *
+ * A missing `public.list_roster` -- the migration that creates it not yet
+ * applied -- reaches here as a thrown transport error rather than a refused
+ * call, and is deliberately the same null as any other failure: the chart
+ * still renders and only the assign-existing option degrades.
+ */
+export async function fetchRoster(sessionToken: string): Promise<RosterEntry[] | null> {
+  let payload: RosterResponse;
+
+  try {
+    payload = await callRpc<RosterResponse>("list_roster", {
+      p_session_token: sessionToken,
+    });
+  } catch (error) {
+    console.error("[roster:read]", error);
+    return null;
+  }
+
+  if (!payload?.ok) {
+    console.error(`[roster:read] refused: ${payload?.reason ?? "unknown"}`);
+    return null;
+  }
+
+  return payload.roster ?? [];
 }

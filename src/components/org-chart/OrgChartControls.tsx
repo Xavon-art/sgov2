@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
-import { IconCheck } from "@/components/ui/Icons";
+import { IconCheck, IconClose, IconUser } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
-import type { ChartPosition, ChartUnit } from "@/lib/chart";
+import type { ChartPosition, ChartSeat, ChartUnit, RosterEntry } from "@/lib/chart";
 
 type WriteResponse = {
   ok?: boolean;
@@ -315,5 +315,399 @@ export function UnitSeatToggles({
         </p>
       ) : null}
     </div>
+  );
+}
+
+const INVITE_UNIT_TYPES = [
+  { value: "lsg", label: "Local Student Government" },
+  { value: "college", label: "College" },
+  { value: "campus", label: "Campus" },
+  { value: "council", label: "Council" },
+  { value: "department", label: "Department" },
+];
+
+const selectClass =
+  "h-12 w-full appearance-none rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none transition-[border-color,box-shadow,background-color] duration-300 hover:border-line-strong focus:border-ink/25 focus:bg-paper";
+
+type SeatWriteResponse = {
+  ok?: boolean;
+  message?: string;
+  email?: string;
+  delivered?: boolean;
+  code?: string;
+};
+
+/**
+ * One seat row: the position, who holds it, and the actions that fill or
+ * empty it.
+ *
+ * A vacant seat opens a panel with the two ways to fill it -- invite
+ * somebody new, or seat somebody already on the roster -- and a seated one
+ * shows the holder with the release that makes the seat vacant again. Every
+ * action writes through the owner-gated API routes and then refreshes the
+ * chart, so the row always shows what the database now says.
+ */
+export function SeatRow({
+  seat,
+  unitId,
+  unitType,
+  roster,
+  rosterAvailable,
+}: {
+  seat: ChartSeat;
+  unitId: string;
+  unitType: string;
+  roster: RosterEntry[];
+  rosterAvailable: boolean;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"invite" | "assign">("invite");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [campusName, setCampusName] = useState("");
+  const [inviteType, setInviteType] = useState(
+    INVITE_UNIT_TYPES.some((t) => t.value === unitType) ? unitType : "lsg",
+  );
+  const [query, setQuery] = useState("");
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+
+  const held = Boolean(seat.rosterId);
+  const panelId = `seat-panel-${seat.positionId}`;
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return roster;
+    return roster.filter(
+      (entry) =>
+        entry.fullName.toLowerCase().includes(q) || entry.email.toLowerCase().includes(q),
+    );
+  }, [query, roster]);
+
+  function showError(message: string) {
+    setNotice(null);
+    setError(message);
+  }
+
+  async function onInvite(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/org-chart/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          campusName: campusName.trim(),
+          unitType: inviteType,
+          unitId,
+          positionId: seat.positionId,
+        }),
+      });
+      const data = (await res.json()) as SeatWriteResponse;
+
+      if (!res.ok || !data.ok) {
+        showError(data.message ?? "We could not send that invitation.");
+        if (data.code === "delivery_failed") {
+          setOpen(false);
+          router.refresh();
+        }
+        return;
+      }
+
+      setEmail("");
+      setCampusName("");
+      setOpen(false);
+      setNotice(`Invite sent to ${data.email ?? email.trim()}.`);
+      router.refresh();
+    } catch {
+      showError("We could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAssign(entry: RosterEntry) {
+    if (busy) return;
+    setError(null);
+    setNotice(null);
+    setAssigningId(entry.rosterId);
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/org-chart/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ unitId, positionId: seat.positionId, rosterId: entry.rosterId }),
+      });
+      const data = (await res.json()) as SeatWriteResponse;
+
+      if (!res.ok || !data.ok) {
+        showError(data.message ?? "We could not assign that person.");
+        return;
+      }
+
+      setOpen(false);
+      router.refresh();
+    } catch {
+      showError("We could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+      setAssigningId(null);
+    }
+  }
+
+  async function onRelease() {
+    if (busy || !seat.membershipId) return;
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/org-chart/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ membershipId: seat.membershipId }),
+      });
+      const data = (await res.json()) as SeatWriteResponse;
+
+      if (!res.ok || !data.ok) {
+        showError(data.message ?? "We could not release that seat.");
+        return;
+      }
+
+      router.refresh();
+    } catch {
+      showError("We could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <li className="border-b border-line/70 py-2.5 last:border-b-0">
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
+        <span className="text-[0.875rem] text-ink-deep">{seat.label}</span>
+
+        {held ? (
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="min-w-0 text-right">
+              <span className="block truncate text-[0.8125rem] font-medium text-ink">
+                {seat.fullName || seat.email}
+              </span>
+              {seat.email ? (
+                <span className="block truncate text-[0.75rem] text-muted">{seat.email}</span>
+              ) : null}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              aria-busy={busy || undefined}
+              onClick={onRelease}
+            >
+              {busy ? "Releasing…" : "Release"}
+            </Button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={panelId}
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              setNotice(null);
+              setOpen((v) => !v);
+            }}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] uppercase transition-colors duration-300",
+              "disabled:cursor-progress",
+              open
+                ? "border-ink/40 bg-ink/[0.06] text-ink"
+                : "border-line text-muted hover:border-line-strong hover:text-ink-soft",
+            )}
+          >
+            Vacant
+          </button>
+        )}
+      </div>
+
+      {open && !held ? (
+        <div id={panelId} className="mt-3 rounded-xl border border-line bg-canvas/60 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="eyebrow">Fill this seat</p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="grid size-7 place-items-center rounded-full border border-line text-muted transition-colors duration-300 hover:border-line-strong hover:text-ink"
+            >
+              <IconClose className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            {(
+              [
+                { id: "invite", label: "Invite new" },
+                { id: "assign", label: "Assign existing" },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                aria-pressed={mode === tab.id}
+                onClick={() => {
+                  setMode(tab.id);
+                  setError(null);
+                }}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-[0.75rem] font-semibold tracking-[0.04em] transition-colors duration-300",
+                  mode === tab.id
+                    ? "border-ink/40 bg-ink/[0.06] text-ink"
+                    : "border-line text-muted hover:border-line-strong hover:text-ink-soft",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {mode === "invite" ? (
+            <form onSubmit={onInvite} noValidate className="mt-4 flex flex-col gap-4">
+              <TextField
+                id={`seat-invite-email-${seat.positionId}`}
+                label="Email"
+                type="email"
+                placeholder="officer@campus.edu"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              <TextField
+                id={`seat-invite-campus-${seat.positionId}`}
+                label="Campus or unit"
+                placeholder="College of Engineering"
+                value={campusName}
+                onChange={(e) => setCampusName(e.target.value)}
+                optional
+                hint="Leave blank if this person represents the whole organization."
+              />
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor={`seat-invite-type-${seat.positionId}`}
+                  className="text-[0.8125rem] font-medium text-ink"
+                >
+                  Unit type
+                </label>
+                <select
+                  id={`seat-invite-type-${seat.positionId}`}
+                  value={inviteType}
+                  onChange={(e) => setInviteType(e.target.value)}
+                  className={selectClass}
+                >
+                  {INVITE_UNIT_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <Button type="submit" size="sm" disabled={busy} className="self-start">
+                {busy ? "Sending…" : "Send invite"}
+              </Button>
+            </form>
+          ) : (
+            <div className="mt-4 flex flex-col gap-3">
+              {!rosterAvailable ? (
+                <p className="text-[0.8125rem] leading-relaxed text-muted">
+                  The roster is not available yet. Ask an administrator to apply the latest
+                  database migration, then refresh the chart.
+                </p>
+              ) : (
+                <>
+                  <TextField
+                    id={`seat-assign-search-${seat.positionId}`}
+                    label="Search the roster"
+                    placeholder="Search by name or email"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    icon={<IconUser className="h-4 w-4" />}
+                  />
+                  {matches.length === 0 ? (
+                    <p className="text-[0.8125rem] leading-relaxed text-muted">
+                      {roster.length === 0
+                        ? "No one is on the roster yet. Invite somebody new instead."
+                        : "No one matches that search."}
+                    </p>
+                  ) : (
+                    <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto pr-1">
+                      {matches.map((entry) => (
+                        <li key={entry.rosterId}>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onAssign(entry)}
+                            className="flex w-full items-center justify-between gap-3 rounded-lg border border-line bg-paper/70 px-3 py-2 text-left transition-colors duration-300 hover:border-line-strong disabled:opacity-50"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-[0.8125rem] font-medium text-ink-deep">
+                                {entry.fullName}
+                              </span>
+                              <span className="block truncate text-[0.75rem] text-muted">
+                                {entry.email}
+                              </span>
+                            </span>
+                            {assigningId === entry.rosterId ? (
+                              <span className="shrink-0 text-[0.6875rem] font-semibold tracking-[0.08em] text-muted uppercase">
+                                Assigning…
+                              </span>
+                            ) : (
+                              <span className="shrink-0 text-[0.6875rem] font-semibold tracking-[0.08em] text-brass-deep uppercase">
+                                Assign
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {error ? (
+        <p role="alert" className={cn("mt-2", alertClass)}>
+          {error}
+        </p>
+      ) : null}
+
+      {notice ? (
+        <p role="status" className={cn("mt-2", noticeClass)}>
+          <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+          {notice}
+        </p>
+      ) : null}
+    </li>
   );
 }
