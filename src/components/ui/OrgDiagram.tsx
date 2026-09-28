@@ -146,31 +146,41 @@ function Federated({
       >
         EACH REPORTS UPWARD
       </text>
-      <g>
-        {[0, 1, 2].map((i) => (
+      {/*
+        One label per box. This was a single centred "budgets · projects ·
+        officers" string laid across three empty 40-unit boxes: at ~83 units it
+        was twice as wide as a box, so it overflowed all three and left each one
+        unlabelled. The row is also centred properly now -- it used to start at
+        x=66 while the three columns above sit at x=42, 120 and 198.
+      */}
+      {[
+        { x: 28, label: "budgets" },
+        { x: 92, label: "projects" },
+        { x: 156, label: "officers" },
+      ].map((chip) => (
+        <g key={chip.label}>
           <rect
-            key={i}
-            x={66 + i * 46}
+            x={chip.x}
             y="112"
-            width="40"
-            height="12"
+            width="56"
+            height="14"
             rx="3"
             fill="none"
             stroke="currentColor"
             strokeOpacity="0.16"
           />
-        ))}
-        <text
-          x="120"
-          y="121"
-          textAnchor="middle"
-          fontSize="6.4"
-          fill="var(--color-faint)"
-          fontFamily="var(--font-sans)"
-        >
-          budgets · projects · officers
-        </text>
-      </g>
+          <text
+            x={chip.x + 28}
+            y="121.5"
+            textAnchor="middle"
+            fontSize="6.4"
+            fill="var(--color-faint)"
+            fontFamily="var(--font-sans)"
+          >
+            {chip.label}
+          </text>
+        </g>
+      ))}
     </svg>
   );
 }
