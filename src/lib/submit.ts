@@ -1,5 +1,5 @@
 import { charterNumber, slugify } from "@/lib/utils";
-import type { OrgDraft } from "@/lib/store";
+import { effectiveRole, type OrgDraft } from "@/lib/store";
 
 export type SubmitResult =
   | { status: "ok"; organizationId: string; charter: string; persisted: true }
@@ -69,7 +69,10 @@ export async function submitOrganization(
         charterNumber: charter,
         officerName: draft.account.fullName.trim(),
         officerEmail: draft.account.email.trim(),
-        officerRole: draft.account.role,
+        // Re-derived here rather than trusted from the draft, because a
+        // persisted draft is user-writable and setModel never runs for one
+        // that was hand-edited.
+        officerRole: effectiveRole(draft.model, draft.account.role),
         units: federated
           ? [
               {

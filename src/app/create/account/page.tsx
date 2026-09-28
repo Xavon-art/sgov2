@@ -60,6 +60,7 @@ export default function AccountPage() {
   const [reveal, setReveal] = useState(false);
 
   const available = useMemo(() => rolesForModel(draft.model), [draft.model]);
+  const federated = draft.model === "federated";
   const pw = strength(draft.account.password);
   const account = draft.account;
 
@@ -157,78 +158,89 @@ export default function AccountPage() {
 
         <div className="rule" />
 
-        <fieldset>
-          <legend className="flex items-baseline justify-between gap-3 text-[0.8125rem] font-medium text-ink">
-            <span>Your role</span>
-            <span className="text-[0.6875rem] font-medium tracking-[0.14em] text-faint uppercase">
-              {draft.model === "federated" ? "Federated" : "Unitary"}
-            </span>
-          </legend>
-          <p className="mt-2 text-[0.75rem] leading-relaxed text-muted">
-            Roles available to you depend on the governance model you chose.
-          </p>
+        {!federated ? (
+          <fieldset>
+            <legend className="flex items-baseline justify-between gap-3 text-[0.8125rem] font-medium text-ink">
+              <span>Your role</span>
+              <span className="text-[0.6875rem] font-medium tracking-[0.14em] text-faint uppercase">
+                {draft.model === "federated" ? "Federated" : "Unitary"}
+              </span>
+            </legend>
+            <p className="mt-2 text-[0.75rem] leading-relaxed text-muted">
+              Roles available to you depend on the governance model you chose.
+            </p>
 
-          <div
-            data-invalid={showErrors && pick(errors, showErrors, "role") ? "true" : undefined}
-            className="mt-4 grid gap-2.5 sm:grid-cols-2"
-          >
-            {ALL_ROLES.map((role) => {
-              const enabled = available.includes(role);
-              const selected = account.role === role;
-              return (
-                <label
-                  key={role}
-                  className={cn(
-                    "group relative flex cursor-pointer gap-3 rounded-xl border p-3.5 transition-[border-color,background-color,box-shadow] duration-400",
-                    !enabled && "cursor-not-allowed opacity-45",
-                    enabled && selected
-                      ? "border-ink/30 bg-paper shadow-lift"
-                      : "border-line bg-paper/50 hover:border-line-strong hover:bg-paper/80",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="role"
-                    value={role}
-                    disabled={!enabled}
-                    checked={selected}
-                    onChange={() => patchAccount({ role })}
-                    className="sr-only"
-                  />
-                  <span
+            <div
+              data-invalid={showErrors && pick(errors, showErrors, "role") ? "true" : undefined}
+              className="mt-4 grid gap-2.5 sm:grid-cols-2"
+            >
+              {ALL_ROLES.map((role) => {
+                const enabled = available.includes(role);
+                const selected = account.role === role;
+                return (
+                  <label
+                    key={role}
                     className={cn(
-                      "mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border transition-colors duration-400",
-                      selected
-                        ? "border-ink bg-ink text-white"
-                        : "border-line-strong bg-canvas text-ink-muted",
+                      "group relative flex cursor-pointer gap-3 rounded-xl border p-3.5 transition-[border-color,background-color,box-shadow] duration-400",
+                      !enabled && "cursor-not-allowed opacity-45",
+                      enabled && selected
+                        ? "border-ink/30 bg-paper shadow-lift"
+                        : "border-line bg-paper/50 hover:border-line-strong hover:bg-paper/80",
                     )}
                   >
-                    {ROLE_ICON[role]}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-ink-deep">
-                      {ROLE_LABELS[role]}
-                      {selected ? (
-                        <IconCheck className="h-3 w-3 text-brass" strokeWidth={2.4} />
-                      ) : null}
+                    <input
+                      type="radio"
+                      name="role"
+                      value={role}
+                      disabled={!enabled}
+                      checked={selected}
+                      onChange={() => patchAccount({ role })}
+                      className="sr-only"
+                    />
+                    <span
+                      className={cn(
+                        "mt-0.5 grid size-7 shrink-0 place-items-center rounded-full border transition-colors duration-400",
+                        selected
+                          ? "border-ink bg-ink text-white"
+                          : "border-line-strong bg-canvas text-ink-muted",
+                      )}
+                    >
+                      {ROLE_ICON[role]}
                     </span>
-                    <span className="mt-1 block text-[0.6875rem] leading-snug text-muted">
-                      {enabled
-                        ? ROLE_HINTS[role]
-                        : "Not available under your governance model."}
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-[0.8125rem] font-semibold text-ink-deep">
+                        {ROLE_LABELS[role]}
+                        {selected ? (
+                          <IconCheck className="h-3 w-3 text-brass" strokeWidth={2.4} />
+                        ) : null}
+                      </span>
+                      <span className="mt-1 block text-[0.6875rem] leading-snug text-muted">
+                        {enabled
+                          ? ROLE_HINTS[role]
+                          : "Not available under your governance model."}
+                      </span>
                     </span>
-                  </span>
-                </label>
-              );
-            })}
-          </div>
+                  </label>
+                );
+              })}
+            </div>
 
-          {showErrors && pick(errors, showErrors, "role") ? (
-            <p role="alert" className="mt-3 text-[0.75rem] font-medium text-[#a5442c]">
-              {pick(errors, showErrors, "role")}
+            {showErrors && pick(errors, showErrors, "role") ? (
+              <p role="alert" className="mt-3 text-[0.75rem] font-medium text-[#a5442c]">
+                {pick(errors, showErrors, "role")}
+              </p>
+            ) : null}
+          </fieldset>
+        ) : (
+          <div className="flex items-start gap-3 rounded-xl border border-line-strong/80 bg-canvas/60 px-4 py-3.5">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brass" />
+            <p className="text-[0.8125rem] leading-relaxed text-muted">
+              You are registering the University Student Government, so this
+              account is the USG officer. Local councils are created later by
+              inviting an officer into each campus.
             </p>
-          ) : null}
-        </fieldset>
+          </div>
+        )}
       </div>
     </StepShell>
   );

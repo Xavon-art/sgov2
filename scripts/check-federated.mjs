@@ -87,6 +87,7 @@ const institution = readFileSync(
   join(ROOT, "src/app/create/institution/page.tsx"),
   "utf8",
 );
+const account = readFileSync(join(ROOT, "src/app/create/account/page.tsx"), "utf8");
 const storeCode = withoutStrings(store);
 const institutionCode = withoutStrings(institution);
 
@@ -185,6 +186,28 @@ check(
   "setModel forces usg_officer when federated",
   /federated[\s\S]*usg_officer/.test(setModel),
   "setModel still only clears an invalid role",
+);
+
+// --- 8. The forced role is actually consumed, not merely exported ---
+// An exported helper nothing calls defends nothing. setModel already writes
+// "usg_officer" when the model is picked, but a hand-edited v2 draft skips
+// setModel entirely, so the role has to be re-derived at the point of use.
+check(
+  "validateStep reads the role through effectiveRole",
+  /effectiveRole\(/.test(validate),
+  "validation ignores the forced federated role",
+);
+check(
+  "submit.ts derives the account role through effectiveRole",
+  /officerRole:\s*effectiveRole\(/.test(submit),
+  "a forged v2 draft could still claim LSG Officer for a USG organization",
+);
+
+// --- 9. The account step does not ask a federated registrant to pick a role ---
+check(
+  "the account step gates the role picker on the governance model",
+  /\{!federated\s*\?/.test(account) && /<fieldset/.test(account),
+  "the role picker is not conditional, so a federated registrant can still pick LSG Officer",
 );
 
 console.log(

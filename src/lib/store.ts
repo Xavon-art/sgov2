@@ -190,7 +190,9 @@ export function validateStep(id: string, state: OrgDraft): string[] {
       errors.push("Password must be at least 8 characters.");
     if (account.password !== account.confirmPassword)
       errors.push("Passwords do not match.");
-    if (!account.role) errors.push("Select your role.");
+    // A federated registrant cannot choose: the USG account is the USG
+    // officer by definition, so asking would be asking for a false answer.
+    if (!effectiveRole(model, account.role)) errors.push("Select your role.");
   }
 
   if (id === "institution") {
