@@ -36,6 +36,16 @@ alter table smartgov.unit_memberships
 -- letting a raw 22P02 out. Named for the same reason as
 -- `org_positions_one_label_per_org` in 00600 -- "the same college name" is not
 -- enough to find the offending row in a list the client cannot see the index of.
+--
+-- New data is held to this, but old data is not: the legacy bulk writer
+-- `public.create_organization` (00700, long applied) groups unit names by
+-- `btrim(name)` alone, case-sensitively, so an organization created before this
+-- index can hold two units whose names differ only in case. Those rows are legal
+-- under the writer and illegal here, and `create unique index` -- unlike the
+-- `if not exists` -- aborts the whole migration on the first duplicate rather
+-- than skipping it. This is expected: the operator verifies the applied data is
+-- clean (or dedupes it) before applying this migration, and an aborted run here
+-- is the loud signal that they did not.
 create unique index if not exists governance_units_one_name_per_org
   on public.governance_units (organization_id, lower(btrim(name)));
 
@@ -317,11 +327,17 @@ begin
     -- reuses it instead of tripping `one_active_person_per_unit` (which would
     -- roll back the whole call and report a misleading `seat_occupied`). The
     -- new invite link is still minted above, which is what the owner wanted.
+    -- The match is on the seat as well, because a seat-less row is a different
+    -- thing from a seated one: matching either would let a seat-less membership
+    -- swallow a re-invite that carries a position, skipping the insert and
+    -- answering `ok` for a seat nothing ever fills. `is not distinct from`
+    -- rather than `=` so the seat-less path -- both sides null -- still matches.
     if not exists (
       select 1
       from smartgov.unit_memberships m
       where m.unit_id = p_unit_id
         and m.roster_id = v_roster_id
+        and m.position_id is not distinct from p_position_id
         and m.end_date is null
     ) then
       insert into smartgov.unit_memberships (roster_id, unit_id, position_id)
