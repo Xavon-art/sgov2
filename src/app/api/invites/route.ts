@@ -17,6 +17,10 @@ export const runtime = "nodejs";
 const IP_LIMIT = 30;
 const IP_WINDOW_MS = 10 * 60_000;
 
+/** `p_unit_id` is a uuid column, so a malformed id has to be caught here rather
+ * than surfacing as a 500 out of the PostgREST cast. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type InviteRow = {
   id: string;
   email: string;
@@ -58,6 +62,11 @@ export async function GET() {
 /**
  * Invites one person by email and campus.
  *
+ * Two shapes reach the same RPC: a unit-scoped, seat-less invite when `unitId`
+ * is present (the LSG officer flow, where the unit already exists), and the
+ * legacy org-wide invite when it is absent (the name in the body creates the
+ * unit). `p_position_id` is left at its default so a unit invite carries no seat.
+ *
  * The organization comes from the caller's own account inside the function, so
  * there is no way to invite into somebody else's workspace.
  *
@@ -71,10 +80,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
-  let body: { email?: string; campusName?: string; unitType?: string };
+  let body: { email?: string; campusName?: string; unitType?: string; unitId?: string };
   try {
-    body = (await req.json()) as { email?: string; campusName?: string; unitType?: string };
+    body = ((await req.json()) ?? {}) as {
+      email?: string;
+      campusName?: string;
+      unitType?: string;
+      unitId?: string;
+    };
   } catch {
+    return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  const unitId = typeof body.unitId === "string" ? body.unitId : "";
+
+  if (unitId !== "" && !UUID_RE.test(unitId)) {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
@@ -94,6 +114,7 @@ export async function POST(req: Request) {
       p_email: body.email?.trim() ?? "",
       p_campus_name: body.campusName?.trim() ?? "",
       p_unit_type: body.unitType ?? "lsg",
+      p_unit_id: unitId === "" ? null : unitId,
     });
 
     if (!res.ok) {
@@ -101,6 +122,10 @@ export async function POST(req: Request) {
     }
 
     const to = String(res.email);
+    // `create_invite` does not echo the campus back, so the letter is addressed
+    // from the name that was validated above -- the unit's name on the
+    // units-first flow, the free-text campus on the centralized one.
+    const campusName = body.campusName?.trim() ?? "";
 
     try {
       await sendBranded(
@@ -109,7 +134,7 @@ export async function POST(req: Request) {
           inviter: account?.displayName ?? "Your student government",
           organizationName: String(res.organizationName ?? ""),
           universityName: String(res.universityName ?? ""),
-          campusName: String(res.campusName ?? ""),
+          campusName,
           token: String(res.token),
         }),
       );

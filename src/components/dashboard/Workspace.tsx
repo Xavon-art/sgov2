@@ -6,7 +6,16 @@ import { TextField } from "@/components/ui/Field";
 import { IconCheck, IconClock } from "@/components/ui/Icons";
 import type { Account } from "@/lib/auth/session";
 import type { InviteRow } from "@/app/api/invites/route";
+import type { UnitOption } from "@/app/api/units/route";
 
+/** Types a campus, college, or department can be added as. */
+const UNIT_TYPE_OPTIONS = [
+  { value: "campus", label: "Campus" },
+  { value: "college", label: "College" },
+  { value: "department", label: "Department" },
+];
+
+/** Types the centralized office can record somebody against. */
 const UNIT_TYPES = [
   { value: "lsg", label: "Local Student Government" },
   { value: "college", label: "College" },
@@ -55,8 +64,9 @@ function formatDate(value: string | null): string {
  *
  * The framing differs by `variant` -- a decentralized USG sits above its
  * campuses, while the centralized office sits above the units directly and the
- * individual USGs are not in the chain -- but the invitation mechanics are the
- * same, so they live in one component.
+ * individual USGs are not in the chain. The centralized office's units are not
+ * a tree under a USG and `add_unit` refuses to extend one, so that variant keeps
+ * its free-text invite rather than the add-a-campus-then-invite flow.
  *
  * Only owners get the invitation form. An invited member sees their own scope
  * and nothing else.
@@ -69,6 +79,7 @@ export function Workspace({
   variant: "usg" | "central";
 }) {
   const isOwner = account.accountScope === "owner";
+  const isUsg = variant === "usg";
 
   const [invites, setInvites] = useState<InviteRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,6 +89,15 @@ export function Workspace({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+
+  const [units, setUnits] = useState<UnitOption[]>([]);
+  const [unitsLoading, setUnitsLoading] = useState(true);
+  const [unitName, setUnitName] = useState("");
+  const [newUnitType, setNewUnitType] = useState("campus");
+  const [adding, setAdding] = useState(false);
+  const [selectedUnitId, setSelectedUnitId] = useState("");
+  const [unitError, setUnitError] = useState<string | null>(null);
+  const [unitAdded, setUnitAdded] = useState<string | null>(null);
 
   const fetchInvites = useCallback(async (): Promise<InviteRow[]> => {
     try {
@@ -90,33 +110,99 @@ export function Workspace({
     return [];
   }, []);
 
+  /**
+   * Children only. The endpoint returns the root USG alongside the units, and
+   * the root is the caller's own organization rather than something an officer
+   * is invited into, so it never reaches the dropdown.
+   */
+  const fetchUnits = useCallback(async (): Promise<UnitOption[]> => {
+    try {
+      const res = await fetch("/api/units");
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        return (data.units ?? []).filter((u: UnitOption) => u.id !== data.root?.id);
+      }
+    } catch {
+      // Fall through to the empty list; the invite form shows its own empty state.
+    }
+    return [];
+  }, []);
+
   useEffect(() => {
     if (!isOwner) return;
 
     let cancelled = false;
     void (async () => {
-      const rows = await fetchInvites();
+      const [rows, list] = await Promise.all([
+        fetchInvites(),
+        isUsg ? fetchUnits() : Promise.resolve([]),
+      ]);
       if (cancelled) return;
       setInvites(rows);
+      setUnits(list);
       setLoading(false);
+      setUnitsLoading(false);
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [isOwner, fetchInvites]);
+  }, [isOwner, isUsg, fetchInvites, fetchUnits]);
+
+  async function onAddUnit(event: React.FormEvent) {
+    event.preventDefault();
+    setUnitError(null);
+    setUnitAdded(null);
+    setAdding(true);
+
+    try {
+      const res = await fetch("/api/units", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: unitName, unitType: newUnitType }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setUnitError(data.message ?? "We could not add that campus or department.");
+        return;
+      }
+      setUnitAdded(`Added ${data.name}. You can now invite someone into it.`);
+      setUnitName("");
+      setUnits(await fetchUnits());
+    } catch {
+      setUnitError("We could not reach the server. Check your connection and try again.");
+    } finally {
+      setAdding(false);
+    }
+  }
 
   async function onInvite(event: React.FormEvent) {
     event.preventDefault();
+
+    if (isUsg && !selectedUnitId) {
+      setError("Choose a campus or department first.");
+      return;
+    }
+
     setError(null);
     setSentTo(null);
     setSending(true);
+
+    const selected = units.find((u) => u.id === selectedUnitId);
+    const body = isUsg
+      ? {
+          email,
+          campusName: selected?.name ?? "",
+          unitType: selected?.unitType ?? "lsg",
+          unitId: selectedUnitId,
+        }
+      : { email, campusName, unitType };
 
     try {
       const res = await fetch("/api/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, campusName, unitType }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
 
@@ -127,8 +213,12 @@ export function Workspace({
 
       setSentTo(`Invitation sent to ${data.email}.`);
       setEmail("");
-      setCampusName("");
-      setUnitType("lsg");
+      if (isUsg) {
+        setSelectedUnitId("");
+      } else {
+        setCampusName("");
+        setUnitType("lsg");
+      }
       setInvites(await fetchInvites());
     } catch {
       setError("We could not reach the server. Check your connection and try again.");
@@ -139,6 +229,7 @@ export function Workspace({
 
   const pending = invites.filter((i) => i.status === "pending").length;
   const activated = invites.filter((i) => i.status === "activated").length;
+  const noUnits = units.length === 0 && !unitsLoading;
 
   return (
     <div className="flex flex-col gap-8">
@@ -163,82 +254,233 @@ export function Workspace({
       </div>
 
       {isOwner ? (
-        <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-          <p className="eyebrow">
-            {variant === "usg" ? "Invite a campus" : "Invite a unit"}
-          </p>
-          <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-            {variant === "usg"
-              ? "Enter someone's email and the campus they belong to. They will sit under your umbrella once they activate."
-              : "Enter someone's email and the unit they belong to. The central office records them directly."}
-          </p>
-
-          <form onSubmit={onInvite} noValidate className="mt-6 flex flex-col gap-5">
-            <TextField
-              id="invite-email"
-              label="Email"
-              type="email"
-              placeholder="officer@campus.edu"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-
-            <TextField
-              id="invite-campus"
-              label="Campus or unit"
-              placeholder="College of Engineering"
-              value={campusName}
-              onChange={(e) => setCampusName(e.target.value)}
-              optional
-              hint="Leave blank if this person represents the whole organization."
-            />
-
-            <div className="flex flex-col gap-2">
-              <label
-                htmlFor="invite-type"
-                className="text-[0.8125rem] font-medium text-ink"
-              >
-                Unit type
-              </label>
-              <select
-                id="invite-type"
-                value={unitType}
-                onChange={(e) => setUnitType(e.target.value)}
-                className={selectClass}
-              >
-                {UNIT_TYPES.map((u) => (
-                  <option key={u.value} value={u.value}>
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {error ? (
-              <p
-                role="alert"
-                className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
-              >
-                {error}
+        isUsg ? (
+          <>
+            <section
+              id="units"
+              className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7"
+            >
+              <p className="eyebrow">Add a campus or department</p>
+              <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+                Create the campus, college, or department first — then you can invite an LSG
+                officer into it.
               </p>
-            ) : null}
 
-            {sentTo ? (
-              <p
-                role="status"
-                className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
-              >
-                <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
-                {sentTo}
+              <form onSubmit={onAddUnit} noValidate className="mt-6 flex flex-col gap-5">
+                <TextField
+                  id="add-unit-name"
+                  label="Name"
+                  placeholder="College of Engineering"
+                  value={unitName}
+                  onChange={(e) => setUnitName(e.target.value)}
+                  required
+                />
+
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="add-unit-type"
+                    className="text-[0.8125rem] font-medium text-ink"
+                  >
+                    Type
+                  </label>
+                  <select
+                    id="add-unit-type"
+                    value={newUnitType}
+                    onChange={(e) => setNewUnitType(e.target.value)}
+                    className={selectClass}
+                  >
+                    {UNIT_TYPE_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {unitError ? (
+                  <p
+                    role="alert"
+                    className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                  >
+                    {unitError}
+                  </p>
+                ) : null}
+
+                {unitAdded ? (
+                  <p
+                    role="status"
+                    className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                  >
+                    <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                    {unitAdded}
+                  </p>
+                ) : null}
+
+                <Button
+                  type="submit"
+                  size="md"
+                  disabled={adding}
+                  className="w-full sm:w-auto"
+                >
+                  {adding ? "Adding…" : "Add campus"}
+                </Button>
+              </form>
+            </section>
+
+            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+              <p className="eyebrow">Invite a campus</p>
+              <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+                Enter someone&rsquo;s email and the campus they belong to. They will sit
+                under your umbrella once they activate.
               </p>
-            ) : null}
 
-            <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
-              {sending ? "Sending…" : "Send invitation"}
-            </Button>
-          </form>
-        </section>
+              <form onSubmit={onInvite} noValidate className="mt-6 flex flex-col gap-5">
+                <TextField
+                  id="invite-email"
+                  label="Email"
+                  type="email"
+                  placeholder="officer@campus.edu"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+
+                {noUnits ? (
+                  <p className="text-[0.875rem] leading-relaxed text-muted">
+                    Add a campus or department first — until then there is no unit to invite
+                    someone into.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <label
+                      htmlFor="invite-unit"
+                      className="text-[0.8125rem] font-medium text-ink"
+                    >
+                      Campus or unit
+                    </label>
+                    <select
+                      id="invite-unit"
+                      value={selectedUnitId}
+                      onChange={(e) => setSelectedUnitId(e.target.value)}
+                      className={selectClass}
+                    >
+                      <option value="">Choose a campus or department…</option>
+                      {units.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {error ? (
+                  <p
+                    role="alert"
+                    className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                  >
+                    {error}
+                  </p>
+                ) : null}
+
+                {sentTo ? (
+                  <p
+                    role="status"
+                    className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                  >
+                    <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                    {sentTo}
+                  </p>
+                ) : null}
+
+                {noUnits ? null : (
+                  <Button
+                    type="submit"
+                    size="md"
+                    disabled={sending || !selectedUnitId}
+                    className="w-full sm:w-auto"
+                  >
+                    {sending ? "Sending…" : "Send invitation"}
+                  </Button>
+                )}
+              </form>
+            </section>
+          </>
+        ) : (
+          <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <p className="eyebrow">Invite a unit</p>
+            <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+              Enter someone&rsquo;s email and the unit they belong to. The central office
+              records them directly.
+            </p>
+
+            <form onSubmit={onInvite} noValidate className="mt-6 flex flex-col gap-5">
+              <TextField
+                id="invite-email"
+                label="Email"
+                type="email"
+                placeholder="officer@campus.edu"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+
+              <TextField
+                id="invite-campus"
+                label="Campus or unit"
+                placeholder="College of Engineering"
+                value={campusName}
+                onChange={(e) => setCampusName(e.target.value)}
+                optional
+                hint="Leave blank if this person represents the whole organization."
+              />
+
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="invite-type"
+                  className="text-[0.8125rem] font-medium text-ink"
+                >
+                  Unit type
+                </label>
+                <select
+                  id="invite-type"
+                  value={unitType}
+                  onChange={(e) => setUnitType(e.target.value)}
+                  className={selectClass}
+                >
+                  {UNIT_TYPES.map((u) => (
+                    <option key={u.value} value={u.value}>
+                      {u.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {error ? (
+                <p
+                  role="alert"
+                  className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                >
+                  {error}
+                </p>
+              ) : null}
+
+              {sentTo ? (
+                <p
+                  role="status"
+                  className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                >
+                  <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                  {sentTo}
+                </p>
+              ) : null}
+
+              <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
+                {sending ? "Sending…" : "Send invitation"}
+              </Button>
+            </form>
+          </section>
+        )
       ) : (
         <section className="rounded-2xl border border-brass/40 bg-brass-soft/20 px-5 py-4">
           <p className="text-[0.8125rem] leading-relaxed text-ink">
