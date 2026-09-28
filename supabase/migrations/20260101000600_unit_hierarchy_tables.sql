@@ -23,12 +23,16 @@ create table if not exists smartgov.org_positions (
   organization_id uuid not null references public.organizations (id) on delete cascade,
   label           text not null check (length(btrim(label)) > 0),
   sort_order      smallint not null default 0,
-  created_at      timestamptz not null default now(),
-  -- Case-insensitive so "Auditor" and "auditor" cannot both be added by two
-  -- people in the same org chart; `add_position` turns the violation into
-  -- `duplicate_label` rather than letting it surface as a raw constraint error.
-  unique (organization_id, lower(label))
+  created_at      timestamptz not null default now()
 );
+
+-- Postgres will not take an expression in a table-level `unique` constraint,
+-- so the case-insensitive guarantee has to be a named index instead. Without
+-- it, "Auditor" and "auditor" could both be added to the same org chart; the
+-- index makes them a single label, and `add_position` turns the violation
+-- into `duplicate_label` rather than surfacing it raw.
+create unique index if not exists org_positions_one_label_per_org
+  on smartgov.org_positions (organization_id, lower(label));
 
 -- Which positions a given unit actually has. This is the seat. A unit with no
 -- Auditor simply has no row here, so no Auditor renders anywhere in that
@@ -54,9 +58,16 @@ create table if not exists smartgov.roster (
   full_name       text not null check (length(btrim(full_name)) > 0),
   email           text not null check (length(btrim(email)) > 0),
   account_id      uuid references smartgov.accounts (id) on delete set null,
-  created_at      timestamptz not null default now(),
-  unique (organization_id, lower(email))
+  created_at      timestamptz not null default now()
 );
+
+-- Case-insensitive email uniqueness has to be a named index for the same
+-- reason the position label does: a table-level `unique` constraint cannot
+-- take an expression. Without it, mixed-case variants of one address look
+-- like two different people and a second invite for the same person
+-- succeeds instead of being refused at the source.
+create unique index if not exists roster_one_row_per_email
+  on smartgov.roster (organization_id, lower(email));
 
 -- ---------------------------------------------------------------- membership
 
