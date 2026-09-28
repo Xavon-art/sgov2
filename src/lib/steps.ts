@@ -25,7 +25,10 @@ export const STEPS = [
     label: "Institution",
     title: "Tell us about your institution",
     path: "/create/institution",
-    short: "Campus",
+    // Was "Campus", which stopped being true once the campus and college
+    // fields were retired: a USG has no campus to name. The stepper is
+    // lg-only, where there is room for the full word.
+    short: "Institution",
   },
   {
     id: "organization",
