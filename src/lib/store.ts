@@ -86,6 +86,23 @@ export function rolesForModel(model: GovernanceModel | null): MemberRole[] {
   return [];
 }
 
+/**
+ * The role an account actually gets.
+ *
+ * Under federated only the USG can register, so the role is known rather than
+ * asked -- asking would offer a choice with exactly one correct answer. This
+ * resolves it from the model instead of reading it back from the draft, because
+ * `setModel` only runs on the model card's onChange and never on mount, so a
+ * resumed draft could otherwise carry a stale "LSG Officer" straight through.
+ */
+export function effectiveRole(
+  model: GovernanceModel | null,
+  role: MemberRole | "",
+): MemberRole | "" {
+  if (model === "federated") return "usg_officer";
+  return role;
+}
+
 export const ACCENTS = [
   { value: "#16324f", label: "Navy" },
   { value: "#1e4d6b", label: "Harbour" },
