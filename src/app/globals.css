@@ -184,33 +184,53 @@
 }
 
 @layer utilities {
+  /*
+   * Content must never depend on JavaScript to be readable. The server ships
+   * these elements fully visible; only the `has-js` class that layout.tsx adds
+   * inline, before first paint, may hide them. If the script never runs -- or
+   * hydration fails, or the bundle 404s -- the page is still complete. It is
+   * motionless, not blank.
+   *
+   * The hidden state used to be the bare `.reveal` rule, which meant every
+   * server component on `/` and `/dashboard` shipped 29 elements at
+   * opacity: 0 and waited on an IntersectionObserver callback to become
+   * legible. That read as the page loading in stages, not as motion.
+   */
   .reveal {
+    opacity: 1;
+    transform: none;
+    transition:
+      opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .has-js .reveal {
     opacity: 0;
     transform: translate3d(0, 18px, 0);
-    transition:
-      opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
     will-change: opacity, transform;
   }
 
-  .reveal[data-shown="true"] {
+  /* Demote the layer once the element has settled, so 29 promoted textures
+     are not held for the lifetime of the page. */
+  .has-js .reveal[data-shown="true"] {
     opacity: 1;
     transform: translate3d(0, 0, 0);
+    will-change: auto;
   }
 
-  .reveal-scale {
+  .has-js .reveal-scale {
     transform: translate3d(0, 22px, 0) scale(0.985);
   }
 
-  .reveal-scale[data-shown="true"] {
+  .has-js .reveal-scale[data-shown="true"] {
     transform: translate3d(0, 0, 0) scale(1);
   }
 
-  .reveal-left {
+  .has-js .reveal-left {
     transform: translate3d(-22px, 0, 0);
   }
 
-  .reveal-left[data-shown="true"] {
+  .has-js .reveal-left[data-shown="true"] {
     transform: translate3d(0, 0, 0);
   }
 }
@@ -331,10 +351,15 @@
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    /* Inline transitionDelay from Reveal would otherwise outlive the
+       0.001ms duration clamp, holding the stagger open. */
+    transition-delay: 0s !important;
   }
 
+  .has-js .reveal,
   .reveal {
     opacity: 1;
     transform: none;
+    will-change: auto;
   }
 }

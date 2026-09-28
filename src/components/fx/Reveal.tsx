@@ -13,6 +13,15 @@ type Props = {
   once?: boolean;
 };
 
+/**
+ * Stagger ceiling. Landing sections nest Reveal two deep -- a section wrapper
+ * around a list of cards -- and delays add up along the chain rather than
+ * replacing one another. Capping each hop keeps a nested pair inside a
+ * quarter second no matter what a call site asks for, so the page reads as one
+ * settle instead of a sequence of arrivals.
+ */
+const MAX_DELAY = 0.12;
+
 export function Reveal({
   children,
   className,
@@ -22,6 +31,7 @@ export function Reveal({
   once = true,
 }: Props) {
   const ref = useRef<HTMLElement>(null);
+  const stagger = Math.min(Math.max(delay, 0), MAX_DELAY);
 
   useEffect(() => {
     const el = ref.current;
@@ -52,7 +62,7 @@ export function Reveal({
     <Tag
       ref={ref}
       data-shown="false"
-      style={{ transitionDelay: `${delay}s` }}
+      style={{ transitionDelay: `${stagger}s` }}
       className={cn(
         "reveal",
         variant === "scale" && "reveal-scale",

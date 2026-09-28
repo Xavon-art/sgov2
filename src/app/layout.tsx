@@ -66,7 +66,21 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${fraunces.variable} ${inter.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        {/*
+          Inline and blocking on purpose: this has to land before first paint,
+          because globals.css uses `.has-js` to decide whether the scroll
+          reveal starts hidden. If the class is missing the content is simply
+          visible, which is the safe direction to fail in.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.documentElement.classList.add("has-js")`,
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
