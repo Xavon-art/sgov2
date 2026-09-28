@@ -24,6 +24,9 @@ const RPC_MESSAGES: Record<string, string> = {
   too_many_attempts: "Too many wrong attempts. Ask your officer for a new invitation.",
   verify_failed: "We could not verify that code. Please try again.",
   invalid_organization: "That organization could not be found.",
+  not_organization_founder:
+    "This sign-in email is not the officer who created the organization. Use the address you set up the organization with.",
+  rate_limited: "Too many attempts. Please wait a few minutes and try again.",
   invalid_request: "Something went wrong. Please try again.",
   database_unavailable: "The database is not configured, so this cannot run yet.",
 };
