@@ -21,8 +21,6 @@ export type AccountDraft = {
 
 export type InstitutionDraft = {
   universityName: string;
-  campusName: string;
-  college: string;
   sealName: string;
 };
 
@@ -51,8 +49,6 @@ export const EMPTY_DRAFT: OrgDraft = {
   },
   institution: {
     universityName: "",
-    campusName: "",
-    college: "",
     sealName: "",
   },
   organization: {
@@ -136,11 +132,17 @@ export const useOrgDraft = create<Store>()(
       setModel: (model) =>
         set((state) => ({
           model,
+          // Federated is USG-only, so the role is settled here rather than
+          // asked. Unitary keeps the picker, so a role that is no longer
+          // available under the new model is cleared.
           account: {
             ...state.account,
-            role: rolesForModel(model).includes(state.account.role as MemberRole)
-              ? state.account.role
-              : "",
+            role:
+              model === "federated"
+                ? "usg_officer"
+                : rolesForModel(model).includes(state.account.role as MemberRole)
+                  ? state.account.role
+                  : "",
           },
         })),
       patchAccount: (patch) =>
@@ -159,7 +161,11 @@ export const useOrgDraft = create<Store>()(
       reset: () => set({ ...EMPTY_DRAFT, charter: null, organizationId: null, submittedAt: null }),
     }),
     {
-      name: "smartgov.draft.v1",
+      // Bumped from v1: those drafts carry campusName, college, and possibly an
+      // "LSG Officer" role, none of which can survive this change. Discarding
+      // them is the only way to be sure no stale federated draft reaches the
+      // charter step.
+      name: "smartgov.draft.v2",
       storage: createJSONStorage(() => sessionStorage),
     },
   ),
@@ -190,10 +196,6 @@ export function validateStep(id: string, state: OrgDraft): string[] {
   if (id === "institution") {
     if (institution.universityName.trim().length < 2)
       errors.push("Enter your university's name.");
-    if (model === "federated" && institution.campusName.trim().length < 2)
-      errors.push("Federated systems require a campus or branch name.");
-    if (model === "federated" && institution.college.trim().length < 2)
-      errors.push("Federated systems require a college or department.");
   }
 
   if (id === "organization") {

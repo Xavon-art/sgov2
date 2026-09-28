@@ -61,8 +61,10 @@ export async function submitOrganization(
         academicYear: draft.organization.academicYear.trim(),
         accent: draft.organization.accent,
         universityName: draft.institution.universityName.trim(),
-        campusName: federated ? draft.institution.campusName.trim() : "",
-        college: federated ? draft.institution.college.trim() : "",
+        // A USG has no single campus, and the columns are still needed for
+        // invited local councils. The API coerces an absent value to "".
+        campusName: "",
+        college: "",
         sealName: draft.institution.sealName ?? "",
         charterNumber: charter,
         officerName: draft.account.fullName.trim(),
@@ -133,7 +135,7 @@ export async function registerAccount(
       accountKind: draft.model === "unitary" ? "central" : "usg",
       organizationId,
       universityName: draft.institution.universityName.trim(),
-      campusName: draft.institution.campusName.trim(),
+      campusName: "",
     }),
   });
 

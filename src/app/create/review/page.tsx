@@ -93,7 +93,6 @@ export default function ReviewPage() {
             </h2>
             <p className="mt-2 text-[0.8125rem] text-muted">
               {inst.universityName}
-              {federated && inst.campusName ? ` · ${inst.campusName}` : ""}
             </p>
             <p className="mt-3 font-mono text-[0.75rem] tracking-[0.12em] text-brass-deep">
               {charter ?? "SGV-———————"}
@@ -162,20 +161,7 @@ export default function ReviewPage() {
                   value={inst.universityName}
                   editHref={STEPS[3].path}
                 />
-                {federated ? (
-                  <>
-                    <Row
-                      label="Campus or branch"
-                      value={inst.campusName}
-                      editHref={STEPS[3].path}
-                    />
-                    <Row
-                      label="College or department"
-                      value={inst.college}
-                      editHref={STEPS[3].path}
-                    />
-                  </>
-                ) : (
+                {!federated && (
                   <Row label="Local units" value="None — unitary structure" />
                 )}
                 <Row label="Seal" value={inst.sealName || "Not provided"} />

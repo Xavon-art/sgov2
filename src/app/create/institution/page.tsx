@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { StepShell } from "@/components/create/StepShell";
 import { TextField } from "@/components/ui/Field";
-import { IconBuilding, IconLayers, IconUpload } from "@/components/ui/Icons";
+import { IconBuilding, IconUpload } from "@/components/ui/Icons";
 import { useOrgDraft } from "@/lib/store";
 import { pick, useStepForm } from "@/lib/useStepForm";
 import { useStepGuard } from "@/lib/useStepGuard";
@@ -26,7 +26,7 @@ export default function InstitutionPage() {
       title="Tell us about your institution"
       lede={
         federated
-          ? "Your university sits at the top of the federated structure, with a local council under each campus and college."
+          ? "Your university sits at the top of the federated structure. You are registering as the USG, which sits above every local council."
           : "Your institution is served by a single student council, so campus and college fields are not needed."
       }
       errors={showErrors ? errors : []}
@@ -45,34 +45,14 @@ export default function InstitutionPage() {
         />
 
         {federated ? (
-          <div
-            className="animate-float-in flex flex-col gap-6 rounded-xl border border-ink/12 bg-ink/[0.025] p-5"
-            data-invalid={showErrors && pick(errors, showErrors, "campus or branch") ? "true" : undefined}
-          >
-            <p className="flex items-center gap-2 text-[0.6875rem] font-semibold tracking-[0.16em] text-ink-soft uppercase">
-              <IconLayers className="h-3.5 w-3.5 text-brass" />
-              Federated details
+          <div className="flex items-start gap-3 rounded-xl border border-line-strong/80 bg-canvas/60 px-4 py-3.5">
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brass" />
+            <p className="text-[0.8125rem] leading-relaxed text-muted">
+              You are registering as the University Student Government, so there
+              is no campus to choose here — the USG sits above all of them. Once
+              setup is done you can add your colleges and campuses, then invite
+              a local council into each one.
             </p>
-
-            <TextField
-              id="campusName"
-              label="Campus or branch name"
-              placeholder="Main Campus"
-              hint="The campus or branch this local government belongs to."
-              value={inst.campusName}
-              onChange={(e) => patchInstitution({ campusName: e.target.value })}
-              error={pick(errors, showErrors, "campus or branch")}
-            />
-
-            <TextField
-              id="college"
-              label="College or department"
-              placeholder="College of Engineering"
-              hint="Shown on your LSG tier in the org chart."
-              value={inst.college}
-              onChange={(e) => patchInstitution({ college: e.target.value })}
-              error={pick(errors, showErrors, "college or department")}
-            />
           </div>
         ) : (
           <div className="flex items-start gap-3 rounded-xl border border-line-strong/80 bg-canvas/60 px-4 py-3.5">
