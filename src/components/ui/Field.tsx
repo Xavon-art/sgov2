@@ -3,7 +3,7 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-const control =
+export const control =
   "peer w-full rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none transition-[border-color,box-shadow,background-color] duration-300 placeholder:text-faint focus:border-ink/25 focus:bg-paper hover:border-line-strong";
 
 const underline =

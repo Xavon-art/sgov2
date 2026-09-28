@@ -73,13 +73,13 @@ export async function submitOrganization(
         // persisted draft is user-writable and setModel never runs for one
         // that was hand-edited.
         officerRole: effectiveRole(draft.model, draft.account.role),
+        // The USG root row is derived from the organization name inside the
+        // function, so this sends the declared children and nothing else.
         units: federated
-          ? [
-              {
-                name: `${draft.institution.universityName.trim()} — University Student Government`,
-                unitType: "usg",
-              },
-            ]
+          ? draft.units.map((unit) => ({
+              name: unit.name.trim(),
+              type: unit.type,
+            }))
           : [{ name: draft.organization.name.trim(), unitType: "council" }],
       }),
     });

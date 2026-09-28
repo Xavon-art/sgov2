@@ -4,6 +4,13 @@ export type DraftUnit = { name: string; type: UnitType };
 
 const UNIT_TYPES: UnitType[] = ["college", "campus", "department"];
 
+/** How a unit's type is written for a person, since the draft stores it lowercase. */
+export const UNIT_TYPE_LABELS: Record<UnitType, string> = {
+  college: "College",
+  campus: "Campus",
+  department: "Department",
+};
+
 function asUnitType(value: string): UnitType | null {
   const normalized = value.trim().toLowerCase();
   return UNIT_TYPES.find((type) => type === normalized) ?? null;

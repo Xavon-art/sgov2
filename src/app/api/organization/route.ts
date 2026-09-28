@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 const IP_LIMIT = 12;
 const IP_WINDOW_MS = 10 * 60_000;
 
-type Unit = { name?: string; unitType?: string };
+type Unit = { name?: string; type?: string; unitType?: string };
 
 type CreateBody = {
   slug?: string;
@@ -44,7 +44,7 @@ type RpcResponse = {
 
 const GOVERNANCE_MODELS = ["federated", "unitary"];
 const MEMBER_ROLES = ["usg_officer", "lsg_officer", "council_officer", "advisor"];
-const UNIT_TYPES = ["usg", "lsg", "college", "campus", "council"];
+const UNIT_TYPES = ["usg", "lsg", "college", "campus", "department", "council"];
 
 /**
  * Creates the organization, its founding officer, and its governance units.
@@ -112,11 +112,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Select your role." }, { status: 400 });
   }
 
+  // `type` is the contract the wizard now sends; `unitType` is still read
+  // because the client and the database are not deployed in one step, and the
+  // function accepts both keys for that window. Normalising to `type` here is
+  // what the function reads first, so both shapes arrive as the same payload.
   const units = (Array.isArray(body.units) ? body.units : [])
-    .map((unit) => ({ name: text(unit?.name), unitType: text(unit?.unitType) }))
+    .map((unit) => ({
+      name: text(unit?.name),
+      type: text(unit?.type ?? unit?.unitType),
+    }))
     .filter((unit) => unit.name !== "");
 
-  if (!units.length || units.some((unit) => !UNIT_TYPES.includes(unit.unitType))) {
+  if (!units.length || units.some((unit) => !UNIT_TYPES.includes(unit.type))) {
     return NextResponse.json(
       { ok: false, message: "Your organization needs at least one named governance unit." },
       { status: 400 },

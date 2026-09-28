@@ -4,7 +4,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { IconArrowLeft, IconArrowRight } from "@/components/ui/Icons";
-import { STEPS, stepIndex, type StepId } from "@/lib/steps";
+import { useOrgDraft } from "@/lib/store";
+import { STEPS, previousStep, stepIndex, type StepId } from "@/lib/steps";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -34,9 +35,10 @@ export function StepShell({
   tone = "card",
   footer,
 }: Props) {
+  const model = useOrgDraft((state) => state.model);
   const index = stepIndex(step);
   const meta = STEPS[index];
-  const previous = index > 0 ? STEPS[index - 1] : null;
+  const previous = previousStep(step, model);
 
   return (
     <div className="mx-auto max-w-[44rem] px-5 pt-12 pb-24 sm:px-8 sm:pt-16">

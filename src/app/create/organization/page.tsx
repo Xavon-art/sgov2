@@ -26,7 +26,8 @@ export default function OrganizationPage() {
   const { patchOrganization } = draft;
   const { errors, showErrors, continueStep } = useStepForm(
     "organization",
-    "/create/review",
+    // Only federated has a local tier to declare on the way to review.
+    draft.model === "federated" ? "/create/units" : "/create/review",
   );
   const org = draft.organization;
 

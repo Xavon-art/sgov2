@@ -6,7 +6,9 @@ import ShaderField from "@/components/fx/ShaderField";
 import { FloatingField, type FloatingChip } from "@/components/fx/FloatingField";
 import { Wordmark } from "@/components/ui/Seal";
 import { IconClose, IconPyramid } from "@/components/ui/Icons";
-import { STEPS, stepIndex } from "@/lib/steps";
+import { useOrgDraft } from "@/lib/store";
+import { STEPS, visibleSteps } from "@/lib/steps";
+import { useDraftHydrated } from "@/lib/useDraftHydrated";
 import { cn } from "@/lib/utils";
 
 const AMBIENT_CHIPS: FloatingChip[] = [
@@ -53,9 +55,15 @@ const AMBIENT_CHIPS: FloatingChip[] = [
 
 export function FlowShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const active = STEPS.find((s) => s.path === pathname) ?? STEPS[0];
-  const index = stepIndex(active.id);
-  const progress = ((index + 1) / STEPS.length) * 100;
+  // The header renders before the draft is back, and a model-scoped step only
+  // counts once it is known: reading the model during the first client render
+  // would give the stepper a different length than the server sent.
+  const hydrated = useDraftHydrated();
+  const model = useOrgDraft((state) => state.model);
+  const steps = hydrated ? visibleSteps(model) : STEPS;
+  const active = steps.find((s) => s.path === pathname) ?? steps[0];
+  const index = steps.findIndex((s) => s.id === active.id);
+  const progress = ((index + 1) / steps.length) * 100;
 
   return (
     <div className="relative isolate flex min-h-dvh flex-col">
@@ -91,7 +99,7 @@ export function FlowShell({ children }: { children: React.ReactNode }) {
             <p className="text-[0.75rem] tabular-nums text-muted">
               Step{" "}
               <span className="font-semibold text-ink">{index + 1}</span> of{" "}
-              {STEPS.length}
+              {steps.length}
               <span className="hidden sm:inline"> · {active.label}</span>
             </p>
             <Link
@@ -112,7 +120,7 @@ export function FlowShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <ol className="mx-auto hidden max-w-[76rem] items-center gap-1.5 px-8 py-2.5 lg:flex">
-          {STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const done = i < index;
             const current = i === index;
             return (
