@@ -264,8 +264,16 @@ function Unitary({
         strokeDasharray="4 3"
       />
 
+      {/*
+        Each seat box is already as wide as the council boundary allows, so the
+        fix for REPRESENTATIVE not fitting is scale, not space: at 6.4 with
+        0.6 tracking the word measured about 53 units against a 60-unit box and
+        touched both edges. The seats are also re-spaced to 24/90/156, which
+        gives an even 8-unit margin inside the container on each side -- the
+        previous 26/92/158 left 10 on the left and 6 on the right.
+      */}
       {reps.map((r, i) => {
-        const x = 26 + i * 66;
+        const x = 24 + i * 66;
         return (
           <g key={r}>
             <path
@@ -289,13 +297,13 @@ function Unitary({
             />
             <text
               x={x + 30}
-              y="66.5"
+              y="66"
               textAnchor="middle"
-              fontSize="6.4"
+              fontSize="5.2"
               fill="var(--color-faint)"
               fontFamily="var(--font-sans)"
               fontWeight="600"
-              letterSpacing="0.6"
+              letterSpacing="0.3"
             >
               REPRESENTATIVE
             </text>
@@ -303,7 +311,7 @@ function Unitary({
               x={x + 30}
               y="76.5"
               textAnchor="middle"
-              fontSize="7.4"
+              fontSize="7.2"
               fontWeight="600"
               fill="var(--color-ink)"
               fontFamily="var(--font-sans)"
