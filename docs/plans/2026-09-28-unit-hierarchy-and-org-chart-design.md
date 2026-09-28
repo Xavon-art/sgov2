@@ -47,7 +47,7 @@ at all — nothing carries a unit reference.
 | Officer assignment | Org chart page after the wizard, not a wizard step | 24 units × 2–3 officers is 24–72 invites. One bad address mid-flow must not block the rest, and the chart is resumable and incremental as officers are actually recruited. |
 | Positions | Organization template, enabled per unit | Schools differ; a college may have no Auditor while a campus does. Per-unit templates would mean ~192 rows across 24 units. |
 | Person vs account | Separate `roster` | A seat must be fillable by someone who has not registered. Requiring 70 accounts up front is not achievable. |
-| Nesting | Depth 1: USG → unit | Not a preference. Microsoft Entra administrative units cannot nest at all, and deep nesting is what breaks a permission model. `parent_id` stays for the future. |
+| Nesting | Depth 1: USG → unit, enforced in the database | Not a preference, and not a new capability. 00400 could already write an arbitrary tree from `parentIndex`; this narrows that to one level on purpose. Microsoft Entra administrative units cannot nest at all, and deep nesting is what breaks a permission model. `parent_id` stays in the schema for a future that needs more, so widening it back is a migration rather than a redesign. |
 | Unit is the LSG | One row per college/campus/department | A "College of Engineering" is a single row that both *is* the LSG and describes what kind of thing it is. Two layers would be redundant. |
 | LSG view | Yes, a small scoped view | Otherwise scoping is written but never exercised, and the failure would only surface when the monitoring features land. |
 
@@ -80,9 +80,14 @@ create table smartgov.roster (
   full_name       text not null,
   email           text not null,
   account_id      uuid references smartgov.accounts (id) on delete set null,
-  created_at      timestamptz not null default now(),
-  unique (organization_id, lower(email))
+  created_at      timestamptz not null default now()
 );
+
+-- Case-insensitive on purpose, and an INDEX rather than a table constraint:
+-- Postgres rejects an expression inside `unique (...)` with a syntax error at
+-- CREATE TABLE.
+create unique index roster_org_email_uniq
+  on smartgov.roster (organization_id, lower(email));
 
 -- Who holds which seat, and when.
 create table smartgov.unit_memberships (
@@ -119,14 +124,19 @@ is not constrained, and is intended.
 
 `department` is missing from `public.unit_type` (today: `usg, lsg, college,
 campus, council`). Adding it needs its own migration, because Postgres cannot use
-a newly added enum value in the same transaction that creates it.
+a newly added enum value in the same transaction that creates it. This is the
+only vocabulary this slice adds: the unit tree, `parent_id`, `college` and
+`campus` all already exist.
 
 ### Unit tree
 
-`public.governance_units` already has `parent_id`, and its column comment already
-describes this shape. A federated organization creates one `usg` row with
-`parent_id = null`, then one child per declared unit with `parent_id` set to the
-USG row. Unitary creates a single `council` row as it does today and is
+Neither the tree nor `parent_id` is new. `public.governance_units` already has
+`parent_id`, its column comment already describes this shape, and
+`create_organization` already wrote N rows from `parentIndex`. What is new is
+that the shape is *derived* rather than described: a federated organization
+creates one `usg` row with `parent_id = null`, then one child per declared unit
+with `parent_id` set to the USG row, and nothing can put a second level under
+either. Unitary creates a single `council` row as it does today and is
 unaffected.
 
 ## Security posture
@@ -178,10 +188,30 @@ The review step lists the declared units before anything is written.
 
 ### RPC change
 
-`public.create_organization(p_payload jsonb)` currently creates one `usg` unit
-for federated. It must instead create the USG unit and then its children with
-`parent_id` pointing at it, all inside the transaction it already has, so a
-failure part-way leaves nothing behind.
+`public.create_organization(p_payload jsonb)` already writes a tree. Migration
+00400 loops `v_units` and inserts one row per element, with a zero-based
+`parentIndex` naming an earlier element as that row's parent, so the existing
+function expresses arbitrary nesting and has always done so. What it could not
+do was *constrain* the result: the shape of the organization was whatever the
+browser payload described, and the database had no way to know that a federated
+USG is supposed to be two levels.
+
+This migration therefore **replaces that capability with an enforced depth-1
+shape**. It is a deliberate narrowing, not the addition of something missing,
+and the tradeoff is worth stating plainly: after this change a USG cannot
+express a faculty, a year level, or a college-to-department second tier, and a
+client cannot smuggle one in. What is bought with that is a permission model
+that is provably two levels — "my unit" and "my unit's parent" is a complete
+statement about what an LSG officer can see, which is what makes the scoping in
+the security section below checkable rather than aspirational. A deeper tree
+would make every later access check a question about how far up somebody is
+allowed to look, and Entra administrative units, which is the closest
+comparable system, cannot nest at all.
+
+The USG row is derived from the organization name rather than declared, so a
+client cannot omit it, and it is written first so the children have a
+`parent_id` to point at. All of it happens inside the transaction the function
+already has, so a failure part-way leaves nothing behind.
 
 ### Org chart
 
@@ -210,9 +240,16 @@ holds.
 1. Add `department` to `public.unit_type` (own transaction).
 2. Create the four tables, both partial unique indexes, and enable RLS with no
    policies; revoke all from `anon` and `authenticated`.
-3. Replace `create_organization` to write the unit tree.
+3. Replace `create_organization` so the tree it writes is derived and
+   constrained to depth 1, rather than whatever `parentIndex` describes. It
+   must accept the payload the deployed client sends today as well as the one
+   the wizard will send, because these two steps can be applied in either
+   order.
 4. Add the org-position, seat, roster, and membership functions — all
-   `security definer`, execute revoked from `public`.
+   `security definer`, execute revoked from `public` — and publish each one
+   through a one-line `public` wrapper with an explicit grant. A function with
+   no wrapper is unreachable from the browser, because 00300 revoked the blanket
+   schema grant and replaced it with an explicit allowlist.
 5. Add the invitation path so a roster member can accept into an existing seat.
 
 Each step is independently deployable; the UI lands after step 4.

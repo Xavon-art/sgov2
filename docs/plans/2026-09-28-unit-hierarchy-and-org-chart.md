@@ -30,7 +30,19 @@ Do not add Jest, Vitest, or Playwright. That is out of scope and YAGNI.
 - All tables: RLS enabled, **zero policies**, `revoke all ... from anon, authenticated`.
 - All access: `security definer` functions, `set search_path = public, smartgov, pg_temp`, `revoke all on function ... from public`.
 - The client calls functions with the publishable key. **Authentication lives inside the function** via `smartgov.authenticate(p_session_token)`, not in a Supabase JWT. Do not introduce Supabase Auth.
-- `public` wrappers in `00300` exist for convenience; the `smartgov` originals are canonical.
+- Every `smartgov` function needs a one-line `public` wrapper **and an explicit
+  `grant execute ... to anon, authenticated`**, or it is unreachable from the
+  browser. This is not a convenience. `00200` had
+  `grant execute on all functions in schema smartgov to anon, authenticated;`
+  and **`00300` revoked it** — `revoke execute on all functions in schema
+  smartgov from public, anon, authenticated` — then replaced it with thirteen
+  named `public` wrappers, thirteen explicit grants, and
+  `revoke all on schema smartgov from anon, authenticated`. PostgREST only
+  exposes `public`, so a function in `smartgov` with no wrapper fails with
+  PGRST202 and the route handler 500s. A function that is correct, tested, and
+  unreachable has not shipped.
+- A new table has the same rule at the table level: RLS on, zero policies,
+  `revoke all on table ... from anon, authenticated`.
 - The federated USG-only invariant must stay green: `npm run check:federated` is 19/19 today.
 
 ---
@@ -138,9 +150,15 @@ create table if not exists smartgov.org_positions (
   organization_id uuid not null references public.organizations (id) on delete cascade,
   label           text not null check (length(btrim(label)) > 0),
   sort_order      smallint not null default 0,
-  created_at      timestamptz not null default now(),
-  unique (organization_id, lower(label))
+  created_at      timestamptz not null default now()
 );
+
+-- Case-insensitive, so "Auditor" and "auditor" cannot both be added by two
+-- people in the same org chart. It has to be an INDEX, not a table constraint:
+-- Postgres rejects an expression inside `unique (...)` with a syntax error at
+-- CREATE TABLE, which takes the whole migration down and everything after it.
+create unique index if not exists org_positions_org_label_uniq
+  on smartgov.org_positions (organization_id, lower(label));
 
 -- Which positions a given unit actually has. This is the seat: a unit that
 -- has no Auditor simply has no row here, and no Auditor renders anywhere.
@@ -162,9 +180,12 @@ create table if not exists smartgov.roster (
   full_name       text not null check (length(btrim(full_name)) > 0),
   email           text not null check (length(btrim(email)) > 0),
   account_id      uuid references smartgov.accounts (id) on delete set null,
-  created_at      timestamptz not null default now(),
-  unique (organization_id, lower(email))
+  created_at      timestamptz not null default now()
 );
+
+-- Same expression-unique problem as above, and the same fix.
+create unique index if not exists roster_org_email_uniq
+  on smartgov.roster (organization_id, lower(email));
 
 -- ---------------------------------------------------------------- Membership
 
@@ -249,20 +270,60 @@ stay reachable only through the SECURITY DEFINER functions.
 
 **Step 1: Read the current function**
 
-Open `00400` and find the `governance_units` insert. It creates exactly one row:
-`usg` for federated, `council` for unitary. That single row is what you are
-replacing.
+Open `00400` and find the `governance_units` insert. It is already a loop, not a
+single row: it walks `v_units`, honours a zero-based `parentIndex` per element
+by resolving it against the ids it has already inserted, and writes an N-row
+tree of arbitrary depth. The bug is not that it writes one row — it is that it
+writes whatever the browser described, so the depth, the shape, and the whole
+structure of a university are decided by a payload the database cannot check.
+
+Your job is to replace that generality with an enforced depth-1 shape, which is
+a deliberate **narrowing**: a federated USG loses the ability to declare a
+second level. Say so in the file header, because a later reader who finds
+`parentIndex` gone will otherwise assume a regression.
+
+**Step 1b: Read the live payload, and do not break it**
+
+`src/lib/submit.ts` and `src/app/api/organization/route.ts` are the deployed
+client and neither has been changed. They send `units: [{ name, unitType }]`,
+and for federated that is a single element with `unitType: "usg"`. The key is
+`unitType`, not `type`, and a client that only ever sends `type` is a *later*
+task (Task 9).
+
+So this migration must be safe to apply on either side of that change, in
+either order, with no window where federated signup is broken. If it reads
+`type` alone, every federated signup raises 22023 and the whole creation
+transaction rolls back. Resolve the per-element type as
+`coalesce(v_unit ->> 'type', v_unit ->> 'unitType')`, and treat a federated
+payload containing no `college|campus|department` element as the legacy shape:
+write only the `usg` root row and do not raise. Once any element does declare a
+child tier, validate every element against the allowlist.
+
+That legacy branch is a rollout affordance, not a second permanent contract.
+Say exactly that in a comment at the top of the function, and say it should be
+deleted once the client only ever sends `type`, or it will be read as a
+supported input shape forever.
+
+Leave unitary alone. Its live payload is `unitType: "council"`, which is not in
+the `college|campus|department` allowlist, so a unitary call must not be
+validated against that set — it is derived from the organization name and the
+array is never read.
 
 **Step 2: Write the replacement**
 
-The new version loops over `v_units` from the payload, inserting the USG root
-first so children have a `parent_id` to point at. `v_units` is already declared
-in the function. Each unit is `college`, `campus`, or `department` — a
-unitary call sends an empty array and keeps its single `council` row.
+The new version inserts the USG root first so children have a `parent_id` to
+point at, then writes one child per declared element, and only when the payload
+declares a child tier. `v_units` is already declared in the function; add
+`v_root_id uuid`, `v_unit jsonb`, and a boolean recording whether any element
+declared a child tier. Unit types are cast through the enum rather than
+interpolated, so a value the enum does not contain fails the whole transaction
+instead of inserting a row nobody can query, and the validation error should
+name the offending array index.
 
 ```sql
   -- Federated: the USG row is the root, and every declared college, campus,
   -- or department hangs off it as its LSG. Unit types come from the payload
+  -- -- under `type` from the wizard, or `unitType` from the deployed client --
   -- and are cast through the enum rather than interpolated, so a value the
   -- enum does not contain fails the whole transaction instead of inserting
   -- a row nobody can query.
@@ -272,24 +333,29 @@ unitary call sends an empty array and keeps its single `council` row.
     insert into public.governance_units (organization_id, name, unit_type, parent_id)
     values (v_org_id, v_name, 'usg', null)
     returning id into v_root_id;
-  end if;
 
-  for v_unit in
-    select jsonb_array_elements(coalesce(v_units, '[]'::jsonb))
-  loop
-    if v_model = 'federated' then
-      insert into public.governance_units (organization_id, name, unit_type, parent_id)
-      values (
-        v_org_id,
-        btrim(v_unit ->> 'name'),
-        (v_unit ->> 'type')::public.unit_type,
-        v_root_id
-      );
+    -- No child tier declared means the legacy payload: the root alone, no
+    -- children, no error. See Step 1b -- this branch is temporary.
+    if v_children then
+      for v_unit in
+        select jsonb_array_elements(coalesce(v_units, '[]'::jsonb))
+      loop
+        insert into public.governance_units (organization_id, name, unit_type, parent_id)
+        values (
+          v_org_id,
+          btrim(v_unit ->> 'name'),
+          coalesce(v_unit ->> 'type', v_unit ->> 'unitType')::public.unit_type,
+          v_root_id
+        );
+      end loop;
     end if;
-  end loop;
+  end if;
 ```
 
-Declare `v_root_id uuid;` and `v_unit jsonb;` in the declare block.
+Declare `v_root_id uuid;`, `v_unit jsonb;` and `v_children boolean := false;` in
+the declare block, and set `v_children` in the validation block above the write
+— not here, so that the type validation and the write cannot disagree about
+which shape the payload was.
 
 Keep the `if v_model = 'unitary'` branch that inserts the single `council` row
 exactly as it is today, and keep the unit-name duplicate check — it should now
@@ -380,16 +446,39 @@ begin
     where organization_id = v_account.organization_id;
   else
     -- An LSG officer sees their own units plus the USG root above them.
-    -- Nothing else is selected, so nothing else exists in the payload.
-    select coalesce(array_agg(distinct gu.id), '{}') into v_unit_ids
-    from smartgov.unit_memberships m
-    join public.governance_units gu on gu.id = m.unit_id
-    where m.roster_id in (
-      select r.id from smartgov.roster r
+    -- Nothing else is selected, so nothing else exists in the payload. The
+    -- parent is in the array, not resolved later from outside it: the `root`
+    -- lookup filters on `any(v_unit_ids)`, so a row the filter did not admit
+    -- must not be reachable by another route either.
+    --
+    -- The parent is included ON PURPOSE. It is not a leak -- it is the
+    -- officer's own parent org, reached by following `parent_id` from a unit
+    -- they already hold a seat in. A sibling shares that parent and is still
+    -- not nameable: sibling ids are never in `seated`, and the parent branch
+    -- projects one `p.id`, not the parent's subtree. Do not "tighten" this by
+    -- dropping the parent; the LSG view is specified to render it.
+    --
+    -- The `p.organization_id` predicate is load-bearing, not decorative:
+    -- `governance_units.parent_id` is a self-reference carrying no
+    -- organization, so nothing stops it pointing into another organization.
+    with seated as (
+      select gu.id, gu.parent_id
+      from smartgov.unit_memberships m
+      join public.governance_units gu on gu.id = m.unit_id
+      join smartgov.roster r on r.id = m.roster_id
       where r.organization_id = v_account.organization_id
         and r.account_id = v_account.id
+        and gu.organization_id = v_account.organization_id
+        and m.end_date is null
     )
-      and m.end_date is null;
+    select coalesce(array_agg(distinct visible.id), '{}') into v_unit_ids
+    from (
+      select s.id from seated s
+      union
+      select p.id from seated s
+      join public.governance_units p on p.id = s.parent_id
+      where p.organization_id = v_account.organization_id
+    ) visible;
   end if;
 
   if not v_is_owner and v_unit_ids = '{}' then
@@ -467,19 +556,64 @@ Three more, same shape. Keep each one owner-only — an LSG officer has a read-o
 - `smartgov.assign_officer(p_session_token text, p_unit_id uuid, p_position_id uuid, p_roster_id uuid)` — closes any active membership on that seat with `end_date = current_date`, then opens a new one. Rejects with `seat_occupied` if a concurrent call already took it, which the partial index will otherwise surface as a raw constraint violation.
 - `smartgov.release_officer(p_session_token text, p_membership_id uuid)` — sets `end_date`, deletes nothing.
 
-**Step 3: Verification query for the user**
+**Step 3: Publish each one through a `public` wrapper with an explicit grant — not optional**
 
-The one that matters — create a USG with two units, an LSG account in unit A, then:
+This is the step that decides whether any of this is reachable from the
+browser, and it is the step most easily forgotten. `00300` revoked 002's
+blanket `grant execute on all functions in schema smartgov to anon,
+authenticated` and replaced it with thirteen named wrappers and thirteen
+explicit grants, plus `revoke all on schema smartgov from anon,
+authenticated`. PostgREST only exposes `public`. So a function that lives in
+`smartgov` and has no wrapper is uncallable: `supabase.rpc("unit_chart", ...)`
+returns PGRST202 and the route handler 500s, with no SQL error to explain it.
+
+For each of the five functions — `unit_chart`, `add_position`,
+`toggle_unit_position`, `assign_officer`, `release_officer` — add a
+one-line forwarder at the bottom of the same file. The wrapper holds no logic,
+so it can never be stricter or looser than the function it calls, and it pins
+the same `search_path`:
 
 ```sql
-select smartgov.unit_chart('<LSG session token>');
+create or replace function public.unit_chart(p_session_token text)
+returns jsonb language sql security definer
+set search_path = public, extensions, smartgov, pg_temp
+as $$ select smartgov.unit_chart(p_session_token); $$;
+
+revoke all on function public.unit_chart(text) from public;
+grant execute on function public.unit_chart(text) to anon, authenticated;
 ```
 
-Expected: `"scope": "unit"`, exactly one child unit returned, and the other
-unit's name **absent from the output entirely**. Then call it with the owner's
-token and confirm `"scope": "organization"` and both units.
+Copy the `revoke` / `grant` pair style from
+`20260101000300_expose_auth_api_and_hardening.sql:702-714`. Watch the
+signature: a wrapper whose parameter names or types do not match the original
+creates a *different* function, and the original stays unreachable while the
+error looks like nothing at all.
 
-**Step 4: Commit**
+Do not add `authenticate`, `sha256`, `hash_password`, `password_matches`,
+`consume_rate_limit` or `refresh_invite_status` to the published surface. The
+first resolves a token to a password hash, the next two turn the database into
+a free bcrypt oracle, the next spends somebody else's rate-limit budget.
+
+**Step 4: Verification query for the user**
+
+The one that matters — create a USG with two units, an LSG account in unit A,
+then:
+
+```sql
+select public.unit_chart('<LSG session token>');
+```
+
+Call the `public` wrapper, not the `smartgov` original, so the grant is under
+test too.
+
+Expected: `"scope": "unit"`, exactly **two** units returned — the officer's own
+unit and the parent USG, which the design requires the LSG view to render —
+and the *other* unit's name absent from the output entirely. Read the whole
+returned text and confirm the sibling's name, id and seat are not in it, not
+just the `units` array. Then call it with the owner's token and confirm
+`"scope": "organization"` and every unit.
+
+**Step 5: Commit**
 
 ```bash
 git add supabase/migrations/20260101000800_unit_chart_functions.sql
@@ -507,6 +641,17 @@ client is not authority.
 **Step 1: Extend `create_invite`, don't fork it**
 
 `smartgov.invites` has a `campus_name text` column and no unit reference. Add nullable `unit_id` and `position_id` columns plus an `organization_id`-scoped uniqueness guarantee, then let `create_invite` accept two more optional arguments. When they are supplied, the invite also creates the `roster` row and the `unit_memberships` row in the same transaction — so accepting the invite needs no chart work afterwards, which is what keeps "invite a person into a seat" one action instead of two that can half-fail.
+
+**Step 1b: Keep the `public` wrappers in step with the new signature**
+
+`public.create_invite` is a four-argument forwarder and it is the only route
+to the `smartgov` original. Adding parameters to the original does not add them
+to the wrapper: Postgres will happily create a *new* four-argument function
+beside the old one, the client will keep calling the old one, and the new
+arguments will be silently dropped with no error anywhere. Update the wrapper
+in the same migration, and `drop function` the superseded overload if you leave
+one. The grant block at `00300:702-714` names signatures explicitly, so a
+changed signature needs its grant restated too.
 
 **Step 2: Extend `accept_invite` to link the account**
 
@@ -695,7 +840,7 @@ step would imply a structure it does not have.
 - Create: `src/app/org-chart/page.tsx`
 - Create: `src/lib/chart.ts`
 
-`chart.ts` calls `smartgov.unit_chart` with the session token and narrows on `ok`. Render the USG root at top, each unit as a card below with its seats, and "Vacant" wherever `rosterId` is null.
+`chart.ts` calls `public.unit_chart` with the session token and narrows on `ok`. Call the `public` wrapper, never `smartgov.unit_chart` — the client has the publishable key only, execute on the `smartgov` schema was revoked from `anon` and `authenticated` in 00300, and the call fails with PGRST202. Render the USG root at top, each unit as a card below with its seats, and "Vacant" wherever `rosterId` is null.
 
 Guard the page: a non-owner with `scope: "unit"` should be redirected to the LSG view, not shown a chart that happens to contain one unit.
 
@@ -734,11 +879,14 @@ Follow the pattern of `check-federated.mjs`, including its header comment about 
 
 1. The four tables exist and the enum includes `department`.
 2. Both partial unique indexes exist.
-3. `unit_chart` filters by the caller's memberships in SQL, not in TypeScript — the check should fail if a `where` on membership is removed.
+3. `unit_chart` filters by the caller's memberships in SQL, not in TypeScript — the check should fail if a `where` on membership is removed. Also assert the parent union is present, and fail if it is removed: the design requires the LSG view to render the parent, and its absence is a bug rather than a leak to be closed.
 4. The wizard step is skipped for unitary.
 5. `submit.ts` sends `units` and no retired field.
 6. Every new function is `security definer` with `set search_path` and `revoke ... from public`.
 7. The four new tables are RLS-enabled with no policies.
+8. **Every `smartgov` function added here has a `public` wrapper with an explicit `grant execute ... to anon, authenticated` whose signature matches the original.** A static check cannot prove the grant exists in the database, so pair this with the runtime assertion below; a wrapper that is correct but ungranted is still unreachable, and a wrapper whose signature drifts is a different function.
+9. Runtime, against the user's database: `has_function_privilege('anon', 'public.unit_chart(text)', 'execute')` is true, and `has_function_privilege('anon', 'smartgov.unit_chart(text)', 'execute')` is **false**. The second one is the security assertion; the first is the reachability one.
+10. No migration contains `unique (..., lower(...))` or `unique (..., upper(...))` inside a `create table`. Postgres rejects an expression in a table-level `unique` constraint, so this is a syntax error that takes the whole migration down. It has been written that way by mistake before; the correct form is a `create unique index`.
 
 Add `"check:units": "node scripts/check-units.mjs"` to `package.json`.
 
@@ -749,9 +897,19 @@ This needs the database and real accounts. Walk the user through it:
 1. Create a federated org with three units.
 2. Sign in as the owner, add positions, enable seats, invite two officers into unit A.
 3. Have one accept the invite.
-4. Sign in as that officer, open `my-council` — it must show unit A only.
-5. **Call `unit_chart` with their session token directly** and confirm units B and C do not appear in the JSON at all. This is the assertion that matters; the UI could be hiding rows regardless.
-6. Add the registry check back against the public `invites` API and confirm the invite surface did not regress.
+4. Sign in as that officer, open `my-council` — it must show unit A and the
+   parent USG, and nothing else.
+5. **Call `public.unit_chart` with their session token directly** and confirm
+   exactly two units come back (unit A and the parent) and that units B and C
+   do not appear anywhere in the JSON at all. This is the assertion that
+   matters; the UI could be hiding rows regardless. The parent USG *is*
+   supposed to be there — the design puts it above the officer's own unit,
+   read-only — so its presence is not a leak and its absence is a bug.
+6. Confirm the call is made through the `public` wrapper and not the
+   `smartgov` original, so the grant is exercised. A direct call to
+   `smartgov.unit_chart` must fail: `00300` revoked execute on the whole
+   schema.
+7. Add the registry check back against the public `invites` API and confirm the invite surface did not regress.
 
 ### Task 16: Documentation
 
