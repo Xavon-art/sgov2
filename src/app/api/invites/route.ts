@@ -58,6 +58,11 @@ export async function GET() {
 /**
  * Invites one person by email and campus.
  *
+ * Two shapes reach the same RPC: a unit-scoped, seat-less invite when `unitId`
+ * is present (the LSG officer flow, where the unit already exists), and the
+ * legacy org-wide invite when it is absent (the name in the body creates the
+ * unit). `p_position_id` is left at its default so a unit invite carries no seat.
+ *
  * The organization comes from the caller's own account inside the function, so
  * there is no way to invite into somebody else's workspace.
  *
@@ -71,12 +76,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
-  let body: { email?: string; campusName?: string; unitType?: string };
+  let body: { email?: string; campusName?: string; unitType?: string; unitId?: string };
   try {
-    body = (await req.json()) as { email?: string; campusName?: string; unitType?: string };
+    body = (await req.json()) as {
+      email?: string;
+      campusName?: string;
+      unitType?: string;
+      unitId?: string;
+    };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
+
+  const unitId = typeof body.unitId === "string" ? body.unitId : "";
 
   const limit = rateLimit(`invite:create:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
   if (!limit.ok) {
@@ -94,6 +106,7 @@ export async function POST(req: Request) {
       p_email: body.email?.trim() ?? "",
       p_campus_name: body.campusName?.trim() ?? "",
       p_unit_type: body.unitType ?? "lsg",
+      p_unit_id: unitId === "" ? null : unitId,
     });
 
     if (!res.ok) {
