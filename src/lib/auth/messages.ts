@@ -34,6 +34,11 @@ const RPC_MESSAGES: Record<string, string> = {
   not_found: "That unit or position is not part of your organization.",
   seat_occupied: "This seat still has a holder — release them first.",
   seat_not_enabled: "This position is not enabled for that unit yet.",
+  invalid_name: "Give the campus or department a name before adding it.",
+  invalid_type: "That unit type is not one you can add here.",
+  duplicate_unit_name: "Your organization already has a campus or department by that name.",
+  unitary_model:
+    "Only a decentralized student government can add campuses or departments. Your organization's structure is fixed.",
 };
 
 export function messageFor(reason?: string): string {
