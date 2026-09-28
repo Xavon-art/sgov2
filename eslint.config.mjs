@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // A gitignored worktree is not invisible to a flat config, so eslint
+    // walks into a sibling feature's .next output and dies on minified
+    // chunks. The ignores above are why this is needed and not sufficient.
+    ".worktrees/**",
   ]),
 ]);
 
