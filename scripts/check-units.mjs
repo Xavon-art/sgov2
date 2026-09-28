@@ -27,8 +27,10 @@
  *  11. Password recovery is an emailed OTP against a dedicated reset row.
  *  12. The dashboard can add a unit, and can invite an officer into it with
  *      no position seat.
+ *  13. An owner can cancel and resend an invitation, and a cancelled one
+ *      cannot be completed by a code that was already in the mailbox.
  *
- * Run: node scripts/check-units.mjs (12 items, 87 assertions)
+ * Run: node scripts/check-units.mjs (13 items, 94 assertions)
  *
  * These assertions are only worth their green if they can go red, so the
  * load-bearing ones were mutation-tested against the exact regressions they
@@ -38,7 +40,11 @@
  * `security definer` was stripped from a chart function, a policy was added
  * to 00600, a roster call was added to the my-council page, and the
  * founding-member check was removed from list_roster -- each turn the script
- * red. A check that cannot fail is decoration.
+ * red. The 001500 guards were mutation-tested the same way: deleting
+ * `for update`, dropping the organization predicate from either UPDATE,
+ * removing the rate-limit meter, and deleting the OTP clear out of
+ * `revoke_invite` each turn item 13 red. A check that cannot fail is
+ * decoration.
  */
 
 import { readFileSync } from "node:fs";
@@ -111,6 +117,7 @@ const m10 = readMigration("20260101001000_list_roster.sql");
 const m11 = readMigration("20260101001100_owner_otp_approval.sql");
 const m12 = readMigration("20260101001200_password_reset.sql");
 const m14 = readPendingMigration("20260101001400_add_unit_and_seatless_invites.sql");
+const m15 = readPendingMigration("20260101001500_invite_cancel_and_resend.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -363,6 +370,16 @@ const MIGRATION_FUNCTIONS = [
       "public.add_unit",
     ],
   ],
+  [
+    "001500",
+    m15,
+    [
+      "smartgov.revoke_invite",
+      "smartgov.resend_invite",
+      "public.revoke_invite",
+      "public.resend_invite",
+    ],
+  ],
 ];
 for (const [file, sql, expected] of MIGRATION_FUNCTIONS) {
   const gaps = hardeningGaps(sql, expected);
@@ -387,7 +404,7 @@ check(
 );
 check(
   "no feature migration creates a policy",
-  ![m5, m6, m7, m8, m9, m10, m11, m12, m14].some((sql) => /create policy/i.test(sql)),
+  ![m5, m6, m7, m8, m9, m10, m11, m12, m14, m15].some((sql) => /create policy/i.test(sql)),
   "on this project one permissive policy turns a locked table into a read surface for anyone holding the publishable key",
 );
 
@@ -706,6 +723,149 @@ check(
     seatlessMembership.test(relaxedFlat) &&
     !seatlessInsertGuarded.test(relaxedFlat),
   "a unit invite must still write the unit_memberships row that unit_chart scopes on; behind a `p_position_id is not null` guard the row is never written and the relaxation did not land",
+);
+
+// --- 13. Owner cancel + resend ---
+// Both actions are the same write against the same row, and both are only
+// meaningful if the old link is actually dead afterwards. Cancelling settles
+// that twice over: `accept_invite_probe` accepts nothing but `pending`, so the
+// status alone kills the acceptance page, and `verify_otp` resolves the invite
+// by token hash with no status filter at all, so the stored OTP has to go too
+// or a code mailed before the cancel still lands an active account. Resending
+// settles it by rotating the hash: the fresh raw token replaces it, so the
+// previously mailed link stops resolving the moment the new mail goes out.
+//
+// The assertions are per function, read out of `functionBlocks`, because a
+// file-scoped regex cannot tell which of the two did what -- `set status =
+// 'revoked'` pasted into `resend_invite` and deleted from `revoke_invite` would
+// leave a file-wide check green while the cancel stopped cancelling. The lock
+// and the organization predicate are asserted as adjacent text rather than as
+// separate facts, for the same reason: `for update` on some other query in the
+// function would satisfy a check that only asked for it somewhere.
+const m15Blocks = functionBlocks(m15);
+const revoke15 = m15Blocks.find((b) => b.name === "smartgov.revoke_invite");
+const resend15 = m15Blocks.find((b) => b.name === "smartgov.resend_invite");
+const revoke15Flat = flat(revoke15?.body ?? "");
+const resend15Flat = flat(resend15?.body ?? "");
+const m15Flat = flat(m15);
+
+const orgScopedRead = /from smartgov\.invites i where i\.id = p_invite_id and i\.organization_id = v_account\.organization_id for update/;
+const orgScopedWrite =
+  /where id = p_invite_id and organization_id = v_account\.organization_id/;
+// (the trailing `(` is what prevents a longer-name prefix match; the `\b` is
+// harmless belt-and-braces, unlike hardeningGaps where it IS load-bearing)
+const declaresRevoke = /\bcreate or replace function smartgov\.revoke_invite\b\(/;
+const declaresResend = /\bcreate or replace function smartgov\.resend_invite\b\(/;
+
+check(
+  "001500 revoke_invite is owner-gated and org-scoped",
+  revoke15 !== undefined &&
+    declaresRevoke.test(m15Flat) &&
+    /v_account\.id is null then return jsonb_build_object\('ok', false, 'reason', 'unauthenticated'\)/.test(
+      revoke15Flat,
+    ) &&
+    /if v_account\.account_scope <> 'owner' then/.test(revoke15Flat) &&
+    /smartgov\.consume_rate_limit\(\s*'invite:revoke:' \|\| v_account\.id::text,\s*60,\s*interval '10 minutes'\s*\)/.test(
+      revoke15Flat,
+    ) &&
+    orgScopedRead.test(revoke15Flat) &&
+    orgScopedWrite.test(revoke15Flat) &&
+    /revoke all on function smartgov\.revoke_invite\b\(text, uuid\) from public/.test(
+      revoke15Flat,
+    ),
+  revoke15
+    ? "the owner gate, the meter, the lock, the organization predicate, or the revoke is missing"
+    : "smartgov.revoke_invite was not found in 001500",
+);
+check(
+  "001500 revoke_invite revokes non-activated invites and kills the mailed code",
+  revoke15 !== undefined &&
+    /if v_status is null then return jsonb_build_object\('ok', false, 'reason', 'not_found'\)/.test(
+      revoke15Flat,
+    ) &&
+    /if v_status = 'activated' then return jsonb_build_object\('ok', false, 'reason', 'invite_activated'\)/.test(
+      revoke15Flat,
+    ) &&
+    /if v_status <> 'revoked' then update smartgov\.invites set status = 'revoked'/.test(
+      revoke15Flat,
+    ) &&
+    /update smartgov\.accounts a set otp_hash = null, otp_expires_at = null where lower\(a\.email\) = v_email and a\.organization_id = v_account\.organization_id and a\.status = 'pending'/.test(
+      revoke15Flat,
+    ) &&
+    /return jsonb_build_object\('ok', true, 'inviteId', p_invite_id\)/.test(revoke15Flat),
+  "without the OTP clear the status is only half a cancel: `verify_otp` matches the invite by token hash alone, so a code already in the mailbox still activates the account",
+);
+check(
+  "001500 resend_invite is owner-gated and org-scoped",
+  resend15 !== undefined &&
+    declaresResend.test(m15Flat) &&
+    /v_account\.id is null then return jsonb_build_object\('ok', false, 'reason', 'unauthenticated'\)/.test(
+      resend15Flat,
+    ) &&
+    /if v_account\.account_scope <> 'owner' then/.test(resend15Flat) &&
+    /smartgov\.consume_rate_limit\(\s*'invite:resend:' \|\| v_account\.id::text,\s*20,\s*interval '10 minutes'\s*\)/.test(
+      resend15Flat,
+    ) &&
+    orgScopedRead.test(resend15Flat) &&
+    orgScopedWrite.test(resend15Flat) &&
+    /revoke all on function smartgov\.resend_invite\b\(text, uuid\) from public/.test(
+      resend15Flat,
+    ),
+  resend15
+    ? "the owner gate, the meter, the lock, the organization predicate, or the revoke is missing"
+    : "smartgov.resend_invite was not found in 001500",
+);
+check(
+  "001500 resend_invite refuses activated and revoked invites",
+  resend15 !== undefined &&
+    /if v_status is null then return jsonb_build_object\('ok', false, 'reason', 'not_found'\)/.test(
+      resend15Flat,
+    ) &&
+    /if v_status = 'activated' then return jsonb_build_object\('ok', false, 'reason', 'invite_activated'\)/.test(
+      resend15Flat,
+    ) &&
+    /if v_status = 'revoked' then return jsonb_build_object\('ok', false, 'reason', 'invite_cancelled'\)/.test(
+      resend15Flat,
+    ),
+  "resending a live link is the bug: an already-activated invitee is in, and a revoked one is a cancel that only a new invite can undo",
+);
+check(
+  "001500 resend_invite mints a fresh token and re-extends the expiry",
+  resend15 !== undefined &&
+    /v_raw\s+text := encode\(extensions\.gen_random_bytes\(24\), 'hex'\)/.test(resend15Flat) &&
+    /update smartgov\.invites set token_hash = smartgov\.sha256\(v_raw\), status = 'pending', expires_at = now\(\) \+ interval '14 days' where id = p_invite_id and organization_id = v_account\.organization_id/.test(
+      resend15Flat,
+    ) &&
+    /return jsonb_build_object\( 'ok', true, 'token', v_raw, 'inviteId', p_invite_id, 'email', v_email, 'campusName', v_campus, 'organizationName', v_org_name, 'universityName', v_account\.university_name \)/.test(
+      resend15Flat,
+    ),
+  "the raw token has to be returned once to the mailer and never stored, and the seven keys are the payload the welcome email is rendered from",
+);
+// The allowlist claim is the one worth making measurable, so it is measured
+// rather than asserted in prose: every `grant execute on function` in the file
+// has to name one of the two wrappers. Counting the `public.` functions instead
+// is not enough -- a stray `grant execute on function smartgov.resend_invite`
+// publishes a SECURITY DEFINER body directly to `anon` without adding a
+// `public.` function at all, and that is the exact hole 00300 was written to
+// close.
+const m15Grants = [...m15Flat.matchAll(/grant execute on function\s+([\w.]+)\s*\(/g)].map(
+  (m) => m[1],
+);
+check(
+  "001500 publishes exactly the two invite-action wrappers to PostgREST",
+  /grant execute on function public\.revoke_invite\(text, uuid\) to anon, authenticated/.test(
+    m15Flat,
+  ) &&
+    /grant execute on function public\.resend_invite\(text, uuid\) to anon, authenticated/.test(
+      m15Flat,
+    ) &&
+    /revoke all on function public\.revoke_invite\(text, uuid\) from public/.test(m15Flat) &&
+    /revoke all on function public\.resend_invite\(text, uuid\) from public/.test(m15Flat) &&
+    m15Grants.length === 2 &&
+    m15Grants.every((g) => g === "public.revoke_invite" || g === "public.resend_invite"),
+  m15Grants.length
+    ? `granted: ${m15Grants.join(", ")} -- the audited allowlist is the whole attack surface, so it has to be these two wrappers and nothing else`
+    : "neither wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
 );
 
 console.log(
