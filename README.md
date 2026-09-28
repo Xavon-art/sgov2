@@ -102,6 +102,12 @@ Postgres on Supabase. Migrations live in `supabase/migrations/` and **must be ap
 | `20260101000100_create_organization_rpc.sql` | Drops those insert policies, revokes table grants from `anon`, and adds `create_organization(jsonb)` — the single atomic write path for org creation |
 | `20260101000200_auth_and_invitations.sql` | Creates the `smartgov` schema: `accounts`, `invites`, `sessions`, four enums, helpers (`sha256`, `hash_password`, `password_matches`), and the auth functions |
 | `20260101000300_expose_auth_api_and_hardening.sql` | The `public` PostgREST wrappers (13 of them), the `smartgov.rate_limits` table and `consume_rate_limit`, and the hardening of 002 |
+| `20260101000500_add_department_unit_type.sql` | Adds `department` to `public.unit_type` as a peer of `college`/`campus` — a unit row *is* that place's LSG, there is no separate LSG layer |
+| `20260101000600_unit_hierarchy_tables.sql` | `org_positions` (org-level template), `unit_positions` (which seats a unit has), `roster` (people without accounts yet), `unit_memberships` (dated seats). Two partial unique indexes: one active holder per seat, one active seat per person per unit |
+| `20260101000700_create_organization_unit_tree.sql` | Replaces the arbitrary `parentIndex` nesting with an enforced depth-1 shape: a federated USG writes a `usg` root plus one child per declared college/campus/department, all in the one transaction. Still accepts the legacy one-element `usg` payload so the deployed client keeps working through rollout |
+| `20260101000800_unit_chart_functions.sql` | `unit_chart` — the scoping centrepiece. An owner sees every unit; an LSG officer sees only their own units plus the parent USG, filtered in the SQL `where` clause so other units are never in the result set. Plus the owner-only writes: `add_position`, `toggle_unit_position`, `assign_officer`, `release_officer` |
+| `20260101000900_roster_invites.sql` | Extends `create_invite` with unit/position args: it writes the roster row and the membership in the same transaction, so the seat is filled at invite time and accepting only links the account. `accept_invite` sets `roster.account_id` |
+| `20260101001000_list_roster.sql` | Owner-only roster read for the seat-assignment picker. Necessary because the roster is one row per email per org: without it an officer could never be moved between seats, since re-inviting the same address collides with the unique index |
 
 Apply them either way:
 
@@ -135,7 +141,7 @@ Passwords are hashed in Postgres with `crypt(password, gen_salt('bf', 10))` — 
 
 PostgREST on this project exposes **only the `public` schema**, so `supabase.rpc("login_account", …)` failed with `PGRST202` until 003 published thin `public` wrappers. Each wrapper is a one-line `security definer` forwarder — all validation and authorization stay in the `smartgov` original, so a wrapper can never be stricter or looser than the logic it calls. Do not add logic to a wrapper.
 
-The reachable surface is that explicit list of 13 and nothing else. 003 revokes `execute` on the `smartgov` originals from `public`, `anon`, and `authenticated`, so the other eight of the schema's twenty-one functions are never published — deliberately, in every case:
+The reachable surface is that explicit list of 13 plus the six published later (00800 and 001000), and nothing else. 003 revokes `execute` on the `smartgov` originals from `public`, `anon`, and `authenticated`, so the other originals in the schema are never published — deliberately, in every case:
 
 - `smartgov.authenticate` — returns a whole `accounts` row, including `password_hash` and `otp_hash`.
 - `smartgov.sha256`, `hash_password`, `password_matches` — withheld so `anon` cannot use the database as a free bcrypt or hashing oracle.
@@ -148,7 +154,7 @@ A function added to the `smartgov` schema later does **not** become callable by 
 
 This is deliberate and load-bearing:
 
-- **RLS is enabled on all eight tables** — the four in `public` and the four in `smartgov` (`accounts`, `invites`, `sessions`, `rate_limits`) — with **zero policies**.
+- **RLS is enabled on all twelve tables** — the four in `public` and the eight in `smartgov` (`accounts`, `invites`, `sessions`, `rate_limits`, `org_positions`, `unit_positions`, `roster`, `unit_memberships`) — with **zero policies**.
 - **`anon` holds no table grants on any of them**, and `authenticated` does not either.
 - The `SECURITY DEFINER` functions are the only way in or out.
 
@@ -175,13 +181,17 @@ Every owner-facing function takes the session token and resolves the caller's ow
 
 `create_owner_account` is the sharpest case. Migration 002 accepted any organization id that merely existed, which meant the publishable key plus any org id was enough to become that organization's owner and start minting invitations into it. 003 requires a `public.organization_members` row with `is_founding` set **and** a matching email — the founding-member record written by `create_organization` is the proof of authorship. A client-supplied organization id on its own is rejected with `not_organization_founder`.
 
+### Unit scoping is enforced in SQL, not in React
+
+An LSG officer's view must contain only their own units and the parent USG. `unit_chart` builds the officer's id list from their **memberships** in the `where` clause, so every other unit is absent from the result set — a client-side filter would still ship every unit to the browser, where devtools can read it, making scoping decorative. The same founding-member check gates every owner-only write (`add_position`, `toggle_unit_position`, `assign_officer`, `release_officer`, `list_roster`), so an LSG officer can read their chart but cannot mutate anything.
+
 ### The setup flow, end to end
 
 `/create/success` calls `POST /api/organization`, which calls `create_organization`: it validates the payload, resolves `slug` and `charter_number` collisions server-side (so two identically named councils both succeed and the client renders the values the database actually stored), then writes the organization, its founding officer, and its governance units in **one transaction**. The earlier three-request client flow could leave an organization row behind when a later insert failed.
 
 Only once the organization exists does it call `POST /api/auth/register`, because the account is bound to that row. If the organization succeeds and registration fails, the page says exactly that rather than pretending the whole thing failed.
 
-Units are passed as a flat array; each entry may carry a zero-based `parentIndex` pointing at an earlier entry, which keeps the self-referencing `governance_units` tree flat on the wire.
+Units are passed as a flat array. For federated, a `usg` root is written first and each `{name, type}` child hangs off it; the hierarchy is deliberately depth-1 — the schema `parentIndex` nesting that predates this is gone. The wizard requires at least one unit for federated and skips the step entirely for unitary.
 
 ### Mail
 
@@ -218,13 +228,16 @@ src/
   app/
     page.tsx                     landing page
     login/                       sign-in form
-    create/                      the 7-step setup flow
+    create/                      the 8-step setup flow
     invite/[token]/              invited flow: set password, then verify code
     dashboard/                   server-gated, force-dynamic
     api/
       organization/              atomic org creation
       auth/                      register, login, logout
       invites/                   list, create, accept, resend-code, verify-otp
+      org-chart/                 position, unit-position, invite, assign, release
+    org-chart/                   owner chart (server-gated)
+    my-council/                  LSG officer's scoped chart (server-gated)
   components/
     auth/                        AuthShell, InviteSetupForm, OtpVerify
     create/                      FlowShell, StepShell, WelcomeStart
@@ -241,9 +254,11 @@ src/
     rate-limit.ts                per-IP in-process limiter
     mail/                        send.ts (Nodemailer), templates.ts
     store.ts                     Zustand setup draft (sessionStorage)
+    units.ts                     bulk unit parsing + validation
+    chart.ts                     unit_chart / list_roster types + fetchers
     submit.ts                    submitOrganization, registerAccount
     steps.ts                     the setup flow's step definitions
-supabase/migrations/             four files, apply in order
+supabase/migrations/             ten files, apply in order
 ```
 
 `@/*` is aliased to `./src/*` in `tsconfig.json`. Every route handler and server component that touches auth runs on `export const runtime = "nodejs"`, because Nodemailer and the HMAC helpers need Node built-ins.
