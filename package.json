@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "check:reveal": "node scripts/check-reveal.mjs"
+    "check:reveal": "node scripts/check-reveal.mjs",
+    "check:federated": "node scripts/check-federated.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
