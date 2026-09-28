@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 type Quality = "auto" | "high" | "low" | "static";
@@ -113,6 +113,9 @@ void main() {
 }
 `;
 
+/** Fixed sample for the still frame, so a static field is deterministic. */
+const STATIC_TIME = 14.2;
+
 function compileShader(
   gl: WebGLRenderingContext,
   type: number,
@@ -138,8 +141,6 @@ export default function ShaderField({
   className,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [ready, setReady] = useState(false);
-  const [supported, setSupported] = useState(true);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -157,6 +158,9 @@ export default function ShaderField({
       else mode = "high";
     }
 
+    // No WebGL, or a shader that will not build: leave the canvas transparent
+    // and the gradient base layer underneath it shows through instead. Nothing
+    // needs to be torn down, so every early return below is a plain `return`.
     const gl =
       (canvas.getContext("webgl", {
         antialias: false,
@@ -169,10 +173,7 @@ export default function ShaderField({
         "experimental-webgl",
       ) as WebGLRenderingContext | null);
 
-    if (!gl) {
-      setSupported(false);
-      return;
-    }
+    if (!gl) return;
 
     const octaves = mode === "low" ? 3 : 5;
     const precision = mode === "low" ? "mediump" : "highp";
@@ -182,24 +183,15 @@ export default function ShaderField({
     if (!fs) {
       fs = compileShader(gl, gl.FRAGMENT_SHADER, makeFrag("mediump", 3));
     }
-    if (!vs || !fs) {
-      setSupported(false);
-      return;
-    }
+    if (!vs || !fs) return;
 
     const program = gl.createProgram();
-    if (!program) {
-      setSupported(false);
-      return;
-    }
+    if (!program) return;
     gl.attachShader(program, vs);
     gl.attachShader(program, fs);
     gl.bindAttribLocation(program, 0, "a_pos");
     gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      setSupported(false);
-      return;
-    }
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
     gl.useProgram(program);
 
     const buf = gl.createBuffer();
@@ -220,24 +212,11 @@ export default function ShaderField({
     gl.uniform1f(gl.getUniformLocation(program, "u_speed"), speed);
 
     const deviceDpr = window.devicePixelRatio || 1;
-    const maxDpr = mode === "low" ? 1.15 : 1.5;
-    let resScale = mode === "low" ? 0.7 : 1;
+    const maxDpr = mode === "low" ? 1.15 : 1.25;
+    let resScale = mode === "low" ? 0.7 : 0.85;
 
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect();
-      const scale = Math.min(deviceDpr, maxDpr) * resScale;
-      const w = Math.max(1, Math.round(rect.width * scale));
-      const h = Math.max(1, Math.round(rect.height * scale));
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w;
-        canvas.height = h;
-        gl.viewport(0, 0, w, h);
-      }
-    };
-
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
-    resize();
+    const pointer = { x: 0.5, y: 0.5 };
+    const target = { x: 0.5, y: 0.5 };
 
     const draw = (time: number) => {
       gl.uniform2f(uRes, canvas.width, canvas.height);
@@ -246,8 +225,27 @@ export default function ShaderField({
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     };
 
-    const pointer = { x: 0.5, y: 0.5 };
-    const target = { x: 0.5, y: 0.5 };
+    // Reassigning canvas.width or canvas.height reallocates the drawing
+    // buffer, and WebGL fills a fresh buffer with opaque black. Static mode has
+    // no loop to repaint it, so an otherwise unremarkable resize -- a webfont
+    // settling, the mobile address bar collapsing, a devtools dock opening --
+    // would leave a black band across the section permanently. Repainting here
+    // is what stops that.
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      const scale = Math.min(deviceDpr, maxDpr) * resScale;
+      const w = Math.max(1, Math.round(rect.width * scale));
+      const h = Math.max(1, Math.round(rect.height * scale));
+      if (canvas.width === w && canvas.height === h) return;
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+      if (mode === "static") draw(STATIC_TIME);
+    };
+
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+    resize();
 
     const teardown: Array<() => void> = [
       () => ro.disconnect(),
@@ -256,15 +254,17 @@ export default function ShaderField({
         gl.deleteShader(vs);
         if (fs) gl.deleteShader(fs);
         gl.deleteBuffer(buf);
+        // Hand the context slot back explicitly. Left to the garbage collector,
+        // every page visit leaks one, and browsers cap how many live WebGL
+        // contexts they will hold; on reaching the cap the driver drops the
+        // oldest one and the surviving field blacks out mid-page.
+        gl.getExtension("WEBGL_lose_context")?.loseContext();
       },
     ];
 
     if (mode === "static") {
-      gl.uniform2f(uRes, canvas.width, canvas.height);
-      gl.uniform1f(uTime, 14.2);
-      gl.uniform2f(uPointer, 0.5, 0.5);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      setReady(true);
+      draw(STATIC_TIME);
+      canvas.style.opacity = "1";
     } else {
       const onPointer = (e: PointerEvent) => {
         target.x = e.clientX / Math.max(window.innerWidth, 1);
@@ -279,16 +279,22 @@ export default function ShaderField({
       }
 
       let raf = 0;
+      let running = false;
       let visible = true;
       let started = 0;
-      let last = 0;
+      let firstFrame = true;
+      let lastTs = 0;
       let acc = 0;
       let frames = 0;
       let downgrades = 0;
 
       const loop = (now: number) => {
-        raf = requestAnimationFrame(loop);
-        if (!visible || document.hidden) return;
+        raf = 0;
+
+        if (document.hidden) {
+          running = false;
+          return;
+        }
 
         if (!started) started = now;
         const seconds = (now - started) / 1000;
@@ -297,14 +303,15 @@ export default function ShaderField({
         pointer.y += (target.y - pointer.y) * 0.045;
 
         draw(seconds);
-        if (!last) {
-          setReady(true);
-          last = now;
+
+        if (firstFrame) {
+          firstFrame = false;
+          canvas.style.opacity = "1";
         }
 
         if (downgrades < 2) {
-          acc += now - last;
-          last = now;
+          if (lastTs) acc += now - lastTs;
+          lastTs = now;
           frames++;
           if (frames >= 45) {
             const avg = acc / frames;
@@ -319,20 +326,59 @@ export default function ShaderField({
             }
           }
         }
+
+        raf = requestAnimationFrame(loop);
       };
 
+      const start = () => {
+        if (running || raf) return;
+        running = true;
+        raf = requestAnimationFrame(loop);
+      };
+
+      const stop = () => {
+        if (raf) cancelAnimationFrame(raf);
+        raf = 0;
+        running = false;
+      };
+
+      // Park the loop whenever the field is scrolled away or the tab is in the
+      // background. Previously it kept re-arming requestAnimationFrame at 60fps
+      // just to return early, and the landing page runs two of these at once --
+      // a full-screen five-octave fbm each, which is what made the page stutter.
       const io = new IntersectionObserver(
         ([entry]) => {
           visible = entry.isIntersecting;
+          if (visible && !document.hidden) start();
+          else stop();
         },
         { threshold: 0 },
       );
       io.observe(canvas);
       teardown.push(() => io.disconnect());
 
-      raf = requestAnimationFrame(loop);
-      teardown.push(() => cancelAnimationFrame(raf));
+      const onVisibility = () => {
+        if (document.hidden) stop();
+        else if (visible) start();
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      teardown.push(() =>
+        document.removeEventListener("visibilitychange", onVisibility),
+      );
+
+      start();
     }
+
+    // The browser also reclaims GPU contexts on its own under memory pressure,
+    // and announces it with webglcontextlost. Without preventDefault the
+    // context can never be restored and the field stays black for good.
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost, false);
+    teardown.push(() =>
+      canvas.removeEventListener("webglcontextlost", onContextLost),
+    );
 
     return () => {
       for (const fn of teardown) fn();
@@ -344,25 +390,27 @@ export default function ShaderField({
       aria-hidden
       className={cn("pointer-events-none absolute inset-0 overflow-hidden", className)}
     >
-      {supported ? (
-        <canvas
-          ref={canvasRef}
-          className="h-full w-full transition-opacity duration-[1400ms] ease-out"
-          style={{ opacity: ready ? 1 : 0 }}
-        />
-      ) : null}
-      {!supported ? (
-        <div
-          className="h-full w-full"
-          style={{
-            background:
-              "radial-gradient(60% 55% at 22% 18%, #eef2f7 0%, transparent 60%)," +
-              "radial-gradient(50% 50% at 82% 28%, #f6efe0 0%, transparent 62%)," +
-              "radial-gradient(70% 60% at 50% 96%, #e6edf4 0%, transparent 65%)," +
-              "linear-gradient(180deg, #fcfcfa 0%, #f4f2ea 100%)",
-          }}
-        />
-      ) : null}
+      {/*
+        Base layer, always present. A device without WebGL therefore shows the
+        same gradient rather than an empty box, and the canvas can fade in over
+        it on its first painted frame without any conditional rendering -- which
+        also keeps the markup identical on the server and the client.
+      */}
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(60% 55% at 22% 18%, #eef2f7 0%, transparent 60%)," +
+            "radial-gradient(50% 50% at 82% 28%, #f6efe0 0%, transparent 62%)," +
+            "radial-gradient(70% 60% at 50% 96%, #e6edf4 0%, transparent 65%)," +
+            "linear-gradient(180deg, #fcfcfa 0%, #f4f2ea 100%)",
+        }}
+      />
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 h-full w-full transition-opacity duration-[700ms] ease-out"
+        style={{ opacity: 0 }}
+      />
     </div>
   );
 }
