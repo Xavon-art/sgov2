@@ -54,7 +54,11 @@ check(
 );
 check(
   "effectiveRole passes the stored role through for unitary",
-  /unitary[\s\S]*role/.test(body),
+  // Asserts the behaviour, not the word "unitary": the helper never names it,
+  // because unitary is handled by an unconditional fall-through. Requiring the
+  // closing brace right after proves the return is not nested in a branch.
+  /return\s+role;\s*\n\}/.test(body),
+  "no unconditional fall-through `return role`; unitary would not pass the role through",
 );
 check(
   "effectiveRole falls back to usg_officer when federated has no model",
