@@ -13,7 +13,23 @@
 -- departments, and this function writes the USG row and then one child per
 -- declaration. The `usg` root is derived rather than declared, so a client
 -- cannot omit it, and every federated organization ends up with the same
--- one-level shape the rest of the design assumes.
+-- one-level shape the rest of the design assumes. This is a narrowing rather
+-- than an addition: 00400 could already write an N-row tree, and this removes
+-- the ability to write a deeper one, on purpose, because a permission model
+-- that is provably two levels is worth more here than an arbitrary tree the
+-- scoping rules would then have to reason about.
+--
+-- TWO PAYLOAD SHAPES, ON PURPOSE. The unit type is read as
+-- `coalesce(unit ->> 'type', unit ->> 'unitType')`, and a federated payload
+-- containing no `college`/`campus`/`department` element is treated as the
+-- legacy shape: one `usg` root row and no children, with no error. That is the
+-- shape the deployed client sends today -- `[{ name, unitType: "usg" }]` -- and
+-- raising on it would roll back every federated signup the moment this
+-- migration is applied, which is the wrong order to break production in. The
+-- legacy branch is a rollout affordance, not a second permanent contract: it
+-- exists only because the client and the database cannot be deployed in one
+-- atomic step, and it should be deleted once `submit.ts` only ever sends
+-- `type`. Do not extend it, and do not read it as a supported input shape.
 --
 -- The unit-name duplicate check is new rather than extended. There was never
 -- one: 00400 validated that `units[].name` was non-empty and nothing else, and
@@ -41,12 +57,27 @@ declare
   v_units      jsonb;
   v_unit       jsonb;
   v_unit_count integer := 0;
+  -- Whether at least one element declares a child tier. False means the
+  -- payload is the legacy shape; see the note at the top of this file.
+  v_children   boolean := false;
   v_missing    text;
   v_bad_name   text;
   v_bad_type   text;
   v_dupes      text;
   v_email      text;
 begin
+  -- ROLLOUT: this body accepts two payload shapes, and the branch that handles
+  -- the older one is deliberately temporary. The per-element type is
+  -- `coalesce(type, unitType)`; a federated payload with no
+  -- `college`/`campus`/`department` element anywhere is read as the legacy
+  -- shape and gets the single `usg` root row that the deployed client works
+  -- with today, rather than a raised 22023. The client that sends the new
+  -- `{name, type}` shape is a later change, and this migration must be safe to
+  -- apply on either side of it -- before it, after it, or in between. When the
+  -- client only ever sends `type`, delete the legacy branch below and make the
+  -- `v_children` check an unconditional validation. Anyone tightening this
+  -- function by removing the fallback is reintroducing a landmine for a client
+  -- that is still in production.
   -- ------------------------------------------------------------- validate
   v_missing := (
     select string_agg(field, ', ')
@@ -146,10 +177,11 @@ begin
     raise exception 'units must be a JSON array' using errcode = '22023';
   end if;
 
-  -- Only federated validates `units`. A unitary organization has no local
-  -- tier, so its single `council` row is derived from the organization name
-  -- and the array is never read -- which also means a unitary client no longer
-  -- has to send one.
+  -- Only federated reads `units`. A unitary organization has no local tier, so
+  -- its single `council` row is derived from the organization name and the
+  -- array is never inspected -- which is what lets the deployed unitary payload
+  -- (`unitType: "council"`, not a value in the child-tier allowlist below) keep
+  -- working, and lets a unitary client send nothing at all.
   if v_model = 'federated' then
     if jsonb_array_length(v_units) = 0 then
       raise exception 'At least one governance unit is required'
@@ -166,19 +198,39 @@ begin
       raise exception 'units[].name is required' using errcode = '22023';
     end if;
 
+    -- The shape discriminator. A federated payload that declares no child tier
+    -- at all is the legacy one, and there is nothing in it to validate -- see
+    -- the ROLLOUT note above. Once this is true, every element is checked,
+    -- including one that arrives under `unitType`, because a payload mixing the
+    -- two keys is malformed rather than legacy.
+    v_children := exists (
+      select 1
+      from jsonb_array_elements(v_units) as e(value)
+      where coalesce(e.value ->> 'type', e.value ->> 'unitType', '')
+            in ('college', 'campus', 'department')
+    );
+
     -- Cast through the enum rather than interpolating, so a type the enum does
     -- not contain fails the whole transaction instead of inserting a unit that
     -- no query can match. The allowlist turns what would be a bare 22P02 into
-    -- a message the API can show.
-    v_bad_type := (
-      select string_agg(coalesce(e.value ->> 'type', ''), ', ')
-      from jsonb_array_elements(v_units) as e(value)
-      where coalesce(e.value ->> 'type', '') not in ('college', 'campus', 'department')
-    );
+    -- a message the API can show, and the index is named because "college or
+    -- campus or department" is not enough to find the offending row in a list
+    -- the client cannot see the index of.
+    if v_children then
+      v_bad_type := (
+        select string_agg(
+                 format('units[%s] = %s', e.ordinality - 1,
+                        coalesce(e.value ->> 'type', e.value ->> 'unitType', '')),
+                 ', ' order by e.ordinality)
+        from jsonb_array_elements(v_units) with ordinality as e(value, ordinality)
+        where coalesce(e.value ->> 'type', e.value ->> 'unitType', '')
+              not in ('college', 'campus', 'department')
+      );
 
-    if v_bad_type is not null then
-      raise exception 'units[].type must be college, campus, or department: %',
-        v_bad_type using errcode = '22023';
+      if v_bad_type is not null then
+        raise exception 'units[].type must be college, campus, or department: %',
+          v_bad_type using errcode = '22023';
+      end if;
     end if;
 
     v_dupes := (
@@ -200,7 +252,8 @@ begin
   -- Federated: the USG row is the root, and every declared college, campus,
   -- or department hangs off it as its Local Student Government. Depth is one;
   -- `parent_id` stays in the schema for a future that needs more, but nothing
-  -- writes a second level yet.
+  -- writes a second level yet. The legacy payload gets the root alone, which is
+  -- exactly what 00400 produced for the client that is deployed today.
   v_root_id := null;
 
   if v_model = 'federated' then
@@ -210,19 +263,21 @@ begin
 
     v_unit_count := 1;
 
-    for v_unit in
-      select jsonb_array_elements(coalesce(v_units, '[]'::jsonb))
-    loop
-      insert into public.governance_units (organization_id, name, unit_type, parent_id)
-      values (
-        v_org_id,
-        btrim(v_unit ->> 'name'),
-        (v_unit ->> 'type')::public.unit_type,
-        v_root_id
-      );
+    if v_children then
+      for v_unit in
+        select jsonb_array_elements(coalesce(v_units, '[]'::jsonb))
+      loop
+        insert into public.governance_units (organization_id, name, unit_type, parent_id)
+        values (
+          v_org_id,
+          btrim(v_unit ->> 'name'),
+          coalesce(v_unit ->> 'type', v_unit ->> 'unitType')::public.unit_type,
+          v_root_id
+        );
 
-      v_unit_count := v_unit_count + 1;
-    end loop;
+        v_unit_count := v_unit_count + 1;
+      end loop;
+    end if;
   else
     -- Unitary: one council, no children, and nothing to declare.
     insert into public.governance_units (organization_id, name, unit_type, parent_id)
