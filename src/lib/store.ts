@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { validateUnits, type DraftUnit } from "@/lib/units";
 
 export type GovernanceModel = "federated" | "unitary";
 
@@ -36,6 +37,7 @@ export type OrgDraft = {
   account: AccountDraft;
   institution: InstitutionDraft;
   organization: OrganizationDraft;
+  units: DraftUnit[];
 };
 
 export const EMPTY_DRAFT: OrgDraft = {
@@ -57,6 +59,7 @@ export const EMPTY_DRAFT: OrgDraft = {
     accent: "#16324f",
     academicYear: "",
   },
+  units: [],
 };
 
 export const ROLE_LABELS: Record<MemberRole, string> = {
@@ -116,6 +119,10 @@ type Store = OrgDraft & {
   patchAccount: (patch: Partial<AccountDraft>) => void;
   patchInstitution: (patch: Partial<InstitutionDraft>) => void;
   patchOrganization: (patch: Partial<OrganizationDraft>) => void;
+  // One writer, not add/remove/update: both ways into this array -- typing a row
+  // and pasting a roster -- hand over a whole new one, so the incremental
+  // actions would be three ways to be wrong about the same array.
+  setUnits: (units: DraftUnit[]) => void;
   setCharter: (charter: string) => void;
   setOrganizationId: (id: string | null) => void;
   markSubmitted: () => void;
@@ -155,6 +162,7 @@ export const useOrgDraft = create<Store>()(
         set((state) => ({
           organization: { ...state.organization, ...patch },
         })),
+      setUnits: (units) => set({ units }),
       setCharter: (charter) => set({ charter }),
       setOrganizationId: (organizationId) => set({ organizationId }),
       markSubmitted: () => set({ submittedAt: new Date().toISOString() }),
@@ -165,6 +173,14 @@ export const useOrgDraft = create<Store>()(
       // "LSG Officer" role, none of which can survive this change. Discarding
       // them is the only way to be sure no stale federated draft reaches the
       // charter step.
+      //
+      // `units` did NOT earn a v3, and the difference is the point. The v1
+      // drafts above held a field the wizard no longer reads, so keeping them
+      // would carry a lie forward; a v2 draft only lacks a `units` key, and
+      // persist shallow-merges the stored state over these initial values, so
+      // such a draft inherits `units: []` and is indistinguishable from a fresh
+      // one. Bumping would throw away a half-filled draft for a missing array
+      // that already defaults correctly.
       name: "smartgov.draft.v2",
       storage: createJSONStorage(() => sessionStorage),
     },
@@ -175,7 +191,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export function validateStep(id: string, state: OrgDraft): string[] {
   const errors: string[] = [];
-  const { model, account, institution, organization } = state;
+  const { model, account, institution, organization, units } = state;
 
   if (id === "governance-model" && !model) {
     errors.push("Select a governance model to continue.");
@@ -207,6 +223,16 @@ export function validateStep(id: string, state: OrgDraft): string[] {
       errors.push("Add a short description (at least 12 characters).");
     if (!/^\d{4}\s*[–—-]\s*\d{4}$/.test(organization.academicYear.trim()))
       errors.push("Academic year must look like 2026 – 2027.");
+  }
+
+  // Only federated has a local tier, so a unitary organization is not asked to
+  // declare one -- the step does not even render for it.
+  if (id === "units" && model === "federated") {
+    const result = validateUnits(units);
+    if (!result.ok && result.reason === "duplicate")
+      errors.push("Declared units can't have the same name.");
+    else if (!result.ok)
+      errors.push("Add at least one college, campus, or department.");
   }
 
   return errors;

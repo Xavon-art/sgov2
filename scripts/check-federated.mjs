@@ -15,15 +15,22 @@
  *   7. The persist key is bumped, so a v1 draft cannot carry them forward.
  *   8. setModel settles the federated role instead of clearing an invalid one.
  *   9. The institution step renders no input bound to either retired field.
+ *  10. The draft carries a units array, and validateStep refuses an empty one
+ *      when the model is federated.
+ *  11. The persist key is NOT bumped for units: zustand's shallow merge hands a
+ *      pre-existing v2 draft the empty default for free.
  *
- * Run: node scripts/check-federated.mjs
+ * Run: node scripts/check-federated.mjs (11 items, 25 assertions)
  *
  * These assertions are only worth their green if they can go red, so the field
  * checks were mutation-tested against reintroduction of the field in every
  * shape: a property read under an arrow function, a JSX prop, a type key, an
  * EMPTY_DRAFT seed, a validateStep branch, a reverted persist key, a setModel
- * that stops forcing the role, and submit.ts re-forwarding either value. A
- * check that cannot fail is decoration.
+ * that stops forcing the role, and submit.ts re-forwarding either value. The
+ * two units items were mutation-tested the same way: dropping the
+ * `model === "federated"` gate, dropping the `validateUnits` call, deleting the
+ * type key or its EMPTY_DRAFT seed, and renaming the key to v3 each turn the
+ * script red. A check that cannot fail is decoration.
  */
 
 import { readFileSync } from "node:fs";
@@ -64,6 +71,18 @@ function withoutStrings(source) {
     .replace(/`(?:[^`\\]|\\.)*`/g, " ")
     .replace(/"(?:[^"\\]|\\.)*"/g, " ")
     .replace(/'(?:[^'\\]|\\.)*'/g, " ");
+}
+
+/**
+ * Strips comments only, for assertions that must not be satisfied by prose: a
+ * commented-out guard is not a guard. String literals are deliberately kept,
+ * because the units and persist-key checks are specifically about comparing
+ * against "units", "federated", and a key by value.
+ */
+function withoutComments(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 }
 
 /**
@@ -116,6 +135,12 @@ check(
 );
 
 // --- 2. No federated validation may demand campus or college ---
+// The units branch (item 10) names all three unit types in its error copy and
+// is legitimately gated on federated, so the 80-character window is what keeps
+// the two apart. Widening that window to "read the whole branch" would fail on
+// that message; narrowing it below ~30 would let a real campusName requirement
+// back in. Do not reword the units message to a single unit type without
+// re-measuring this.
 const validate = storeCode.match(/export function validateStep[\s\S]*$/)?.[0] ?? "";
 check(
   "validateStep never pairs federated with a campus or college requirement",
@@ -208,6 +233,66 @@ check(
   "the account step gates the role picker on the governance model",
   /\{!federated\s*\?/.test(account) && /<fieldset/.test(account),
   "the role picker is not conditional, so a federated registrant can still pick LSG Officer",
+);
+
+// --- 10. The draft carries units, and federated must declare at least one ---
+// A USG with nothing under it is not the shape this design describes, so the
+// empty roster is refused at the wizard rather than surfacing later as a
+// government with no local tier.
+//
+// Everything below is matched against `storeLive` rather than `store`, and the
+// order matters: strip comments over the whole file *first*, then carve out the
+// region. Carving first and stripping after leaves a commented-out guard
+// looking live, because the `//` sits outside the match. That was not a
+// hypothetical -- the first version of these checks passed a branch that had
+// been commented out wholesale.
+const storeLive = withoutComments(store);
+
+const orgDraft = storeLive.match(/export type OrgDraft[\s\S]*?\n\};/)?.[0] ?? "";
+check(
+  "OrgDraft declares units as an array of DraftUnit",
+  /units:\s*DraftUnit\[\]/.test(orgDraft),
+  orgDraft ? `OrgDraft: ${orgDraft.trim()}` : "the OrgDraft type was not found",
+);
+
+const emptyDraft = storeLive.match(/export const EMPTY_DRAFT[\s\S]*?\n\};/)?.[0] ?? "";
+check(
+  "EMPTY_DRAFT seeds an empty units array",
+  /^\s*units:\s*\[\],\s*$/m.test(emptyDraft),
+  emptyDraft ? `EMPTY_DRAFT: ${emptyDraft.trim()}` : "EMPTY_DRAFT was not found",
+);
+
+// Matched on comment-stripped source, so "units" here is a live step id. The
+// strings themselves survive because withoutComments leaves literals alone.
+const unitsBranch = storeLive.match(/if \(id === "units"[\s\S]*?\n {2}\}/)?.[0] ?? "";
+check(
+  "validateStep checks the units step through validateUnits",
+  /validateUnits\(\s*units\s*\)/.test(unitsBranch),
+  unitsBranch
+    ? `branch: ${unitsBranch.trim()}`
+    : 'no live `if (id === "units")` branch was found in validateStep',
+);
+check(
+  "the units check is gated on the federated model",
+  /model\s*===\s*"federated"/.test(unitsBranch),
+  "a unitary organization would be made to declare a local tier it does not have",
+);
+
+// --- 11. The key is not bumped, because nothing needs discarding ---
+// Both halves can go red, and they fail differently on purpose. Item 6 above
+// asks that the key is off v1; that check would still pass at v3, so the
+// absence of a bump needs its own assertion rather than borrowing that one. A
+// v3 named only in a comment leaves both green, which is the point: this is
+// about the key, not about the word.
+check(
+  "the persist key is still smartgov.draft.v2, unbumped by units",
+  /name:\s*"smartgov\.draft\.v2"/.test(storeLive),
+  "units was given a version bump of its own, discarding every in-flight draft",
+);
+check(
+  "no later persist key version is declared",
+  !/smartgov\.draft\.v[3-9]/.test(storeLive),
+  "a v3 key throws away every v2 draft over a field that already defaults to []",
 );
 
 console.log(

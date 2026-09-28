@@ -21,6 +21,7 @@ export function useStepGuard(step: StepId) {
       account: draft.account,
       institution: draft.institution,
       organization: draft.organization,
+      units: draft.units,
     };
 
     for (const s of STEPS) {
