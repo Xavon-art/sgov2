@@ -14,8 +14,16 @@
  *   6. The draft type carries neither field, and nothing seeds one.
  *   7. The persist key is bumped, so a v1 draft cannot carry them forward.
  *   8. setModel settles the federated role instead of clearing an invalid one.
+ *   9. The institution step renders no input bound to either retired field.
  *
  * Run: node scripts/check-federated.mjs
+ *
+ * These assertions are only worth their green if they can go red, so the field
+ * checks were mutation-tested against reintroduction of the field in every
+ * shape: a property read under an arrow function, a JSX prop, a type key, an
+ * EMPTY_DRAFT seed, a validateStep branch, a reverted persist key, a setModel
+ * that stops forcing the role, and submit.ts re-forwarding either value. A
+ * check that cannot fail is decoration.
  */
 
 import { readFileSync } from "node:fs";
@@ -38,27 +46,39 @@ function check(label, condition, detail = "") {
 }
 
 /**
- * Strips everything a reader sees but a binding cannot be.
+ * Strips comments and string literals: the two places a retired field name
+ * survives as copy rather than as a reference.
  *
- * The wizard still has to explain campuses and colleges -- to a unitary
- * registrant, and to a USG told where to add them later -- and the v2 persist
- * comment has to name the fields it retires. A raw grep for "college" would
- * fail on that copy while the code was clean, so the field assertions read
- * source with comments, string literals, and JSX text removed. Identifiers,
- * attributes, and expressions survive, which is where a real reference lives.
- *
- * `id` attributes are carried across the string strip: an id is a handle on a
- * field rather than copy, so a leftover `id="campusName"` stays visible.
+ * JSX text is deliberately left in place. An earlier version stripped it by
+ * matching `>` ... `<`, which cannot tell the `>` of an arrow function or a
+ * comparison from the `>` that opens JSX text -- the arrow above paired with a
+ * later `<` and swallowed live code, so a real `draft.institution.campusName`
+ * became invisible and these checks reported PASS. The assertions below
+ * therefore match binding *shapes* via `bindsField`, which prose does not
+ * produce, rather than trying to remove prose wholesale.
  */
-function withoutProse(source) {
-  const stripped = source
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
+function withoutStrings(source) {
+  return source
+    .replace(/\/\*[\s\S]*?\*\*/g, " ")
     .replace(/(^|[^:"'`])\/\/.*$/gm, "$1")
     .replace(/`(?:[^`\\]|\\.)*`/g, " ")
     .replace(/"(?:[^"\\]|\\.)*"/g, " ")
-    .replace(/'(?:[^'\\]|\\.)*'/g, " ")
-    .replace(/>(?:[^<>{}]|\{[^{}]*\})*</g, "><");
-  return [stripped, ...(source.match(/\bid="[^"]*"/g) ?? [])].join(" ");
+    .replace(/'(?:[^'\\]|\\.)*'/g, " ");
+}
+
+/**
+ * Matches a real reference to a retired field -- a property read, an object or
+ * type key, a shorthand, a destructuring target, or a JSX attribute -- rather
+ * than the word merely appearing in a sentence. Leaving the name in a JSX-text
+ * sentence is fine; binding it is not.
+ */
+function bindsField(code, name) {
+  return new RegExp(
+    `\\.${name}\\b` + // draft.institution.campusName
+      `|\\b${name}\\s*:` + // campusName: string
+      `|\\b${name}\\s*[,}=]`, // { campusName } / campusName= / campusName,
+    "i",
+  ).test(code);
 }
 
 const store = readFileSync(join(ROOT, "src/lib/store.ts"), "utf8");
@@ -67,8 +87,8 @@ const institution = readFileSync(
   join(ROOT, "src/app/create/institution/page.tsx"),
   "utf8",
 );
-const storeCode = withoutProse(store);
-const institutionCode = withoutProse(institution);
+const storeCode = withoutStrings(store);
+const institutionCode = withoutStrings(institution);
 
 console.log("\nfederated USG-only contract\n");
 
@@ -95,7 +115,7 @@ check(
 );
 
 // --- 2. No federated validation may demand campus or college ---
-const validate = store.match(/export function validateStep[\s\S]*$/)?.[0] ?? "";
+const validate = storeCode.match(/export function validateStep[\s\S]*$/)?.[0] ?? "";
 check(
   "validateStep never pairs federated with a campus or college requirement",
   !/federated[\s\S]{0,80}(campus|college)/i.test(validate),
@@ -105,11 +125,19 @@ check(
 // --- 3. Institution step is free of the removed fields ---
 check(
   "institution step no longer binds campusName",
-  !/campusName/.test(institutionCode),
+  !bindsField(institutionCode, "campusName"),
+  "a live reference to campusName is still in the institution step",
 );
 check(
   "institution step no longer binds college",
-  !/\bcollege\b/.test(institutionCode),
+  !bindsField(institutionCode, "college"),
+  "a live reference to college is still in the institution step",
+);
+// Read raw: the id lives inside a string literal, which withoutStrings removes.
+check(
+  "institution step renders no campusName or college input",
+  !/\bid="(campusName|college)"/.test(institution),
+  "a leftover id attribute still points at a retired field",
 );
 check(
   "institution step no longer renders the federated details block",
@@ -131,16 +159,18 @@ check(
 // --- 5. The draft no longer carries the removed fields ---
 check(
   "InstitutionDraft no longer declares campusName",
-  !/type InstitutionDraft[\s\S]*?campusName[\s\S]*?\}/.test(storeCode),
+  !bindsField(storeCode, "campusName"),
   "campusName is still part of the draft type",
 );
 check(
   "InstitutionDraft no longer declares college",
-  !/type InstitutionDraft[\s\S]*?\bcollege\b[\s\S]*?\}/.test(storeCode),
+  !bindsField(storeCode, "college"),
+  "college is still part of the draft type",
 );
-// Read raw, not through withoutProse: the assertion needs the `""` literal, and
-// no comment or copy in store.ts writes `campusName: ""`.
-check("EMPTY_DRAFT seeds neither field", !/campusName:\s*""/.test(store));
+check(
+  "EMPTY_DRAFT seeds neither field",
+  !bindsField(storeCode, "campusName") && !bindsField(storeCode, "college"),
+);
 
 // --- 6. The persist key is bumped so stale drafts cannot resurrect them ---
 check(
