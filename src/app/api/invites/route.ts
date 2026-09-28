@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendBranded } from "@/lib/mail/send";
 import { inviteEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
+
+/**
+ * Each accepted invite writes a row and hands a letter to the mail transport, so
+ * this endpoint is the most expensive per call. The window is set for an officer
+ * working through a list by hand; a hall-sized broadcast would need to be
+ * batched somewhere else rather than widened here.
+ */
+const IP_LIMIT = 30;
+const IP_WINDOW_MS = 10 * 60_000;
 
 export type InviteRow = {
   id: string;
@@ -66,6 +76,14 @@ export async function POST(req: Request) {
     body = (await req.json()) as { email?: string; campusName?: string; unitType?: string };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  const limit = rateLimit(`invite:create:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("rate_limited") },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const account = await currentAccount();

@@ -2,10 +2,20 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { setSessionCookie } from "@/lib/auth/session";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendBranded } from "@/lib/mail/send";
 import { welcomeEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
+
+/**
+ * Looser than the database's ten per address on purpose. The database counts
+ * one mailbox; this counts one address, which behind a campus NAT is a whole
+ * hall of students signing in at once, so the bar sits well above the real
+ * volume and only stops a spray from a single host.
+ */
+const IP_LIMIT = 20;
+const IP_WINDOW_MS = 5 * 60_000;
 
 /**
  * Signs in with email and password.
@@ -27,6 +37,14 @@ export async function POST(req: Request) {
     body = (await req.json()) as { email?: string; password?: string };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  const limit = rateLimit(`login:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("rate_limited") },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const email = body.email?.trim() ?? "";

@@ -2,12 +2,17 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { hmacOtp, otpCode } from "@/lib/auth/crypto";
 import { maskEmail, messageFor } from "@/lib/auth/messages";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendBranded } from "@/lib/mail/send";
 import { otpEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
 
 const OTP_MINUTES = 15;
+
+/** One account and one passcode letter per accepted call, so this stays modest. */
+const IP_LIMIT = 15;
+const IP_WINDOW_MS = 10 * 60_000;
 
 /**
  * Step 1 of the invited flow: set a password, then mail a passcode.
@@ -26,6 +31,16 @@ export async function POST(req: Request) {
     body = (await req.json()) as { token?: string; password?: string };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  // No `canResend` here: the retry button would only be refused too, since
+  // resending is metered on its own.
+  const limit = rateLimit(`invite:accept:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("rate_limited") },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const token = body.token ?? "";

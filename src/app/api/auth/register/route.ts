@@ -2,9 +2,19 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { setSessionCookie } from "@/lib/auth/session";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 /** Nodemailer and pgcrypto-adjacent work needs the Node runtime. */
 export const runtime = "nodejs";
+
+/**
+ * Account creation is a one-shot per person, so nothing legitimate comes close
+ * to this. The database already caps it at five per address per hour; this sits
+ * above that only to keep a spray across many addresses from ever reaching the
+ * function in the first place.
+ */
+const IP_LIMIT = 8;
+const IP_WINDOW_MS = 10 * 60_000;
 
 type OwnerBody = {
   email?: string;
@@ -30,6 +40,14 @@ export async function POST(req: Request) {
     body = (await req.json()) as OwnerBody;
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  const limit = rateLimit(`register:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("rate_limited") },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const email = body.email?.trim() ?? "";

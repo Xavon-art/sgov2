@@ -2,8 +2,18 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { hmacOtp } from "@/lib/auth/crypto";
 import { messageFor } from "@/lib/auth/messages";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+
+/**
+ * The five-attempt ceiling that `verify_otp` keeps per code is the real guard on
+ * guessing; this is deliberately higher, because a shared campus address is
+ * where a whole hall of people enters their codes at once, and the response is
+ * still a 429 either way.
+ */
+const IP_LIMIT = 20;
+const IP_WINDOW_MS = 10 * 60_000;
 
 /**
  * Step 2 of the invited flow: exchange the emailed code for an active account.
@@ -18,6 +28,14 @@ export async function POST(req: Request) {
     body = (await req.json()) as { token?: string; code?: string };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  const limit = rateLimit(`invite:verify-otp:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("rate_limited") },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const code = (body.code ?? "").replace(/\D/g, "");

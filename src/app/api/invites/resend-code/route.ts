@@ -2,12 +2,22 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { hmacOtp, otpCode } from "@/lib/auth/crypto";
 import { maskEmail, messageFor } from "@/lib/auth/messages";
+import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendBranded } from "@/lib/mail/send";
 import { otpEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
 
 const OTP_MINUTES = 15;
+
+/**
+ * The tightest of these limits, because each call mints a fresh passcode and
+ * spends a real delivery: the previous code is overwritten, so a caller looping
+ * here is also invalidating codes people are reading. The client's own thirty
+ * second cooldown sits well inside it.
+ */
+const IP_LIMIT = 6;
+const IP_WINDOW_MS = 15 * 60_000;
 
 /**
  * Re-sends the activation code against a live invite.
@@ -23,6 +33,14 @@ export async function POST(req: Request) {
     body = (await req.json()) as { token?: string };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
+
+  const limit = rateLimit(`invite:resend:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("rate_limited") },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const token = body.token ?? "";
