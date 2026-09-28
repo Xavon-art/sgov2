@@ -6,6 +6,7 @@ import { Wordmark, Seal } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
 import { Workspace } from "@/components/dashboard/Workspace";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { IconCheck } from "@/components/ui/Icons";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 
@@ -28,6 +29,7 @@ type WorkspacePayload = RpcResult & {
   inviteCount: number;
   pendingCount: number;
   activatedCount: number;
+  recentlyApproved: boolean;
 };
 
 /**
@@ -156,6 +158,18 @@ export default async function DashboardPage() {
         </Reveal>
 
         <Reveal delay={0.1} className="mt-10">
+          {data.recentlyApproved ? (
+            <div className="mb-8 flex items-start gap-3 rounded-2xl border border-brass/40 bg-brass-soft/25 px-5 py-4 sm:items-center">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-brass-soft">
+                <IconCheck className="h-4 w-4" strokeWidth={2.4} />
+              </span>
+              <p className="text-[0.875rem] leading-relaxed text-ink">
+                <span className="font-semibold">Your USG has been approved.</span>{" "}
+                The emailed code verified this workspace, so it is open for
+                officers, campuses, and submissions.
+              </p>
+            </div>
+          ) : null}
           <Workspace account={account} variant={data.accountKind} />
         </Reveal>
 

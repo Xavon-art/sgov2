@@ -115,6 +115,10 @@ type Store = OrgDraft & {
   charter: string | null;
   organizationId: string | null;
   submittedAt: string | null;
+  // One-shot key to the owner OTP flow, kept for the life of the browser tab
+  // so a reload of the success step can resume verification. Cleared on
+  // approval; never emailed, never written to the database.
+  ownerVerify: { verifyToken: string; email: string; organizationName: string } | null;
   setModel: (model: GovernanceModel) => void;
   patchAccount: (patch: Partial<AccountDraft>) => void;
   patchInstitution: (patch: Partial<InstitutionDraft>) => void;
@@ -125,6 +129,9 @@ type Store = OrgDraft & {
   setUnits: (units: DraftUnit[]) => void;
   setCharter: (charter: string) => void;
   setOrganizationId: (id: string | null) => void;
+  setOwnerVerify: (
+    verify: { verifyToken: string; email: string; organizationName: string } | null,
+  ) => void;
   markSubmitted: () => void;
   reset: () => void;
 };
@@ -136,6 +143,7 @@ export const useOrgDraft = create<Store>()(
       charter: null,
       organizationId: null,
       submittedAt: null,
+      ownerVerify: null,
       setModel: (model) =>
         set((state) => ({
           model,
@@ -165,8 +173,10 @@ export const useOrgDraft = create<Store>()(
       setUnits: (units) => set({ units }),
       setCharter: (charter) => set({ charter }),
       setOrganizationId: (organizationId) => set({ organizationId }),
+      setOwnerVerify: (ownerVerify) => set({ ownerVerify }),
       markSubmitted: () => set({ submittedAt: new Date().toISOString() }),
-      reset: () => set({ ...EMPTY_DRAFT, charter: null, organizationId: null, submittedAt: null }),
+      reset: () =>
+        set({ ...EMPTY_DRAFT, charter: null, organizationId: null, submittedAt: null, ownerVerify: null }),
     }),
     {
       // Bumped from v1: those drafts carry campusName, college, and possibly an

@@ -88,6 +88,7 @@ const m7 = readMigration("20260101000700_create_organization_unit_tree.sql");
 const m8 = readMigration("20260101000800_unit_chart_functions.sql");
 const m9 = readMigration("20260101000900_roster_invites.sql");
 const m10 = readMigration("20260101001000_list_roster.sql");
+const m11 = readMigration("20260101001100_owner_otp_approval.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -308,6 +309,18 @@ const MIGRATION_FUNCTIONS = [
   ],
   ["00900", m9, ["smartgov.create_invite", "smartgov.accept_invite", "public.create_invite"]],
   ["001000", m10, ["smartgov.list_roster", "public.list_roster"]],
+  [
+    "001100",
+    m11,
+    [
+      "smartgov.set_owner_otp",
+      "smartgov.verify_owner_otp",
+      "smartgov.owner_registration_probe",
+      "public.set_owner_otp",
+      "public.verify_owner_otp",
+      "public.owner_registration_probe",
+    ],
+  ],
 ];
 for (const [file, sql, expected] of MIGRATION_FUNCTIONS) {
   const gaps = hardeningGaps(sql, expected);
@@ -332,7 +345,7 @@ check(
 );
 check(
   "no feature migration creates a policy",
-  ![m5, m6, m7, m8, m9, m10].some((sql) => /create policy/i.test(sql)),
+  ![m5, m6, m7, m8, m9, m10, m11].some((sql) => /create policy/i.test(sql)),
   "on this project one permissive policy turns a locked table into a read surface for anyone holding the publishable key",
 );
 
@@ -371,6 +384,114 @@ check(
 check(
   "public.list_roster is granted to anon, authenticated",
   /grant execute on function public\.list_roster\(text\) to anon, authenticated/.test(m10),
+);
+
+// --- 10. Owners are approved by an emailed OTP, not at submission ---
+const m11Flat = flat(m11);
+const ownerCreate =
+  functionBlocks(m11).find((b) => b.name === "smartgov.create_owner_account")?.body ?? "";
+const ownerVerify =
+  functionBlocks(m11).find((b) => b.name === "smartgov.verify_owner_otp")?.body ?? "";
+const ownerSetOtp =
+  functionBlocks(m11).find((b) => b.name === "smartgov.set_owner_otp")?.body ?? "";
+const ownerProbe =
+  functionBlocks(m11).find((b) => b.name === "smartgov.owner_registration_probe")?.body ?? "";
+const workspaceFn =
+  functionBlocks(m11).find((b) => b.name === "smartgov.account_workspace")?.body ?? "";
+
+check(
+  "001100 writes new owners as pending, not active",
+  /'pending', smartgov\.sha256\(v_verify_raw\)/.test(ownerCreate),
+  "a UUID row that never passes the emailed-code gate must not be able to reach an active app surface",
+);
+check(
+  "001100 mints a one-time verifyToken and returns it to the registrant",
+  /encode\(extensions\.gen_random_bytes\(24\), 'hex'\)/.test(ownerCreate) &&
+    /'verifyToken', v_verify_raw/.test(ownerCreate),
+);
+check(
+  "001100 stores only the SHA-256 of the verifyToken",
+  /add column if not exists verify_token_hash text/.test(m11) &&
+    /verify_token_hash = smartgov\.sha256\(p_verify_token\)/.test(m11Flat),
+  "the raw token must never reach the database, in case the connection is compromised",
+);
+check(
+  "001100 indexes the pending-owner lookup",
+  /create index if not exists accounts_verify_token_idx/.test(m11Flat),
+);
+
+const ownerVerifyFlat = flat(ownerVerify);
+check(
+  "verify_owner_otp resolves the account through the token hash",
+  /verify_token_hash = smartgov\.sha256\(p_verify_token\)/.test(ownerVerifyFlat),
+);
+check(
+  "verify_owner_otp locks the row while reading the attempt budget",
+  /from smartgov\.accounts a\s+where a\.verify_token_hash = smartgov\.sha256\(p_verify_token\)\s+for update/.test(
+    ownerVerifyFlat,
+  ),
+  "a concurrent pair of guesses must not both read the remaining budget",
+);
+check(
+  "verify_owner_otp spends the per-account rate budget",
+  /'owner-otp:verify:' \|\| v_account\.id::text/.test(ownerVerifyFlat) &&
+    /smartgov\.consume_rate_limit\(v_key, 20, interval '15 minutes'\)/.test(ownerVerifyFlat),
+);
+check(
+  "verify_owner_otp caps attempts at five per code",
+  /if v_account\.otp_attempts >= 5 then/.test(ownerVerifyFlat) &&
+    /otp_attempts = otp_attempts \+ 1/.test(ownerVerifyFlat),
+);
+check(
+  "a correct code activates the owner and clears the OTP surface",
+  /status = 'active'/.test(ownerVerifyFlat) &&
+    /activated_at = now\(\)/.test(ownerVerifyFlat) &&
+    /otp_hash = null/.test(ownerVerifyFlat) &&
+    /verify_token_hash = null/.test(ownerVerifyFlat),
+);
+check(
+  "verify_owner_otp reports already-registered as a success, not an error",
+  /'alreadyActive', true/.test(ownerVerifyFlat) &&
+    /'ok', true/.test(ownerVerifyFlat),
+  "the verify step is idempotent: the dashboard must not 500 after the owner verified in another tab",
+);
+
+const ownerSetFlat = flat(ownerSetOtp);
+check(
+  "set_owner_otp only serves a still-pending registration",
+  /status = 'pending'/.test(ownerSetFlat),
+);
+check(
+  "set_owner_otp caps resends at five per registration",
+  /if v_account\.otp_resends >= 5 then/.test(ownerSetFlat) &&
+    /otp_resends = otp_resends \+ 1/.test(ownerSetFlat),
+);
+check(
+  "set_owner_otp enforces a two-minute resend cooldown",
+  /interval '2 minutes'/.test(ownerSetFlat),
+);
+
+check(
+  "owner_registration_probe rejects an already-approved owner",
+  /'already_registered'/.test(flat(ownerProbe)),
+);
+
+const workspaceFlat = flat(workspaceFn);
+check(
+  "account_workspace exposes recentlyApproved only to owners",
+  /account_scope = 'owner'/.test(workspaceFlat),
+  "invited members must never see an approval banner for someone else's registration",
+);
+check(
+  "recentlyApproved is bounded to the fifteen-minute approval window",
+  /activated_at > now\(\) - interval '15 minutes'/.test(workspaceFlat),
+);
+
+check(
+  "the public owner-OTP wrappers are granted to anon, authenticated",
+  /grant execute on function public\.set_owner_otp\(text, text, integer\)\s+to anon, authenticated/.test(m11) &&
+    /grant execute on function public\.verify_owner_otp\(text, text\)\s+to anon, authenticated/.test(m11) &&
+    /grant execute on function public\.owner_registration_probe\(text\)\s+to anon, authenticated/.test(m11),
 );
 
 console.log(

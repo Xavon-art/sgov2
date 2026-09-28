@@ -5,10 +5,10 @@ import nodemailer, { type Transporter } from "nodemailer";
 /**
  * Outbound mail through Gmail SMTP.
  *
- * Only three messages exist -- invitation, one-time passcode, welcome -- and all
- * of them carry the SmartGov mark. The mark is attached inline with a
- * Content-ID rather than hot-linked, because Gmail and Outlook routinely block
- * remote images and would otherwise render a broken logo.
+ * Only a handful of messages exist -- invitation, one-time passcode, welcome,
+ * approval -- and all of them carry the SmartGov mark. The mark is attached
+ * inline with a Content-ID rather than hot-linked, because Gmail and Outlook
+ * routinely block remote images and would otherwise render a broken logo.
  */
 
 let transporter: Transporter | null = null;

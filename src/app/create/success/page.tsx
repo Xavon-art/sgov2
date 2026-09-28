@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { StepShell } from "@/components/create/StepShell";
+import { OwnerOtpVerify } from "@/components/create/OwnerOtpVerify";
 import { ButtonLink } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import {
@@ -15,7 +16,7 @@ import { ROLE_LABELS, useOrgDraft, type MemberRole } from "@/lib/store";
 import { registerAccount, submitOrganization } from "@/lib/submit";
 import { useStepGuard } from "@/lib/useStepGuard";
 
-type Phase = "submitting" | "done" | "local";
+type Phase = "submitting" | "verify" | "done" | "local";
 
 const NEXT = [
   {
@@ -43,13 +44,20 @@ export default function SuccessPage() {
     setCharter,
     organizationId,
     setOrganizationId,
+    ownerVerify,
+    setOwnerVerify,
     markSubmitted,
     reset,
   } = draft;
   const started = useRef(false);
-  const [phase, setPhase] = useState<Phase>(
-    organizationId ? "done" : "submitting",
-  );
+  // A reload during the OTP step is expected: the registration exists, so the
+  // step resumes where it left off rather than re-submitting. `ownerVerify` is
+  // sessionStorage-persisted and cleared on approval.
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (organizationId && ownerVerify) return "verify";
+    if (organizationId) return "done";
+    return "submitting";
+  });
   const [note, setNote] = useState<string | null>(null);
   const [signInNote, setSignInNote] = useState<string | null>(null);
 
@@ -75,9 +83,20 @@ export default function SuccessPage() {
         // exists to attach it to. A failure here leaves the charter valid, so
         // the flow reports it rather than pretending the whole thing failed.
         const registered = await registerAccount(draft, result.organizationId);
-        if (!registered.ok) setSignInNote(registered.reason);
+        if (!registered.ok) {
+          setSignInNote(registered.reason);
+          setPhase("done");
+          return;
+        }
 
-        setPhase("done");
+        // The registration is pending approval. The verify step replaces the
+        // done state until the emailed code comes back.
+        setOwnerVerify({
+          verifyToken: registered.verifyToken,
+          email: registered.email,
+          organizationName: registered.organizationName,
+        });
+        setPhase("verify");
       })
       .catch((err: unknown) => {
         setNote(err instanceof Error ? err.message : "Unexpected error.");
@@ -86,8 +105,33 @@ export default function SuccessPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function handleVerified() {
+    setOwnerVerify(null);
+
+    // Approval happened; the registrant already knows their password, so re-run
+    // `login_account` through the existing login route instead of asking them to
+    // sign in again. A failure here only falls back to the sign-in button.
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: draft.account.email.trim(),
+          password: draft.account.password,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) setSignInNote(data.message ?? "Sign in to open your workspace.");
+    } catch {
+      setSignInNote("Sign in to open your workspace.");
+    }
+
+    setPhase("done");
+  }
+
   const federated = draft.model === "federated";
   const submitting = phase === "submitting";
+  const verifying = phase === "verify";
 
   return (
     <StepShell
@@ -99,6 +143,8 @@ export default function SuccessPage() {
             <span className="size-2 animate-pulse rounded-full bg-brass" />
             Granting your charter
           </span>
+        ) : verifying ? (
+          "Ensure it's you"
         ) : (
           <>
             Your charter has
@@ -109,12 +155,14 @@ export default function SuccessPage() {
       lede={
         submitting
           ? "Creating your organization, its founding officer record, and its org chart root."
-          : `${draft.organization.name} is now a chartered SmartGov organization, governed for ${draft.organization.academicYear}.`
+          : verifying
+            ? `We sent a six-digit code to ${ownerVerify?.email ?? "your email"}. Enter it to approve.`
+            : `${draft.organization.name} is now a chartered SmartGov organization, governed for ${draft.organization.academicYear}.`
       }
     >
       <div className="flex flex-col items-center">
         <div className="relative">
-          {!submitting ? (
+          {!submitting && !verifying ? (
             <span
               aria-hidden
               className="absolute inset-0 -z-10 rounded-full bg-brass/20 blur-2xl"
@@ -132,38 +180,53 @@ export default function SuccessPage() {
           />
         </div>
 
-        <p className="mt-7 font-mono text-[0.8125rem] tracking-[0.14em] text-brass-deep">
-          {charter ?? "———"}
-        </p>
+        {verifying ? (
+          <div className="mt-8 w-full max-w-md">
+            <OwnerOtpVerify
+              verifyToken={ownerVerify?.verifyToken ?? ""}
+              email={ownerVerify?.email ?? ""}
+              organizationName={ownerVerify?.organizationName ?? ""}
+              onVerified={handleVerified}
+            />
+          </div>
+        ) : (
+          <>
+            <p className="mt-7 font-mono text-[0.8125rem] tracking-[0.14em] text-brass-deep">
+              {charter ?? "———"}
+            </p>
 
-        {phase === "done" ? (
-          <p className="animate-float-in mt-4 inline-flex items-center gap-2 rounded-full border border-brass/40 bg-brass-soft/30 px-3.5 py-1.5 text-[0.75rem] font-medium text-ink">
-            <IconCheck className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2.4} />
-            Organization created
-            {organizationId ? (
-              <span className="font-mono text-[0.6875rem] text-ink-soft">
-                · {organizationId.slice(0, 8)}
-              </span>
+            {phase === "done" ? (
+              <p className="animate-float-in mt-4 inline-flex items-center gap-2 rounded-full border border-brass/40 bg-brass-soft/30 px-3.5 py-1.5 text-[0.75rem] font-medium text-ink">
+                <IconCheck className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2.4} />
+                {signInNote ? "Organization created" : "Approved"}
+                {organizationId ? (
+                  <span className="font-mono text-[0.6875rem] text-ink-soft">
+                    · {organizationId.slice(0, 8)}
+                  </span>
+                ) : null}
+              </p>
             ) : null}
-          </p>
-        ) : null}
 
-        {note ? (
-          <p className="mt-4 max-w-md rounded-xl border border-line-strong bg-canvas/70 px-4 py-3 text-left text-[0.75rem] leading-relaxed text-muted">
-            <span className="font-semibold text-ink">Prototype notice. </span>
-            {note} The charter above is still valid for this session.
-          </p>
-        ) : null}
+            {note ? (
+              <p className="mt-4 max-w-md rounded-xl border border-line-strong bg-canvas/70 px-4 py-3 text-left text-[0.75rem] leading-relaxed text-muted">
+                <span className="font-semibold text-ink">Prototype notice. </span>
+                {note} The charter above is still valid for this session.
+              </p>
+            ) : null}
 
-        {signInNote ? (
-          <p
-            role="alert"
-            className="mt-4 max-w-md rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-4 py-3 text-left text-[0.75rem] leading-relaxed text-[#a5442c]"
-          >
-            <span className="font-semibold">Your organization was created, </span>
-            but the sign-in account was not: {signInNote}
-          </p>
-        ) : null}
+            {signInNote ? (
+              <p
+                role="alert"
+                className="mt-4 max-w-md rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-4 py-3 text-left text-[0.75rem] leading-relaxed text-[#a5442c]"
+              >
+                <span className="font-semibold">
+                  {phase === "done" ? "Your USG was approved, " : "Your organization was created, "}
+                </span>
+                but signing you in needs one more step: {signInNote}
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
 
       <div className="mt-10 rounded-2xl border border-line-strong/70 bg-paper/70 p-6 sm:p-7">
@@ -222,7 +285,7 @@ export default function SuccessPage() {
       </ol>
 
       <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
-        {signInNote ? (
+        {verifying ? null : signInNote ? (
           <ButtonLink href="/login" size="lg" className="w-full sm:w-auto">
             Sign in
             <IconArrowRight className="h-4.5 w-4.5 transition-transform duration-500 group-hover:translate-x-1" />

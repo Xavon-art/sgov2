@@ -113,16 +113,27 @@ export async function submitOrganization(
   };
 }
 
-export type RegisterAccountResult = { ok: true } | { ok: false; reason: string };
+export type RegisterAccountResult =
+  | {
+      ok: true;
+      verifyToken: string;
+      email: string;
+      organizationName: string;
+    }
+  | { ok: false; reason: string };
 
 /**
  * Turns the administrator details collected in the setup flow into a
- * login-capable account.
+ * registration that is waiting on its emailed code.
  *
  * Runs after `submitOrganization` because the account is linked to the
  * organization row. `accountKind` comes from the governance model: federated
  * (decentralized) accounts land on the USG dashboard, unitary (centralized) on
  * the central one.
+ *
+ * The returned `verifyToken` is the registrant's one-time key to the OTP flow;
+ * it is stored for this session only and never emailed. The account is not
+ * approved yet — `/api/auth/verify-owner` does that.
  */
 export async function registerAccount(
   draft: OrgDraft,
@@ -151,5 +162,17 @@ export async function registerAccount(
     };
   }
 
-  return { ok: true };
+  if (typeof data.verifyToken !== "string" || !data.verifyToken) {
+    return {
+      ok: false,
+      reason: "We could not start verification. Please try again.",
+    };
+  }
+
+  return {
+    ok: true,
+    verifyToken: data.verifyToken,
+    email: typeof data.email === "string" ? data.email : "",
+    organizationName: typeof data.organizationName === "string" ? data.organizationName : "",
+  };
 }

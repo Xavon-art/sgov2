@@ -2,7 +2,7 @@ import { MARK_CID, siteUrl } from "@/lib/mail/send";
 import type { BrandedMail } from "@/lib/mail/send";
 
 /**
- * The three transactional emails, drawn from the same palette as the site:
+ * The transactional emails, drawn from the same palette as the site:
  * navy ink, brass accents, ivory canvas, serif display.
  *
  * Email clients are hostile to modern layout, so these are table-based with
@@ -375,4 +375,63 @@ export function welcomeEmail(opts: {
     .join("\n");
 
   return { to: opts.to, subject: `Your SmartGov account is active`, html, text };
+}
+
+// ---------------------------------------------------------------- approval
+
+export function approvalEmail(opts: {
+  to: string;
+  displayName: string;
+  organizationName: string;
+  universityName: string;
+  campusName: string;
+  accountKind: "usg" | "central";
+}): BrandedMail {
+  const url = `${siteUrl()}/login`;
+  const scope =
+    opts.accountKind === "usg"
+      ? "University Student Government"
+      : "Centralized student government office";
+
+  const html = shell({
+    preheader: `Your ${opts.campusName || opts.organizationName} registration is approved.`,
+    body: [
+      eyebrow("Approved"),
+      heading("Your USG has been approved"),
+      paragraph(
+        `Your registration for ${opts.campusName || opts.organizationName} was verified, ${opts.displayName}. Your account is now an approved ${scope} workspace.`,
+      ),
+      detailsPanel(
+        [
+          detail("Email", opts.to),
+          opts.universityName ? detail("University", opts.universityName) : "",
+          detail("Workspace", scope),
+        ].filter(Boolean),
+      ),
+      paragraph(
+        "Sign in any time to manage your councils, invites, and submissions.",
+      ),
+      button(url, "Sign in to SmartGov"),
+      fallbackLink(url),
+      signOff(),
+    ].join(""),
+    footnote: "Your registration was approved. You can sign in with your email and password.",
+  });
+
+  const text = [
+    "APPROVED",
+    "",
+    `Your ${opts.campusName || opts.organizationName} registration was verified, ${opts.displayName}.`,
+    "",
+    `Email: ${opts.to}`,
+    opts.universityName ? `University: ${opts.universityName}` : "",
+    `Workspace: ${scope}`,
+    "",
+    "Sign in:",
+    url,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return { to: opts.to, subject: `Your USG is approved — SmartGov`, html, text };
 }

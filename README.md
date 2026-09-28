@@ -108,6 +108,7 @@ Postgres on Supabase. Migrations live in `supabase/migrations/` and **must be ap
 | `20260101000800_unit_chart_functions.sql` | `unit_chart` — the scoping centrepiece. An owner sees every unit; an LSG officer sees only their own units plus the parent USG, filtered in the SQL `where` clause so other units are never in the result set. Plus the owner-only writes: `add_position`, `toggle_unit_position`, `assign_officer`, `release_officer` |
 | `20260101000900_roster_invites.sql` | Extends `create_invite` with unit/position args: it writes the roster row and the membership in the same transaction, so the seat is filled at invite time and accepting only links the account. `accept_invite` sets `roster.account_id` |
 | `20260101001000_list_roster.sql` | Owner-only roster read for the seat-assignment picker. Necessary because the roster is one row per email per org: without it an officer could never be moved between seats, since re-inviting the same address collides with the unique index |
+| `20260101001100_owner_otp_approval.sql` | Owners are approved by an emailed OTP, not at submission. `create_owner_account` now writes `pending`, mints a one-time `verifyToken` (only its SHA-256 is stored), and `set_owner_otp` / `verify_owner_otp` gate activation on the code — the same HMAC/per-code-attempt ceiling invites use. `account_workspace` gains `recentlyApproved` for the dashboard banner |
 
 Apply them either way:
 
@@ -258,7 +259,7 @@ src/
     chart.ts                     unit_chart / list_roster types + fetchers
     submit.ts                    submitOrganization, registerAccount
     steps.ts                     the setup flow's step definitions
-supabase/migrations/             ten files, apply in order
+supabase/migrations/             eleven files, apply in order
 ```
 
 `@/*` is aliased to `./src/*` in `tsconfig.json`. Every route handler and server component that touches auth runs on `export const runtime = "nodejs"`, because Nodemailer and the HMAC helpers need Node built-ins.

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
-import { messageFor } from "@/lib/auth/messages";
-import { setSessionCookie } from "@/lib/auth/session";
+import { hmacOtp, otpCode } from "@/lib/auth/crypto";
+import { maskEmail, messageFor } from "@/lib/auth/messages";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { sendBranded } from "@/lib/mail/send";
+import { otpEmail } from "@/lib/mail/templates";
 
-/** Nodemailer and pgcrypto-adjacent work needs the Node runtime. */
 export const runtime = "nodejs";
+
+const OTP_MINUTES = 15;
 
 /**
  * Account creation is a one-shot per person, so nothing legitimate comes close
@@ -27,12 +30,22 @@ type OwnerBody = {
 };
 
 /**
- * Turns a finished setup flow into a login-capable account.
+ * Step 1 of the USG flow: create the registration, then mail a passcode.
  *
- * The session is minted by re-running `login_account` with the same credentials
- * rather than by asking for a session on the new account id. There is
- * deliberately no RPC that takes an account id and returns a token, because
- * `anon` could call it for any id it could guess.
+ * The account is created in `pending` — the `verifyToken` returned here is the
+ * only way to feed the OTP back in — and only becomes `active` once
+ * `/api/auth/verify-owner` succeeds. "Approval" is precisely that: proving the
+ * registration email belongs to the person who registered.
+ *
+ * Unlike the invited flow, the session is NOT minted here: `login_account`
+ * refuses `pending` accounts, and approving the code on the client re-runs
+ * `login_account` through the existing login route, so sign-in is only possible
+ * after approval.
+ *
+ * The code is never returned to the caller — it exists in the mail and in the
+ * HMAC that was stored. If the code email fails, the registration still exists,
+ * so the response says `canResend` and the client offers a retry rather than a
+ * dead end.
  */
 export async function POST(req: Request) {
   let body: OwnerBody;
@@ -73,16 +86,58 @@ export async function POST(req: Request) {
       );
     }
 
-    const session = await callRpc<RpcResult>("login_account", {
-      p_email: email,
-      p_password: password,
-    });
-
-    if (session.ok && typeof session.token === "string") {
-      await setSessionCookie(session.token);
+    const verifyToken = typeof created.verifyToken === "string" ? created.verifyToken : "";
+    if (!verifyToken) {
+      return NextResponse.json(
+        { ok: false, message: "We could not start verification. Please try again." },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({ ok: true });
+    const code = otpCode();
+
+    const stored = await callRpc<boolean>("set_owner_otp", {
+      p_verify_token: verifyToken,
+      p_otp_hash: hmacOtp(code),
+      p_ttl_minutes: OTP_MINUTES,
+    });
+
+    if (!stored) {
+      return NextResponse.json(
+        { ok: false, message: "We could not start verification. Please try again." },
+        { status: 500 },
+      );
+    }
+
+    try {
+      await sendBranded(
+        otpEmail({
+          to: email,
+          code,
+          organizationName: String(created.organizationName ?? ""),
+          campusName: String(created.campusName ?? ""),
+          minutes: OTP_MINUTES,
+        }),
+      );
+    } catch (mailError) {
+      console.error("[register:otp-email]", mailError);
+      return NextResponse.json({
+        ok: true,
+        code: "email_failed",
+        canResend: true,
+        verifyToken,
+        email: maskEmail(email),
+        organizationName: String(created.organizationName ?? ""),
+        message: "Your registration was saved but the code did not send. Use “Send the code again” below.",
+      });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      verifyToken,
+      email: maskEmail(email),
+      organizationName: String(created.organizationName ?? ""),
+    });
   } catch (error) {
     console.error("[register]", error);
     return NextResponse.json(
