@@ -92,4 +92,18 @@ export function canInvite(account: Account | null): boolean {
   return Boolean(account && account.accountScope === "owner" && account.organizationId);
 }
 
+/**
+ * True when the account may run the owner-only chart writes.
+ *
+ * `account_scope` is the same signal `smartgov.create_invite` gates on, and an
+ * invited member is always written as `invited`, so owner-scope is a necessary
+ * condition for the founding-member check the chart functions make. It costs one
+ * row read here where re-reading the chart to learn `scope` costs an aggregate
+ * over every unit -- and it is a gate, not the authority: the function still
+ * proves `organization_members.is_founding` before it writes.
+ */
+export function canManageChart(account: Account | null): boolean {
+  return Boolean(account && account.accountScope === "owner" && account.organizationId);
+}
+
 export type { RpcResult };

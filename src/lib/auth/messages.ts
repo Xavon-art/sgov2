@@ -29,6 +29,11 @@ const RPC_MESSAGES: Record<string, string> = {
   rate_limited: "Too many attempts. Please wait a few minutes and try again.",
   invalid_request: "Something went wrong. Please try again.",
   database_unavailable: "The database is not configured, so this cannot run yet.",
+  invalid_label: "Give the position a name before adding it.",
+  duplicate_label: "Your organization already has a position with that name.",
+  not_found: "That unit or position is not part of your organization.",
+  seat_occupied: "This seat still has a holder — release them first.",
+  seat_not_enabled: "This position is not enabled for that unit yet.",
 };
 
 export function messageFor(reason?: string): string {

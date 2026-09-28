@@ -5,8 +5,18 @@ import { Reveal } from "@/components/fx/Reveal";
 import { Wordmark } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import {
+  AddPositionControl,
+  UnitSeatToggles,
+} from "@/components/org-chart/OrgChartControls";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
-import { fetchUnitChart, unitTypeLabel, type ChartSeat, type ChartUnit } from "@/lib/chart";
+import {
+  fetchUnitChart,
+  unitTypeLabel,
+  type ChartPosition,
+  type ChartSeat,
+  type ChartUnit,
+} from "@/lib/chart";
 
 // The chart is scoped in Postgres to whatever the session token resolves to, so
 // it changes with the cookie and must never be cached.
@@ -37,7 +47,7 @@ function SeatRow({ seat }: { seat: ChartSeat }) {
   );
 }
 
-function UnitCard({ unit }: { unit: ChartUnit }) {
+function UnitCard({ unit, positions }: { unit: ChartUnit; positions: ChartPosition[] }) {
   return (
     <article className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -60,6 +70,8 @@ function UnitCard({ unit }: { unit: ChartUnit }) {
           No positions are enabled for this unit yet.
         </p>
       )}
+
+      <UnitSeatToggles unit={unit} positions={positions} />
     </article>
   );
 }
@@ -148,7 +160,11 @@ export default async function OrgChartPage() {
           </p>
         </Reveal>
 
-        <Reveal delay={0.06} className="mt-10">
+        <Reveal delay={0.04} className="mt-10">
+          <AddPositionControl positions={chart.positions} />
+        </Reveal>
+
+        <Reveal delay={0.06} className="mt-4">
           <section className="rounded-2xl border border-line-strong bg-paper/80 p-6 shadow-lift sm:p-7">
             <p className="eyebrow">Top of the chart</p>
             <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
@@ -186,7 +202,7 @@ export default async function OrgChartPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               {children.map((unit, i) => (
                 <Reveal key={unit.id} delay={i * 0.02}>
-                  <UnitCard unit={unit} />
+                  <UnitCard unit={unit} positions={chart.positions} />
                 </Reveal>
               ))}
             </div>
