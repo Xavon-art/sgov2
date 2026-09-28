@@ -193,6 +193,30 @@ function signOff(): string {
   </tr>`;
 }
 
+/**
+ * The navy code block shared by the passcode and password-reset emails. The
+ * wide tracking and the deep background are what make a six-digit code
+ * unmistakable in a crowded inbox.
+ */
+function codePanel(code: string, caption: string): string {
+  return `<tr>
+    <td style="padding:0 0 20px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${DEEP};border-radius:10px;">
+        <tr>
+          <td align="center" style="padding:22px 16px 24px 16px;">
+            <div style="font-family:${SANS};font-size:34px;line-height:1;letter-spacing:0.34em;font-weight:700;color:#ffffff;text-indent:0.34em;">
+              ${esc(code)}
+            </div>
+            <div style="padding:12px 0 0 0;font-family:${SANS};font-size:12px;line-height:1.5;letter-spacing:0.08em;color:${BRASS_SOFT};">
+              ${esc(caption)}
+            </div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
 // ---------------------------------------------------------------- invitation
 
 export function inviteEmail(opts: {
@@ -266,22 +290,7 @@ export function otpEmail(opts: {
       paragraph(
         `Enter this code to finish activating your SmartGov account for ${opts.organizationName}.`,
       ),
-      `<tr>
-        <td style="padding:0 0 20px 0;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${DEEP};border-radius:10px;">
-            <tr>
-              <td align="center" style="padding:22px 16px 24px 16px;">
-                <div style="font-family:${SANS};font-size:34px;line-height:1;letter-spacing:0.34em;font-weight:700;color:#ffffff;text-indent:0.34em;">
-                  ${esc(opts.code)}
-                </div>
-                <div style="padding:12px 0 0 0;font-family:${SANS};font-size:12px;line-height:1.5;letter-spacing:0.08em;color:${BRASS_SOFT};">
-                  Expires in ${opts.minutes} minutes
-                </div>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>`,
+      codePanel(opts.code, `Expires in ${opts.minutes} minutes`),
       paragraph(
         `If you did not request this, you can ignore this email — the code is useless without the password you just set.`,
       ),
@@ -299,6 +308,42 @@ export function otpEmail(opts: {
   ].join("\n");
 
   return { to: opts.to, subject: `${opts.code} is your SmartGov code`, html, text };
+}
+
+// ---------------------------------------------------------------- password reset
+
+export function passwordResetEmail(opts: {
+  to: string;
+  code: string;
+  minutes: number;
+}): BrandedMail {
+  const html = shell({
+    preheader: "Reset your SmartGov password with the code we just emailed you.",
+    body: [
+      eyebrow("Password reset"),
+      heading("Set a new password"),
+      paragraph(
+        "We received a request to reset the password for your SmartGov account. Enter this code to confirm it is really you.",
+      ),
+      codePanel(opts.code, `Expires in ${opts.minutes} minutes`),
+      paragraph(
+        "If you did not ask to change your password, ignore this email. Only the person reading this inbox can use the code, and your password stays exactly as it is.",
+      ),
+    ].join(""),
+    footnote: "This code is personal to you. Never forward it.",
+  });
+
+  const text = [
+    "PASSWORD RESET",
+    "",
+    `Your SmartGov reset code is: ${opts.code}`,
+    "",
+    `It expires in ${opts.minutes} minutes.`,
+    "Enter it on the sign-in page to set a new password.",
+    "If this was not you, ignore this email.",
+  ].join("\n");
+
+  return { to: opts.to, subject: `Reset your SmartGov password`, html, text };
 }
 
 // ---------------------------------------------------------------- welcome

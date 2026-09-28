@@ -89,6 +89,7 @@ const m8 = readMigration("20260101000800_unit_chart_functions.sql");
 const m9 = readMigration("20260101000900_roster_invites.sql");
 const m10 = readMigration("20260101001000_list_roster.sql");
 const m11 = readMigration("20260101001100_owner_otp_approval.sql");
+const m12 = readMigration("20260101001200_password_reset.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -321,6 +322,16 @@ const MIGRATION_FUNCTIONS = [
       "public.owner_registration_probe",
     ],
   ],
+  [
+    "001200",
+    m12,
+    [
+      "smartgov.begin_password_reset",
+      "smartgov.complete_password_reset",
+      "public.begin_password_reset",
+      "public.complete_password_reset",
+    ],
+  ],
 ];
 for (const [file, sql, expected] of MIGRATION_FUNCTIONS) {
   const gaps = hardeningGaps(sql, expected);
@@ -345,7 +356,7 @@ check(
 );
 check(
   "no feature migration creates a policy",
-  ![m5, m6, m7, m8, m9, m10, m11].some((sql) => /create policy/i.test(sql)),
+  ![m5, m6, m7, m8, m9, m10, m11, m12].some((sql) => /create policy/i.test(sql)),
   "on this project one permissive policy turns a locked table into a read surface for anyone holding the publishable key",
 );
 
@@ -492,6 +503,79 @@ check(
   /grant execute on function public\.set_owner_otp\(text, text, integer\)\s+to anon, authenticated/.test(m11) &&
     /grant execute on function public\.verify_owner_otp\(text, text\)\s+to anon, authenticated/.test(m11) &&
     /grant execute on function public\.owner_registration_probe\(text\)\s+to anon, authenticated/.test(m11),
+);
+
+// --- 11. Password recovery is an emailed OTP against a dedicated reset row ---
+const m12Flat = flat(m12);
+const resetBegin =
+  functionBlocks(m12).find((b) => b.name === "smartgov.begin_password_reset")?.body ?? "";
+const resetComplete =
+  functionBlocks(m12).find((b) => b.name === "smartgov.complete_password_reset")?.body ?? "";
+
+check(
+  "001200 creates smartgov.password_resets",
+  /create table if not exists smartgov\.password_resets/.test(m12),
+);
+check(
+  "001200 enables RLS on password_resets",
+  /alter table smartgov\.password_resets enable row level security/.test(m12),
+);
+check(
+  "001200 allows at most one live reset per account",
+  /create unique index if not exists password_resets_one_active_per_account\s+on smartgov\.password_resets \(account_id\)\s+where completed_at is null/.test(
+    m12Flat,
+  ),
+  "two parallel resets for the same account would let a stale code compete with a fresh one",
+);
+
+const beginFlat = flat(resetBegin);
+check(
+  "begin_password_reset only serves an active account",
+  /status = 'active'/.test(beginFlat),
+  "a pending account has no password yet; its recovery belongs to the invite or owner flow",
+);
+check(
+  "begin_password_reset refuses unknown addresses",
+  /if not found then\s+return false/.test(beginFlat),
+  "the false return is what lets the route answer identically for a missing account",
+);
+check(
+  "begin_password_reset caps resends at five per reset row",
+  /otp_resends >= 5/.test(beginFlat) && /otp_resends = otp_resends \+ 1/.test(beginFlat),
+);
+check(
+  "begin_password_reset enforces a two-minute resend cooldown",
+  /interval '2 minutes'/.test(beginFlat),
+);
+
+const completeFlat = flat(resetComplete);
+check(
+  "complete_password_reset re-hashes the new password",
+  /password_hash = smartgov\.hash_password\(p_new_password\)/.test(completeFlat),
+  "the plaintext must only exist on the wire to this function, exactly like accept_invite",
+);
+check(
+  "complete_password_reset revokes every session",
+  /delete from smartgov\.sessions s\s+where s\.account_id = v_account\.id/.test(completeFlat),
+  "a changed password is worthless while a stolen session still holds the account",
+);
+check(
+  "complete_password_reset caps verification at five attempts",
+  /otp_attempts >= 5/.test(completeFlat) && /otp_attempts = otp_attempts \+ 1/.test(completeFlat),
+);
+check(
+  "complete_password_reset spends a per-account verification budget",
+  /'password-reset:verify:' \|\| v_account\.id::text/.test(completeFlat),
+);
+check(
+  "complete_password_reset marks the reset completed on success",
+  /completed_at = now\(\)/.test(completeFlat),
+);
+
+check(
+  "the public password-reset wrappers are granted to anon, authenticated",
+  /grant execute on function public\.begin_password_reset\(text, text, integer\)\s+to anon, authenticated/.test(m12) &&
+    /grant execute on function public\.complete_password_reset\(text, text, text\)\s+to anon, authenticated/.test(m12),
 );
 
 console.log(
