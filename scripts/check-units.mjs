@@ -23,8 +23,12 @@
  *   7. The four new tables are RLS-enabled with no policies.
  *   8. The my-council page makes exactly one data call.
  *   9. list_roster exists and is owner-only.
+ *  10. Owners are approved by an emailed OTP, not at submission.
+ *  11. Password recovery is an emailed OTP against a dedicated reset row.
+ *  12. The dashboard can add a unit, and can invite an officer into it with
+ *      no position seat.
  *
- * Run: node scripts/check-units.mjs (9 items, 43 assertions)
+ * Run: node scripts/check-units.mjs (12 items, 87 assertions)
  *
  * These assertions are only worth their green if they can go red, so the
  * load-bearing ones were mutation-tested against the exact regressions they
@@ -349,6 +353,16 @@ const MIGRATION_FUNCTIONS = [
       "public.complete_password_reset",
     ],
   ],
+  [
+    "001400",
+    m14,
+    [
+      "smartgov.add_unit",
+      "smartgov.create_invite",
+      "public.create_invite",
+      "public.add_unit",
+    ],
+  ],
 ];
 for (const [file, sql, expected] of MIGRATION_FUNCTIONS) {
   const gaps = hardeningGaps(sql, expected);
@@ -373,7 +387,7 @@ check(
 );
 check(
   "no feature migration creates a policy",
-  ![m5, m6, m7, m8, m9, m10, m11, m12].some((sql) => /create policy/i.test(sql)),
+  ![m5, m6, m7, m8, m9, m10, m11, m12, m14].some((sql) => /create policy/i.test(sql)),
   "on this project one permissive policy turns a locked table into a read surface for anyone holding the publishable key",
 );
 
@@ -609,11 +623,11 @@ const addUnit = functionBlocks(m14).find((b) => b.name === "smartgov.add_unit")?
 const addUnitFlat = flat(addUnit);
 const relaxedInvite =
   functionBlocks(m14).find((b) => b.name === "smartgov.create_invite")?.body ?? "";
-// Comment-stripped before it is flattened, so a relaxed guard that was only
+// `readMigration` already stripped `--` comments, so a guard that was only
 // commented out -- `-- or (p_unit_id is not null and p_position_id is null)` --
-// cannot be mistaken for the relaxation having landed.
-const relaxedNoComments = withoutSqlComments(relaxedInvite);
-const relaxedFlat = flat(relaxedNoComments);
+// cannot be mistaken for the relaxation having landed. Flattened from that
+// comment-stripped source for the same reason 00600's DDL is.
+const relaxedFlat = flat(relaxedInvite);
 
 check(
   "001400 drops the NOT NULL on unit_memberships.position_id",
@@ -628,7 +642,7 @@ check(
 );
 check(
   "add_unit allows only college, campus, department",
-  /v_type not in \('college', 'campus', 'department'\)/.test(addUnitFlat),
+  /not in \('college', 'campus', 'department'\)/.test(addUnitFlat),
   "a unit below the organization is a college, a campus, or a department; anything else invents a layer the chart cannot draw",
 );
 check(
@@ -651,18 +665,47 @@ check(
 check(
   "001400 creates smartgov.create_invite",
   relaxedInvite.length > 0,
-  "the relaxation lives in this function; without it there is nothing for the next two checks to read",
+  "the relaxation lives in this function; without it there is nothing for the next three checks to read",
 );
+// The two halves of the old "one without the other is not a seat" guard, named
+// as a shape rather than a string. Matching the rejection in either operand
+// order is the point: `or (p_position_id is null and p_unit_id is not null)`
+// rejects exactly the seatless invite the relaxation is for, and a check that
+// only recognised one spelling of it would be satisfied by that reordering.
+const rejectsSeatless =
+  /p_unit_id is not null and p_position_id is null|p_position_id is null and p_unit_id is not null/;
+const forbidsPositionWithoutUnit =
+  /p_unit_id is null and p_position_id is not null|p_position_id is not null and p_unit_id is null/;
+
 check(
   "the relaxed create_invite allows unit without position",
-  relaxedInvite.length > 0 &&
-    !/or \(p_unit_id is not null and p_position_id is null\)/.test(relaxedFlat),
+  relaxedInvite.length > 0 && !rejectsSeatless.test(relaxedFlat),
   "this is the guard that has to go: it is what currently makes a seatless invite impossible",
 );
 check(
   "the relaxed create_invite still forbids position without unit",
-  /p_unit_id is null and p_position_id is not null/.test(relaxedFlat),
+  forbidsPositionWithoutUnit.test(relaxedFlat),
   "relaxing the pair must not take the other half with it; a position with no unit is a membership the chart cannot resolve",
+);
+// Negative literals can only prove that a guard was spelled out, not that a path
+// exists, so the seatless path gets a positive assertion of its own: the
+// membership row is written with the caller's own ids, `p_position_id` included,
+// so a unit with no seat really does get a membership instead of a refusal.
+// `[^;]*` on the guard half is what makes this a guard detector rather than a
+// substring match -- in an unmutated migration the seat checks close and the
+// invite and roster writes both land between `if p_position_id is not null then`
+// and this insert, so a `;` always intervenes and re-wrapping the insert in that
+// guard is what turns this red.
+const seatlessMembership =
+  /insert into smartgov\.unit_memberships\s*\(\s*roster_id\s*,\s*unit_id\s*,\s*position_id\s*\)\s*values\s*\(\s*[\w.]*roster_id\s*,\s*p_unit_id\s*,\s*p_position_id\s*\)/;
+const seatlessInsertGuarded =
+  /\bif\b[^;]*\bp_position_id\b[^;]*\bis not null\b[^;]*\bthen\b[^;]*\binsert into smartgov\.unit_memberships\b/;
+check(
+  "the relaxed create_invite writes a membership for a unit without a position",
+  relaxedInvite.length > 0 &&
+    seatlessMembership.test(relaxedFlat) &&
+    !seatlessInsertGuarded.test(relaxedFlat),
+  "a unit invite must still write the unit_memberships row that unit_chart scopes on; behind a `p_position_id is not null` guard the row is never written and the relaxation did not land",
 );
 
 console.log(
