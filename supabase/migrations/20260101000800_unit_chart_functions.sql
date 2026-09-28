@@ -1,11 +1,12 @@
 -- The org chart: one scoped read, four owner-only writes.
 --
 -- The read is the point of this migration. An LSG officer must not learn that
--- any other unit exists, and the only way to guarantee that is to never put
--- those units in the result set: a client-side filter over a full fetch still
--- ships every row to the browser, where devtools can read it, so the scoping
--- would be decorative. `unit_chart` therefore resolves the caller's visible
--- units into a uuid array first and every subsequent query filters on it.
+-- any unit *other than their own and their own parent USG* exists, and the only
+-- way to guarantee that is to never put the rest in the result set: a
+-- client-side filter over a full fetch still ships every row to the browser,
+-- where devtools can read it, so the scoping would be decorative. `unit_chart`
+-- therefore resolves the caller's visible units into a uuid array first and
+-- every subsequent query filters on it.
 --
 -- Owner authority is proven by the `public.organization_members` row with
 -- `is_founding` set and a matching email -- the record `create_organization`
@@ -59,20 +60,47 @@ begin
     from public.governance_units gu
     where gu.organization_id = v_account.organization_id;
   else
-    -- An officer sees the units they currently hold a seat in. Nothing else is
-    -- aggregated, so nothing else exists in the payload -- not even a count.
-    -- The organization filter is redundant while a membership's unit always
-    -- shares its roster's organization, and kept anyway: it costs nothing and
-    -- it is the difference between a scoping bug being visible here and being
-    -- invisible.
-    select coalesce(array_agg(distinct gu.id), '{}'::uuid[]) into v_unit_ids
-    from smartgov.unit_memberships m
-    join public.governance_units gu on gu.id = m.unit_id
-    join smartgov.roster r on r.id = m.roster_id
-    where r.account_id = v_account.id
-      and r.organization_id = v_account.organization_id
-      and gu.organization_id = v_account.organization_id
-      and m.end_date is null;
+    -- An officer sees the units they currently hold a seat in, plus the parent
+    -- of each of those units. Nothing else is aggregated, so nothing else exists
+    -- in the payload -- not even a count.
+    --
+    -- The parent is included ON PURPOSE and must not be "tightened" out. The
+    -- approved design is that an LSG officer sees their own unit *and their
+    -- unit's parent USG*, read-only, and the LSG view cannot render a parent it
+    -- was never given. It is also not a leak: it is the officer's own parent
+    -- organization, one row, reached only by following `parent_id` from a unit
+    -- they already hold a seat in. The union below selects the parent row and
+    -- nothing else about it -- no children, no siblings, no occupants of any
+    -- unit but their own. A sibling shares that same parent, and this query
+    -- still cannot name it: sibling ids are never in the `seated` set, and the
+    -- parent branch projects a single id, `p.id`, not `p`'s subtree.
+    --
+    -- The organization filters are load-bearing rather than decorative, on both
+    -- halves. `governance_units.parent_id` is a self-reference with no
+    -- organization of its own, so nothing stops a row pointing at a unit in
+    -- another organization; the `p.organization_id` predicate is what keeps a
+    -- cross-organization parent out of the result. `gu.organization_id` costs
+    -- nothing and is the difference between a scoping bug being visible here and
+    -- being invisible.
+    with seated as (
+      select gu.id, gu.parent_id
+      from smartgov.unit_memberships m
+      join public.governance_units gu on gu.id = m.unit_id
+      join smartgov.roster r on r.id = m.roster_id
+      where r.account_id = v_account.id
+        and r.organization_id = v_account.organization_id
+        and gu.organization_id = v_account.organization_id
+        and m.end_date is null
+    )
+    select coalesce(array_agg(distinct visible.id), '{}'::uuid[]) into v_unit_ids
+    from (
+      select s.id from seated s
+      union
+      select p.id
+      from seated s
+      join public.governance_units p on p.id = s.parent_id
+      where p.organization_id = v_account.organization_id
+    ) visible;
   end if;
 
   if not v_is_owner and coalesce(array_length(v_unit_ids, 1), 0) = 0 then
@@ -82,9 +110,13 @@ begin
   select jsonb_build_object(
     'ok', true,
     'scope', case when v_is_owner then 'organization' else 'unit' end,
-    -- Null for an LSG officer: the USG row above them is not theirs, and
-    -- resolving the parent by id would hand back a unit `v_unit_ids` never
-    -- contained.
+    -- The unit with no parent, drawn from the same `v_unit_ids` the rest of the
+    -- response is filtered by. In unit scope that is the officer's own parent
+    -- USG, which is in `v_unit_ids` because the aggregation above unions it in;
+    -- for a unitary organization, where the council has no parent, it is the
+    -- officer's own unit. Never resolved by walking `parent_id` from outside the
+    -- array, because a row the filter did not admit must not be able to reach
+    -- the payload by another route.
     'root', (
       select jsonb_build_object(
                'id', gu.id,
@@ -100,6 +132,11 @@ begin
     -- A unit with no enabled seat still renders, with an empty `seats` array
     -- rather than being dropped: an empty card is what tells an owner the unit
     -- exists and still needs staffing.
+    --
+    -- `name` is projected alongside `unit` because the aggregate below orders by
+    -- it: the row is built as one jsonb object, so without the bare column the
+    -- `order by` has nothing to resolve against and the whole function fails at
+    -- runtime for every caller. `gu.name` is already in the `group by`.
     'units', (
       select coalesce(jsonb_agg(t.unit order by t.name), '[]'::jsonb)
       from (
@@ -123,8 +160,10 @@ begin
                    ) filter (where up.position_id is not null),
                    '[]'::jsonb
                  )
-               ) as unit
+                ) as unit,
+               gu.name as name
         from public.governance_units gu
+
         left join smartgov.unit_positions up on up.unit_id = gu.id
         left join smartgov.org_positions op on op.id = up.position_id
         left join smartgov.unit_memberships um
