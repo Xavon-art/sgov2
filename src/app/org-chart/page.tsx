@@ -11,6 +11,7 @@ import {
   UnitSeatToggles,
 } from "@/components/org-chart/OrgChartControls";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { ChartRefresher } from "@/components/org-chart/ChartRefresher";
 import {
   fetchRoster,
   fetchUnitChart,
@@ -94,21 +95,24 @@ export default async function OrgChartPage() {
 
   if (!chart) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-        <h1 className="text-[1.5rem] leading-tight">We could not load your organization chart</h1>
-        <p className="text-[0.9375rem] leading-relaxed text-body">
-          The account database is not reachable yet. If the migration has not been
-          applied, sign in again once it has.
-        </p>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <ButtonLink href="/login" size="md">
-            Back to sign in
-          </ButtonLink>
-          <ButtonLink href="/" variant="outline" size="md">
-            Home
-          </ButtonLink>
-        </div>
-      </main>
+      <>
+        <ChartRefresher />
+        <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+          <h1 className="text-[1.5rem] leading-tight">We could not load your organization chart</h1>
+          <p className="text-[0.9375rem] leading-relaxed text-body">
+            The account database is not reachable yet. If the migration has not been
+            applied, sign in again once it has.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <ButtonLink href="/login" size="md">
+              Back to sign in
+            </ButtonLink>
+            <ButtonLink href="/" variant="outline" size="md">
+              Home
+            </ButtonLink>
+          </div>
+        </main>
+      </>
     );
   }
 
@@ -122,6 +126,7 @@ export default async function OrgChartPage() {
 
   return (
     <div className="relative isolate flex min-h-dvh flex-col">
+      <ChartRefresher />
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <ShaderField strength={0.5} scale={1.3} speed={0.022} />
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />

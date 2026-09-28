@@ -7,6 +7,7 @@ import { Wordmark } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { ChartRefresher } from "@/components/org-chart/ChartRefresher";
 import {
   fetchUnitChartResult,
   isUnitScopeChart,
@@ -22,6 +23,7 @@ export const dynamic = "force-dynamic";
 function PageShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="relative isolate flex min-h-dvh flex-col">
+      <ChartRefresher />
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <ShaderField strength={0.5} scale={1.3} speed={0.022} />
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />
@@ -54,7 +56,9 @@ function PageShell({ title, children }: { title: string; children: ReactNode }) 
 
 function CouncilError() {
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+    <>
+      <ChartRefresher />
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
       <h1 className="text-[1.5rem] leading-tight">We could not load your council</h1>
       <p className="text-[0.9375rem] leading-relaxed text-body">
         The account database is not reachable yet. If the migration has not been
@@ -69,6 +73,7 @@ function CouncilError() {
         </ButtonLink>
       </div>
     </main>
+    </>
   );
 }
 
