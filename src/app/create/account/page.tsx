@@ -163,7 +163,7 @@ export default function AccountPage() {
             <legend className="flex items-baseline justify-between gap-3 text-[0.8125rem] font-medium text-ink">
               <span>Your role</span>
               <span className="text-[0.6875rem] font-medium tracking-[0.14em] text-faint uppercase">
-                {draft.model === "federated" ? "Federated" : "Unitary"}
+                Unitary
               </span>
             </legend>
             <p className="mt-2 text-[0.75rem] leading-relaxed text-muted">
