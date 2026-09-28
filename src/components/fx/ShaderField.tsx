@@ -116,6 +116,14 @@ void main() {
 /** Fixed sample for the still frame, so a static field is deterministic. */
 const STATIC_TIME = 14.2;
 
+/**
+ * Repaints per second. The field drifts over roughly fifteen seconds, so this is
+ * well below the threshold where the motion reads as stepped -- and it is the
+ * number that matters, because every changed frame forces the backdrop blurs
+ * and blend modes stacked above the canvas to be recomputed.
+ */
+const FRAME_MS = 1000 / 20;
+
 function compileShader(
   gl: WebGLRenderingContext,
   type: number,
@@ -218,6 +226,18 @@ export default function ShaderField({
     const pointer = { x: 0.5, y: 0.5 };
     const target = { x: 0.5, y: 0.5 };
 
+    // Loop state is declared up here rather than inside the branch below,
+    // because resize() needs to read it in order to repaint.
+    let raf = 0;
+    let running = false;
+    let visible = true;
+    let started = 0;
+    let firstFrame = true;
+    let lastDraw = 0;
+    let acc = 0;
+    let frames = 0;
+    let downgrades = 0;
+
     const draw = (time: number) => {
       gl.uniform2f(uRes, canvas.width, canvas.height);
       gl.uniform1f(uTime, time);
@@ -226,11 +246,11 @@ export default function ShaderField({
     };
 
     // Reassigning canvas.width or canvas.height reallocates the drawing
-    // buffer, and WebGL fills a fresh buffer with opaque black. Static mode has
-    // no loop to repaint it, so an otherwise unremarkable resize -- a webfont
-    // settling, the mobile address bar collapsing, a devtools dock opening --
-    // would leave a black band across the section permanently. Repainting here
-    // is what stops that.
+    // buffer, and WebGL fills a fresh buffer with opaque black. That resize can
+    // land while this field is parked -- scrolled out of view, or the tab in the
+    // background -- and with no loop running nothing would ever put the pixels
+    // back, so the user would scroll down to a black rectangle. Repaint in
+    // every mode.
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       const scale = Math.min(deviceDpr, maxDpr) * resScale;
@@ -241,6 +261,7 @@ export default function ShaderField({
       canvas.height = h;
       gl.viewport(0, 0, w, h);
       if (mode === "static") draw(STATIC_TIME);
+      else draw(started ? (lastDraw - started) / 1000 : 0);
     };
 
     const ro = new ResizeObserver(resize);
@@ -278,16 +299,6 @@ export default function ShaderField({
         );
       }
 
-      let raf = 0;
-      let running = false;
-      let visible = true;
-      let started = 0;
-      let firstFrame = true;
-      let lastTs = 0;
-      let acc = 0;
-      let frames = 0;
-      let downgrades = 0;
-
       const loop = (now: number) => {
         raf = 0;
 
@@ -296,8 +307,22 @@ export default function ShaderField({
           return;
         }
 
+        // Cap the repaint rate. Everything stacked on top of this canvas has to
+        // be recomposited whenever the field changes: the .paper backdrop blur
+        // and the hero's grain blend, both full-section. That cost is per
+        // changed frame, not per frame. The field is a slow ambient wash, so
+        // 20fps is indistinguishable from 60 and costs a third as much
+        // compositing.
+        if (lastDraw && now - lastDraw < FRAME_MS) {
+          raf = requestAnimationFrame(loop);
+          return;
+        }
+
         if (!started) started = now;
         const seconds = (now - started) / 1000;
+
+        if (lastDraw) acc += now - lastDraw;
+        lastDraw = now;
 
         pointer.x += (target.x - pointer.x) * 0.045;
         pointer.y += (target.y - pointer.y) * 0.045;
@@ -310,14 +335,15 @@ export default function ShaderField({
         }
 
         if (downgrades < 2) {
-          if (lastTs) acc += now - lastTs;
-          lastTs = now;
           frames++;
           if (frames >= 45) {
             const avg = acc / frames;
             acc = 0;
             frames = 0;
-            if (avg > 21) {
+            // Compare against our own budget: the 20fps cap makes the average
+            // spacing FRAME_MS by design, so the old 21ms threshold would
+            // downscale on every capable machine.
+            if (avg > FRAME_MS * 1.5) {
               downgrades++;
               resScale = downgrades === 1 ? 0.72 : 0.5;
               resize();

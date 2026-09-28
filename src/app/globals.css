@@ -139,13 +139,24 @@
     text-wrap: balance;
   }
 
+  /*
+   * Film grain over the whole section. Deliberately NOT mix-blend-mode:
+   * multiply here forces the browser to read back and blend the entire section
+   * every time anything underneath it changes, and on the landing hero what
+   * sits underneath is a live WebGL canvas. At 20fps that was the single
+   * largest cost on the page, and it is the kind of per-frame readback that
+   * shows up as flicker on weaker GPUs.
+   *
+   * The noise is already black at varying alpha, so on this light palette
+   * normal compositing is visually indistinguishable from multiply -- the light
+   * parts of the noise were passing the backdrop through either way.
+   */
   .grain::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: 0.32;
-    mix-blend-mode: multiply;
+    opacity: 0.3;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
   }
 
