@@ -17,6 +17,10 @@ export const runtime = "nodejs";
 const IP_LIMIT = 30;
 const IP_WINDOW_MS = 10 * 60_000;
 
+/** `p_unit_id` is a uuid column, so a malformed id has to be caught here rather
+ * than surfacing as a 500 out of the PostgREST cast. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type InviteRow = {
   id: string;
   email: string;
@@ -78,7 +82,7 @@ export async function POST(req: Request) {
 
   let body: { email?: string; campusName?: string; unitType?: string; unitId?: string };
   try {
-    body = (await req.json()) as {
+    body = ((await req.json()) ?? {}) as {
       email?: string;
       campusName?: string;
       unitType?: string;
@@ -89,6 +93,10 @@ export async function POST(req: Request) {
   }
 
   const unitId = typeof body.unitId === "string" ? body.unitId : "";
+
+  if (unitId !== "" && !UUID_RE.test(unitId)) {
+    return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
+  }
 
   const limit = rateLimit(`invite:create:ip:${clientIp(req)}`, IP_LIMIT, IP_WINDOW_MS);
   if (!limit.ok) {
@@ -114,6 +122,10 @@ export async function POST(req: Request) {
     }
 
     const to = String(res.email);
+    // `create_invite` does not echo the campus back, so the letter is addressed
+    // from the name that was validated above -- the unit's name on the
+    // units-first flow, the free-text campus on the centralized one.
+    const campusName = body.campusName?.trim() ?? "";
 
     try {
       await sendBranded(
@@ -122,7 +134,7 @@ export async function POST(req: Request) {
           inviter: account?.displayName ?? "Your student government",
           organizationName: String(res.organizationName ?? ""),
           universityName: String(res.universityName ?? ""),
-          campusName: String(res.campusName ?? ""),
+          campusName,
           token: String(res.token),
         }),
       );

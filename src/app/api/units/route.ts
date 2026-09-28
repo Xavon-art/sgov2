@@ -13,29 +13,52 @@ const IP_WINDOW_MS = 10 * 60_000;
 const MAX_NAME = 120;
 const UNIT_TYPES = ["college", "campus", "department"] as const;
 
-type Unit = { id: string; name: string; unitType: string; parentId: string | null };
+/**
+ * The only shape of a unit that leaves this endpoint. `unit_chart` rows also
+ * carry `parentId` and the `seats` array — occupant names, emails, and roster
+ * ids — none of which the dashboard dropdown reads, so they are dropped here
+ * rather than shipped to the browser.
+ */
+export type UnitOption = { id: string; name: string; unitType: string };
 
-export type UnitsResponse = RpcResult & {
-  root?: Unit | null;
-  units?: Unit[];
+type ChartResponse = RpcResult & {
+  root?: UnitOption | null;
+  units?: UnitOption[];
   unitId?: string;
   name?: string;
   unitType?: string;
 };
 
+function toUnitOption(unit: UnitOption): UnitOption {
+  return { id: unit.id, name: unit.name, unitType: unit.unitType };
+}
+
 /**
  * The owner's unit list for the dashboard — one scoped read through
- * `unit_chart`, which is what the org chart already renders. The client
- * drops the root; this endpoint returns it plus all children unchanged.
+ * `unit_chart`, which is what the org chart already renders. The client drops
+ * the root; this endpoint returns it alongside every child, projected down to
+ * the three fields the dropdown needs.
  */
 export async function GET() {
+  const account = await currentAccount();
+  if (!account) {
+    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+  }
+
+  if (!canManageChart(account)) {
+    return NextResponse.json(
+      { ok: false, reason: "forbidden", message: messageFor("forbidden") },
+      { status: 403 },
+    );
+  }
+
   const token = await readSessionToken();
   if (!token) {
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
   try {
-    const res = await callRpc<UnitsResponse>("unit_chart", {
+    const res = await callRpc<ChartResponse>("unit_chart", {
       p_session_token: token,
     });
 
@@ -43,7 +66,11 @@ export async function GET() {
       return NextResponse.json({ ok: false, message: messageFor(res.reason) }, { status: 403 });
     }
 
-    return NextResponse.json({ ok: true, root: res.root ?? null, units: res.units ?? [] });
+    return NextResponse.json({
+      ok: true,
+      root: res.root ? toUnitOption(res.root) : null,
+      units: (res.units ?? []).map(toUnitOption),
+    });
   } catch (error) {
     console.error("[units:list]", error);
     return NextResponse.json(
@@ -80,7 +107,7 @@ export async function POST(req: Request) {
 
   let body: { name?: string; unitType?: string };
   try {
-    body = (await req.json()) as { name?: string; unitType?: string };
+    body = ((await req.json()) ?? {}) as { name?: string; unitType?: string };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }

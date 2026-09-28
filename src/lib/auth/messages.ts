@@ -12,6 +12,7 @@ const RPC_MESSAGES: Record<string, string> = {
   unauthenticated: "Your session has expired. Please sign in again.",
   forbidden: "Your account is not allowed to do that.",
   no_organization: "This workspace is not linked to an organization yet.",
+  no_unit: "Your organization has no campus or department yet.",
   invalid_email: "Enter a valid email address.",
   weak_password: "Use a password of at least 8 characters.",
   missing_name: "Enter your full name.",
