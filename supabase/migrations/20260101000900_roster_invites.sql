@@ -226,8 +226,7 @@ security definer
 set search_path = public, extensions, smartgov, pg_temp
 as $$
 declare
-  v_invite    smartgov.invites%rowtype;
-  v_account   smartgov.accounts%rowtype;
+  v_invite     smartgov.invites%rowtype;
   v_account_id uuid;
   v_kind      smartgov.account_kind;
   v_org_name  text;
