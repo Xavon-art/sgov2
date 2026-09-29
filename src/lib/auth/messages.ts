@@ -24,6 +24,10 @@ const RPC_MESSAGES: Record<string, string> = {
   otp_mismatch: "That code is not correct.",
   too_many_attempts: "Too many wrong attempts. Ask your officer for a new invitation.",
   verify_failed: "We could not verify that code. Please try again.",
+  invite_activated: "That invitation has already been accepted.",
+  // Only `resend_invite` can return this: revoke is idempotent on a revoked row.
+  invite_cancelled: "That invitation was cancelled.",
+  retry: "That did not save. Please try again in a moment.",
   invalid_organization: "That organization could not be found.",
   not_organization_founder:
     "This sign-in email is not the officer who created the organization. Use the address you set up the organization with.",
