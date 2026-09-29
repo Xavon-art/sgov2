@@ -4,38 +4,30 @@ export function TabBar<T extends string>({
   tabs,
   active,
   onTab,
-  tone = "indigo",
 }: {
   tabs: Tab[];
   active: T;
   onTab: (id: T) => void;
-  tone?: "indigo" | "emerald";
 }) {
-  const activeCls =
-    tone === "indigo"
-      ? "border-indigo-600 text-indigo-600"
-      : "border-emerald-600 text-emerald-600";
   return (
-    <div className="thin-scroll flex items-center gap-1 overflow-x-auto border-b border-slate-200">
+    <div className="thin-scroll flex items-center gap-1 overflow-x-auto border-b border-line">
       {tabs.map((t) => (
         <button
           key={t.id}
           onClick={() => onTab(t.id as T)}
-          className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition ${
+          className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors duration-300 ${
             active === t.id
-              ? activeCls
-              : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800"
+              ? "border-brass text-ink"
+              : "border-transparent text-ink-muted hover:border-line-strong hover:text-ink"
           }`}
         >
           {t.label}
           {typeof t.count === "number" && t.count > 0 && (
             <span
-              className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold ${
+              className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
                 active === t.id
-                  ? tone === "indigo"
-                    ? "bg-indigo-100 text-indigo-700"
-                    : "bg-emerald-100 text-emerald-700"
-                  : "bg-slate-100 text-slate-500"
+                  ? "bg-brass-soft/60 text-brass-deep"
+                  : "bg-ink/[0.05] text-muted"
               }`}
             >
               {t.count}

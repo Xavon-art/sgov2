@@ -56,7 +56,7 @@ export function FileNew({
             type="button"
             onClick={() => setKind(k)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-              kind === k ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              kind === k ? "bg-brass text-ink-deep" : "bg-ink/[0.05] text-ink-soft hover:bg-line"
             }`}
           >
             {k === "proposal" ? "Proposal" : k === "event" ? "Event" : "Budget request"}
@@ -65,7 +65,7 @@ export function FileNew({
       </div>
 
       <form className="space-y-4" onSubmit={submit}>
-        <div className="flex items-center gap-2 text-xs text-slate-500">
+        <div className="flex items-center gap-2 text-xs text-muted">
           <KindChip kind={kind} />
           <span>{kind === "proposal" ? "Board resolution / activity document" : kind === "event" ? "Activity being planned" : "Funding request"}</span>
         </div>
@@ -116,7 +116,7 @@ export function FileNew({
         )}
 
         <div className="flex items-center justify-between gap-3">
-          {done && <p className="text-sm text-emerald-600">“{done}” filed — the USG can now review it.</p>}
+          {done && <p className="text-sm text-brass-deep">“{done}” filed — the USG can now review it.</p>}
           <div className="ml-auto">
             <Button type="submit" variant="emerald">Submit for review</Button>
           </div>

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const inputCls =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100";
+  "peer w-full rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none transition-[border-color,box-shadow,background-color] duration-300 placeholder:text-faint hover:border-line-strong focus:border-ink/25 focus:bg-paper";
 
 export function Field({
   label,
@@ -14,9 +14,9 @@ export function Field({
 }) {
   return (
     <label className="block text-left">
-      <span className="mb-1 block text-xs font-medium text-slate-600">{label}</span>
+      <span className="mb-1.5 block text-[0.8125rem] font-medium text-ink">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-[0.75rem] leading-relaxed text-muted">{hint}</span>}
     </label>
   );
 }

@@ -14,12 +14,12 @@ export function Card({
   className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className ?? ""}`}>
+    <section className={`rounded-2xl border border-line bg-paper/70 ${className ?? ""}`}>
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+        <header className="flex items-center justify-between gap-3 border-b border-line/70 px-5 py-4">
           <div>
-            {title && <h2 className="text-sm font-semibold text-slate-900">{title}</h2>}
-            {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+            {title && <h3 className="text-[0.9375rem] font-medium tracking-tight text-ink-deep">{title}</h3>}
+            {subtitle && <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">{subtitle}</p>}
           </div>
           {actions}
         </header>

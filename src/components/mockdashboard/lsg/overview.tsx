@@ -43,16 +43,16 @@ export function Overview({ state, council }: { state: MockState; council: string
       <Card title={`${council} dashboard`} subtitle="Everything filed by your council, at a glance">
         <ul className="space-y-2">
           <li className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">Submissions on file</span>
-            <span className="font-semibold text-slate-900">{mine.length}</span>
+            <span className="text-muted">Submissions on file</span>
+            <span className="font-semibold text-ink-deep">{mine.length}</span>
           </li>
           <li className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">Waiting on the USG</span>
-            <span className="font-semibold text-slate-900">{pending}</span>
+            <span className="text-muted">Waiting on the USG</span>
+            <span className="font-semibold text-ink-deep">{pending}</span>
           </li>
           <li className="flex items-center justify-between text-sm">
-            <span className="text-slate-500">Next approved event</span>
-            <span className="font-semibold text-slate-900">
+            <span className="text-muted">Next approved event</span>
+            <span className="font-semibold text-ink-deep">
               {nextEvent ? `${nextEvent.title} · ${day(String(nextEvent.detail.date))}` : "none scheduled"}
             </span>
           </li>

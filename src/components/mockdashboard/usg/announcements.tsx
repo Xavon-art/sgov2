@@ -45,19 +45,19 @@ export function Announcements({ state, actions }: { state: MockState; actions: A
 
       <Card title="Announcement feed" subtitle={`${feed.length} posts`}>
         {feed.length === 0 ? (
-          <p className="text-sm text-slate-400">No announcements yet.</p>
+          <p className="text-sm text-muted">No announcements yet.</p>
         ) : (
           <ul className="space-y-4">
             {feed.map((a) => (
-              <li key={a.id} className="rounded-lg border border-slate-200 p-4">
+              <li key={a.id} className="rounded-lg border border-line p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {a.pinned && <span className="mr-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Pinned</span>}
+                    <p className="text-sm font-semibold text-ink-deep">
+                      {a.pinned && <span className="mr-1.5 rounded bg-brass-soft/60 px-1.5 py-0.5 text-[10px] font-semibold text-brass-deep">Pinned</span>}
                       {a.title}
                     </p>
-                    <p className="mt-1 text-sm text-slate-600">{a.body}</p>
-                    <p className="mt-2 text-[11px] text-slate-400">
+                    <p className="mt-1 text-sm text-ink-soft">{a.body}</p>
+                    <p className="mt-2 text-[11px] text-muted">
                       {a.by} · {stamp(a.at)}
                     </p>
                   </div>

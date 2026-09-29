@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Wordmark, Seal } from "@/components/ui/Seal";
 import { useStore } from "@/lib/mockdashboard/use-store";
 import { LoadingState } from "@/components/mockdashboard/loading-state";
 
@@ -17,57 +18,60 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4 sm:px-6">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 text-xs font-bold text-white">
-              SG
-            </span>
-            <span className="text-sm font-semibold text-slate-900">SmartGov</span>
-          </div>
+    <main className="min-h-screen bg-canvas">
+      <header
+        className={`sticky top-0 z-40 border-b border-line/80 bg-canvas/85 backdrop-blur-xl backdrop-saturate-150`}
+      >
+        <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-6">
+          <Link
+            href="/"
+            className="rounded-lg transition-opacity duration-300 hover:opacity-80"
+            aria-label="SmartGov home"
+          >
+            <Wordmark />
+          </Link>
           <button
             onClick={actions.reset}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            className="rounded-full border border-line bg-paper/70 px-4 py-2 text-sm font-medium text-ink transition-colors duration-300 hover:border-line-strong hover:shadow-lift"
           >
             Reset demo data
           </button>
         </div>
       </header>
 
-      <section className="mx-auto max-w-4xl px-4 py-14 text-center sm:px-6">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200">
+      <section className="mx-auto max-w-4xl px-4 pt-16 pb-14 text-center sm:px-6">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-brass-soft/30 px-3 py-1 text-xs font-semibold text-brass-deep">
           Interactive demo · data lives in your browser
         </span>
-        <h1 className="mx-auto mt-4 max-w-2xl text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+        <h1 className="mx-auto mt-5 max-w-2xl text-4xl font-medium tracking-[-0.03em] text-ink-deep sm:text-5xl">
           Student government, filed and approved in one place
         </h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">
+        <p className="mx-auto mt-4 max-w-xl text-[0.9375rem] leading-relaxed text-muted">
           The USG reviews proposals, events, and budgets that councils file. Two
           dashboards, one shared workflow — open the USG side, then switch to LSG
           and file something to see it appear for approval.
         </p>
 
-        <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <RoleCard
             href="/mockdashboard/usg"
             title="USG dashboard"
             desc="University Student Government — approve proposals, events, budgets; manage units, councils, and announcements."
-            accent="bg-indigo-600"
+            tile="bg-ink text-brass"
           />
           <RoleCard
             href="/mockdashboard/lsg"
             title="LSG dashboard"
             desc="Local student council — file proposals, plan events, request funds, and track every status change."
-            accent="bg-emerald-600"
+            tile="bg-brass text-ink-deep"
           />
         </div>
       </section>
 
-      <section className="mx-auto max-w-4xl px-4 pb-14 sm:px-6">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">Demo data loaded</h2>
-          <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <section className="mx-auto max-w-4xl px-4 pb-16 sm:px-6">
+        <div className="rounded-2xl border border-line bg-paper/70 p-6">
+          <p className="eyebrow">Demo data loaded</p>
+          <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Proposals" value={counts.proposals} />
             <Stat label="Events" value={counts.events} />
             <Stat label="Budget requests" value={counts.budgets} />
@@ -83,23 +87,35 @@ function RoleCard({
   href,
   title,
   desc,
-  accent,
+  tile,
 }: {
   href: string;
   title: string;
   desc: string;
-  accent: string;
+  tile: string;
 }) {
   return (
     <Link
       href={href}
-      className="group rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative overflow-hidden rounded-2xl border border-line bg-paper/70 p-6 text-left transition-[border-color,box-shadow,transform] duration-500 ease-out hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lift"
     >
-      <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm text-white ${accent}`}>
-        →
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-px origin-top scale-y-0 bg-gradient-to-b from-brass to-transparent transition-transform duration-500 ease-out group-hover:scale-y-100"
+      />
+      <span
+        className={`grid h-10 w-10 place-items-center rounded-xl shadow-[0_1px_0_rgba(255,255,255,0.25)_inset,0_8px_20px_-10px_rgba(13,33,53,0.45)] ${tile}`}
+      >
+        <Seal size={22} accent={tile.includes("bg-brass") ? "#0d2135" : "#c9a24b"} />
       </span>
-      <p className="mt-3 text-base font-semibold text-slate-900 group-hover:text-indigo-600">{title}</p>
-      <p className="mt-1 text-sm leading-5 text-slate-500">{desc}</p>
+      <p className="mt-4 text-lg font-medium tracking-[-0.02em] text-ink group-hover:text-ink-deep">
+        {title}
+      </p>
+      <p className="mt-1.5 text-sm leading-relaxed text-muted">{desc}</p>
+      <span className="mt-4 inline-flex items-center gap-1 text-[0.8125rem] font-medium text-brass-deep">
+        Open dashboard
+        <span className="transition-transform duration-300 ease-out group-hover:translate-x-0.5">→</span>
+      </span>
     </Link>
   );
 }
@@ -107,8 +123,8 @@ function RoleCard({
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <dt className="text-xs text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-2xl font-bold text-slate-900">{value}</dd>
+      <dt className="text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-muted">{label}</dt>
+      <dd className="mt-1 text-[1.75rem] leading-none font-semibold text-ink">{value}</dd>
     </div>
   );
 }

@@ -112,6 +112,20 @@
     );
   }
 
+  .thin-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 9999px;
+  }
+
+  .thin-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-muted);
+  }
+
   .paper {
     background-color: color-mix(in oklab, var(--color-paper) 86%, transparent);
     backdrop-filter: blur(18px) saturate(1.3);

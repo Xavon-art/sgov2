@@ -16,9 +16,9 @@ type Actions = {
 };
 
 const kindInfo: Record<ItemKind, { label: string; chip: string }> = {
-  proposal: { label: "Proposal", chip: "bg-violet-50 text-violet-700" },
-  event: { label: "Event", chip: "bg-sky-50 text-sky-700" },
-  budget: { label: "Budget", chip: "bg-teal-50 text-teal-700" },
+  proposal: { label: "Proposal", chip: "bg-brass-soft/50 text-brass-deep" },
+  event: { label: "Event", chip: "bg-ink/[0.07] text-ink" },
+  budget: { label: "Budget", chip: "border border-line bg-paper text-ink-soft" },
 };
 
 const kindPlural: Record<ItemKind, keyof MockState> = {
@@ -86,7 +86,7 @@ export function Reviews({ state, actions }: { state: MockState; actions: Actions
             key={k}
             onClick={() => setKind(k)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-              kind === k ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              kind === k ? "bg-ink text-canvas" : "bg-ink/[0.05] text-ink-soft hover:bg-line"
             }`}
           >
             {kindInfo[k].label}
@@ -96,7 +96,7 @@ export function Reviews({ state, actions }: { state: MockState; actions: Actions
       </div>
 
       {list.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-400">Nothing filed yet in this category.</p>
+        <p className="py-8 text-center text-sm text-muted">Nothing filed yet in this category.</p>
       ) : (
         <ul className="divide-y divide-slate-100">
           {list.map((i) => (
@@ -106,9 +106,9 @@ export function Reviews({ state, actions }: { state: MockState; actions: Actions
                   <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${kindInfo[i.kind].chip}`}>
                     {kindInfo[i.kind].label}
                   </span>
-                  <p className="truncate text-sm font-medium text-slate-900">{i.title}</p>
+                  <p className="truncate text-sm font-medium text-ink-deep">{i.title}</p>
                 </div>
-                <p className="mt-0.5 text-xs text-slate-500">
+                <p className="mt-0.5 text-xs text-muted">
                   {i.filedBy} · filed {day(i.createdAt)}
                 </p>
               </div>
@@ -131,7 +131,7 @@ export function Reviews({ state, actions }: { state: MockState; actions: Actions
       >
         {open && (
           <div className="space-y-5">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
               <span className={`rounded px-1.5 py-0.5 font-semibold ${kindInfo[open.kind].chip}`}>
                 {kindInfo[open.kind].label}
               </span>
@@ -142,28 +142,28 @@ export function Reviews({ state, actions }: { state: MockState; actions: Actions
 
             <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {detailFields(open).map(([k, v]) => (
-                <div key={k} className="rounded-lg bg-slate-50 px-3 py-2">
-                  <dt className="text-[11px] font-medium text-slate-400">{k}</dt>
-                  <dd className="text-sm text-slate-800">{v}</dd>
+                <div key={k} className="rounded-lg bg-canvas-sunk px-3 py-2">
+                  <dt className="text-[11px] font-medium text-muted">{k}</dt>
+                  <dd className="text-sm text-ink">{v}</dd>
                 </div>
               ))}
             </dl>
 
             {open.review && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-[11px] font-medium text-slate-400">
+              <div className="rounded-lg border border-line bg-canvas-sunk px-3 py-2">
+                <p className="text-[11px] font-medium text-muted">
                   Last decision · {open.review.decidedBy}
                 </p>
-                <p className="mt-0.5 text-sm text-slate-700">{open.review.comment || "No comment."}</p>
+                <p className="mt-0.5 text-sm text-ink">{open.review.comment || "No comment."}</p>
               </div>
             )}
 
             <div>
-              <h4 className="mb-2 text-xs font-semibold text-slate-500">Status history</h4>
+              <h4 className="mb-2 text-xs font-semibold text-muted">Status history</h4>
               <Timeline entries={open.timeline} />
             </div>
 
-            <div className="border-t border-slate-100 pt-4">
+            <div className="border-t border-line/70 pt-4">
               {open.status === "pending" && (
                 <Button
                   onClick={() => {
@@ -208,12 +208,12 @@ export function Reviews({ state, actions }: { state: MockState; actions: Actions
                 </div>
               )}
               {open.status === "returned" && (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted">
                   Waiting for the council to address the comment and resubmit.
                 </p>
               )}
               {open.status === "approved" && (
-                <p className="text-sm text-emerald-600">Approved and on record.</p>
+                <p className="text-sm text-brass-deep">Approved and on record.</p>
               )}
             </div>
           </div>

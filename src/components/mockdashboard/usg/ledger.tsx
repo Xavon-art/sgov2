@@ -32,18 +32,18 @@ export function Ledger({ state }: { state: MockState }) {
       title="Budget ledger"
       subtitle="Approved allocations across USG units"
       actions={
-        <div className="text-right text-xs text-slate-500">
+        <div className="text-right text-xs text-muted">
           <p>
-            Allotted <span className="font-semibold text-slate-900">{peso(tAllotted)}</span>
+            Allotted <span className="font-semibold text-ink-deep">{peso(tAllotted)}</span>
           </p>
           <p className="mt-0.5">
-            Used <span className="font-semibold text-slate-900">{pct}%</span>
+            Used <span className="font-semibold text-ink-deep">{pct}%</span>
           </p>
         </div>
       }
     >
       {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-400">No approved budgets yet.</p>
+        <p className="py-8 text-center text-sm text-muted">No approved budgets yet.</p>
       ) : (
         <ul className="space-y-5">
           {rows.map((r) => {
@@ -51,18 +51,18 @@ export function Ledger({ state }: { state: MockState }) {
             return (
               <li key={r.unit}>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900">{r.unit}</p>
-                  <p className="text-xs text-slate-500">
-                    {peso(r.spent)} <span className="text-slate-300">/</span> {peso(r.allotted)}
+                  <p className="text-sm font-medium text-ink-deep">{r.unit}</p>
+                  <p className="text-xs text-muted">
+                    {peso(r.spent)} <span className="text-faint">/</span> {peso(r.allotted)}
                   </p>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-2 overflow-hidden rounded-full bg-ink/[0.05]">
                   <div
-                    className="h-full rounded-full bg-emerald-500"
+                    className="h-full rounded-full bg-brass"
                     style={{ width: `${Math.min(100, used)}%` }}
                   />
                 </div>
-                {r.purpose && <p className="mt-1 text-xs text-slate-400">{r.purpose}</p>}
+                {r.purpose && <p className="mt-1 text-xs text-muted">{r.purpose}</p>}
               </li>
             );
           })}
@@ -70,12 +70,12 @@ export function Ledger({ state }: { state: MockState }) {
       )}
 
       {pendingAllocations.length > 0 && (
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <h4 className="mb-2 text-xs font-semibold text-slate-500">Awaiting approval</h4>
+        <div className="mt-5 border-t border-line/70 pt-4">
+          <h4 className="mb-2 text-xs font-semibold text-muted">Awaiting approval</h4>
           <ul className="space-y-2">
             {pendingAllocations.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-slate-700">{b.title}</span>
+                <span className="text-ink">{b.title}</span>
                 <span className="flex items-center gap-2">
                   <StatusBadge status={b.status as Item<"budget">["status"]} />
                 </span>

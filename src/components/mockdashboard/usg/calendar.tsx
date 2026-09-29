@@ -22,7 +22,7 @@ export function Calendar({ state }: { state: MockState }) {
     <div className="space-y-5">
       <Card title="Upcoming events" subtitle="Approved and on the calendar">
         {upcoming.length === 0 ? (
-          <p className="text-sm text-slate-400">No approved upcoming events.</p>
+          <p className="text-sm text-muted">No approved upcoming events.</p>
         ) : (
           <EventGrid events={upcoming} />
         )}
@@ -30,7 +30,7 @@ export function Calendar({ state }: { state: MockState }) {
 
       <Card title="Needs action" subtitle="Pending, in review, or returned events">
         {needsAction.length === 0 ? (
-          <p className="text-sm text-slate-400">All filed events have been resolved.</p>
+          <p className="text-sm text-muted">All filed events have been resolved.</p>
         ) : (
           <EventGrid events={needsAction} />
         )}
@@ -38,7 +38,7 @@ export function Calendar({ state }: { state: MockState }) {
 
       <Card title="Completed" subtitle="Past events">
         {completed.length === 0 ? (
-          <p className="text-sm text-slate-400">No completed events on record.</p>
+          <p className="text-sm text-muted">No completed events on record.</p>
         ) : (
           <EventGrid events={completed} />
         )}
@@ -53,17 +53,17 @@ function EventGrid({ events }: { events: Array<{ id: string; title: string; stat
       {events.map((e) => {
         const d = e.detail as { date?: string; venue?: string; plannedAttendees?: number; budgetUse?: string };
         return (
-          <li key={e.id} className="rounded-lg border border-slate-200 p-4">
+          <li key={e.id} className="rounded-lg border border-line p-4">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-slate-900">{e.title}</p>
+              <p className="text-sm font-semibold text-ink-deep">{e.title}</p>
               <StatusBadge status={e.status} />
             </div>
-            <dl className="mt-2 space-y-1 text-xs text-slate-500">
-              <div className="flex justify-between"><dt>Date</dt><dd className="font-medium text-slate-700">{d.date ?? "TBA"}</dd></div>
-              <div className="flex justify-between"><dt>Venue</dt><dd className="font-medium text-slate-700">{d.venue ?? "—"}</dd></div>
-              <div className="flex justify-between"><dt>Attendees</dt><dd className="font-medium text-slate-700">{String(d.plannedAttendees ?? "—")}</dd></div>
+            <dl className="mt-2 space-y-1 text-xs text-muted">
+              <div className="flex justify-between"><dt>Date</dt><dd className="font-medium text-ink">{d.date ?? "TBA"}</dd></div>
+              <div className="flex justify-between"><dt>Venue</dt><dd className="font-medium text-ink">{d.venue ?? "—"}</dd></div>
+              <div className="flex justify-between"><dt>Attendees</dt><dd className="font-medium text-ink">{String(d.plannedAttendees ?? "—")}</dd></div>
             </dl>
-            <p className="mt-2 text-[11px] text-slate-400">Filing council · {e.filedBy}</p>
+            <p className="mt-2 text-[11px] text-muted">Filing council · {e.filedBy}</p>
           </li>
         );
       })}

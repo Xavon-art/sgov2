@@ -19,16 +19,16 @@ export function Units({ state, actions }: { state: MockState; actions: Actions }
       <Card title="USG units" subtitle="Standing committees of the university student government">
         <ul className="space-y-4">
           {state.units.map((u) => (
-            <li key={u.id} className="rounded-lg border border-slate-200 p-4">
+            <li key={u.id} className="rounded-lg border border-line p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">{u.name}</p>
-                  <p className="text-xs text-slate-500">Unit lead · {u.lead}</p>
+                  <p className="text-sm font-semibold text-ink-deep">{u.name}</p>
+                  <p className="text-xs text-muted">Unit lead · {u.lead}</p>
                 </div>
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {u.officers.map((o) => (
-                  <span key={o} className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700">
+                  <span key={o} className="rounded-full bg-ink/[0.06] px-2 py-0.5 text-xs text-ink">
                     {o}
                   </span>
                 ))}
@@ -59,11 +59,11 @@ export function Units({ state, actions }: { state: MockState; actions: Actions }
       <Card title="LSG councils" subtitle="Local student councils under the USG">
         <ul className="space-y-4">
           {state.councils.map((c) => (
-            <li key={c.id} className="rounded-lg border border-slate-200 p-4">
-              <p className="text-sm font-semibold text-slate-900">{c.name}</p>
+            <li key={c.id} className="rounded-lg border border-line p-4">
+              <p className="text-sm font-semibold text-ink-deep">{c.name}</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {c.officers.map((o) => (
-                  <span key={o} className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                  <span key={o} className="rounded-full bg-brass-soft/45 px-2 py-0.5 text-xs text-brass-deep">
                     {o}
                   </span>
                 ))}

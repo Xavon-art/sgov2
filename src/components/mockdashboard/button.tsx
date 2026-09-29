@@ -4,14 +4,14 @@ type Variant = "primary" | "emerald" | "secondary" | "danger" | "ghost";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:bg-indigo-300",
+    "bg-ink text-white border-ink hover:bg-ink-deep hover:border-ink-deep shadow-[0_1px_0_rgba(255,255,255,0.14)_inset,0_10px_30px_-14px_rgba(13,33,53,0.6)]",
   emerald:
-    "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:bg-emerald-300",
+    "bg-brass text-ink-deep border-brass hover:bg-[#d8b463] hover:border-[#d8b463] shadow-[0_1px_0_rgba(255,255,255,0.4)_inset,0_10px_30px_-14px_rgba(168,130,47,0.7)]",
   secondary:
-    "bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 disabled:text-slate-300",
+    "bg-paper text-ink border-line hover:border-line-strong hover:shadow-lift",
   danger:
-    "bg-white text-rose-600 ring-1 ring-inset ring-rose-200 hover:bg-rose-50 disabled:text-rose-300",
-  ghost: "text-slate-500 hover:bg-slate-100 hover:text-slate-800",
+    "bg-transparent text-[#a5442c] border-[#d9a99c] hover:bg-[#a5442c]/[0.06]",
+  ghost: "bg-transparent text-ink-soft border-transparent hover:text-ink hover:bg-ink/[0.045]",
 };
 
 export function Button({
@@ -27,7 +27,7 @@ export function Button({
   return (
     <button
       {...rest}
-      className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${variants[variant]} ${className ?? ""}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition-[transform,background-color,border-color,box-shadow,color] duration-300 ease-out active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45 ${variants[variant]} ${className ?? ""}`}
     >
       {children}
     </button>

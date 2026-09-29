@@ -47,21 +47,21 @@ export function Overview({ state }: { state: MockState }) {
 
       <Card title="Latest activity" subtitle="Most recent status changes across the organization">
         {recent.length === 0 ? (
-          <p className="text-sm text-slate-400">No activity yet.</p>
+          <p className="text-sm text-muted">No activity yet.</p>
         ) : (
           <ul className="divide-y divide-slate-100">
             {recent.map((t, i) => (
               <li key={i} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-slate-800">
+                  <p className="truncate text-sm text-ink">
                     <span className="font-medium">{t.item}</span>
-                    <span className="text-slate-400"> · {t.by}</span>
+                    <span className="text-muted"> · {t.by}</span>
                   </p>
-                  {t.note && <p className="text-xs text-slate-500">{t.note}</p>}
+                  {t.note && <p className="text-xs text-muted">{t.note}</p>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <StatusBadge status={t.to} />
-                  <span className="text-[11px] text-slate-400">{stamp(t.at)}</span>
+                  <span className="text-[11px] text-muted">{stamp(t.at)}</span>
                 </div>
               </li>
             ))}
