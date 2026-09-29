@@ -31,6 +31,18 @@ The approved design doc is the authority on the *what*; this plan is the
 `security definer` RPCs with thin `public` wrappers — RLS stays on and no
 policies are created (the standing `check-units` rule).
 
+The patient submits (decided with the owner, 2026-09-29):
+
+1. **Program templates stay frozen after submissions exist** — drop + recreate
+   is the sanctioned edit path (design non-goal kept).
+2. **Review is not owner-only:** the USG board reviews too. Membership in the
+   org's top unit (`unit_type = 'usg'`, the root node created by 00700) marks an
+   invited officer as a reviewer; `is_org_reviewer` gates `review_proposal` and
+   unlocks the full read scope for the inbox. (Design said "owner only" — this
+   plan deviates per this decision; see Task 3.)
+3. **Blank default template refuses standalone submissions** until the owner
+   saves items — no invented defaults.
+
 ### One refinement to the design doc (flag for review)
 
 The design says the LSG client POSTs the file (multipart) to `/api/uploads`.
@@ -117,15 +129,16 @@ check(
   "14b. every 002000 smartgov function is security definer, pinned, and revoked; wrappers bounded",
   (() => {
     const m = withoutSqlComments(readMigration("20260101002000_lsg_requirement_submissions.sql"));
-    // The full smartgov function surface: the 11 RPCs plus the two internal
-    // helpers (lsg_unit_ids, proposal_items_valid). A helper that is not pinned
-    // and revoked is as dangerous as an RPC that is not.
+    // The full smartgov function surface: the 13 RPC/helper entry points plus
+    // the two internal helpers (lsg_unit_ids, proposal_items_valid) and the
+    // reviewer helper. A helper that is not pinned and revoked is as dangerous
+    // as an RPC that is not.
     const names = [
-      "lsg_unit_ids", "proposal_items_valid",
+      "lsg_unit_ids", "proposal_items_valid", "is_org_reviewer",
       "create_program", "set_default_requirements", "list_programs",
       "list_default_requirements", "match_requirement_item", "create_proposal",
       "submit_revision", "list_proposals", "proposal_detail", "review_proposal",
-      "get_item_file",
+      "get_item_file", "am_i_reviewer",
     ];
     return names.every((n) => {
       const i = indexOfFn(m, n);
@@ -200,6 +213,19 @@ check(
       && /v_ok := v_account\.account_scope = 'owner'/.test(m)
       && /function smartgov\.get_item_file\(/.test(m)
       && /v_scope := v_account\.account_scope = 'owner'/.test(m);
+  })(),
+);
+
+check(
+  "14m. review is open to the USG board: is_org_reviewer gates review_proposal and unlocks the reads",
+  (() => {
+    const m = withoutSqlComments(readMigration("20260101002000_lsg_requirement_submissions.sql"));
+    const r = m.indexOf("function smartgov.is_org_reviewer(");
+    const rp = m.slice(m.indexOf("function smartgov.review_proposal("), m.indexOf("revoke all on function smartgov.review_proposal"));
+    return r > 0
+      && /unit_type = 'usg'/.test(m.slice(r, m.indexOf("revoke all on function smartgov.is_org_reviewer")))
+      && /smartgov\.is_org_reviewer\(/.test(rp)
+      && /function smartgov\.am_i_reviewer\(/.test(m);
   })(),
 );
 
@@ -493,6 +519,59 @@ $$;
 
 revoke all on function smartgov.lsg_unit_ids(uuid, uuid) from public;
 
+-- Whether an account is a USG reviewer: the owner, or an invited officer
+-- holding a current seat in the org's top (unit_type = 'usg') unit — the USG
+-- board. LSG officers sit in descendant units, so they never pass this.
+create or replace function smartgov.is_org_reviewer(p_account uuid, p_organization uuid)
+returns boolean
+language sql stable
+security definer
+set search_path = public, extensions, smartgov, pg_temp
+as $$
+  select exists (
+    select 1
+      from smartgov.roster r
+      join smartgov.unit_memberships m
+        on m.roster_id = r.id
+       and m.end_date is null
+      join public.governance_units u
+        on u.id = m.unit_id
+     where r.account_id = p_account
+       and r.organization_id = p_organization
+       and u.organization_id = p_organization
+       and u.unit_type = 'usg'
+  );
+$$;
+
+revoke all on function smartgov.is_org_reviewer(uuid, uuid) from public;
+
+-- Convenience RPC for the dashboard shell: "is my account a reviewer", so the
+-- USG shell (review inbox) is shown to the board as well as the owner.
+create or replace function smartgov.am_i_reviewer(p_session_token text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions, smartgov, pg_temp
+as $$
+declare
+  v_account smartgov.accounts%rowtype;
+begin
+  v_account := smartgov.authenticate(p_session_token);
+
+  if v_account.id is null then
+    return jsonb_build_object('ok', false, 'reason', 'unauthenticated');
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'reviewer', v_account.account_scope = 'owner'
+             or smartgov.is_org_reviewer(v_account.id, v_account.organization_id)
+  );
+end;
+$$;
+
+revoke all on function smartgov.am_i_reviewer(text) from public;
+
 -- ------------------------------------------------- programs: create & reads
 
 create or replace function smartgov.create_program(
@@ -760,12 +839,14 @@ begin
    where ri.id = p_item_id
      and ri.organization_id = v_account.organization_id
      and (
-       ri.program_id is null
+       v_account.account_scope = 'owner'
+       or smartgov.is_org_reviewer(v_account.id, v_account.organization_id)
+       or ri.program_id is null
        or exists (
          select 1 from smartgov.programs pr
           where pr.id = ri.program_id
             and pr.organization_id = v_account.organization_id
-            and (v_account.account_scope = 'owner' or pr.status = 'published')
+            and pr.status = 'published'
        )
      );
 
@@ -1211,6 +1292,7 @@ begin
       where p.organization_id = v_account.organization_id
         and (
           v_account.account_scope = 'owner'
+          or smartgov.is_org_reviewer(v_account.id, v_account.organization_id)
           or p.created_by = v_account.id
           or (p.unit_id is not null and p.unit_id in (
                 select u from smartgov.lsg_unit_ids(v_account.id, v_account.organization_id) u
@@ -1256,6 +1338,7 @@ begin
   end if;
 
   v_ok := v_account.account_scope = 'owner'
+       or smartgov.is_org_reviewer(v_account.id, v_account.organization_id)
        or v_proposal.created_by = v_account.id
        or (v_proposal.unit_id is not null and v_proposal.unit_id in (
              select u from smartgov.lsg_unit_ids(v_account.id, v_account.organization_id) u
@@ -1350,7 +1433,9 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'unauthenticated');
   end if;
 
-  if v_account.account_scope <> 'owner' then
+  -- The owner and the USG board (is_org_reviewer) review; nobody else.
+  if v_account.account_scope <> 'owner'
+     and not smartgov.is_org_reviewer(v_account.id, v_account.organization_id) then
     return jsonb_build_object('ok', false, 'reason', 'forbidden');
   end if;
 
@@ -1453,6 +1538,7 @@ begin
   end if;
 
   v_scope := v_account.account_scope = 'owner'
+          or smartgov.is_org_reviewer(v_account.id, v_account.organization_id)
           or v_author = v_account.id
           or (v_unit is not null and v_unit in (
                 select u from smartgov.lsg_unit_ids(v_account.id, v_account.organization_id) u
@@ -1555,6 +1641,13 @@ set search_path = public, extensions, smartgov, pg_temp
 as $$ select smartgov.get_item_file(p_session_token, p_submission_id); $$;
 revoke all on function public.get_item_file(text, uuid) from public;
 grant execute on function public.get_item_file(text, uuid) to anon, authenticated;
+
+create or replace function public.am_i_reviewer(p_session_token text)
+returns jsonb language sql security definer
+set search_path = public, extensions, smartgov, pg_temp
+as $$ select smartgov.am_i_reviewer(p_session_token); $$;
+revoke all on function public.am_i_reviewer(text) from public;
+grant execute on function public.am_i_reviewer(text) to anon, authenticated;
 ```
 
 ### Apply to the live database
@@ -1715,6 +1808,8 @@ messages; no raw reason is ever shipped.
   vs `MAX_FILE_BYTES`, then mints `<orgId>/proposals/<uuid>/v<version>/<itemId>/<name>`
   and returns `{ signedUrl, storagePath }`)
 - `src/app/api/files/[submissionId]/route.ts` — GET `get_item_file` → sign → redirect
+- `src/app/api/reviewer/route.ts` — GET `am_i_reviewer` (the shell needs to know
+  an invited account is on the USG board to render the USG view)
 
 Guards 14i (uploads cap) and the general route shape turn green once these
 land. `check-units` only reads the uploads route's cap guard plus the messages
@@ -1946,8 +2041,10 @@ component `RequirementWorkspace`, which receives `account` and `unitCount`:
   and swaps the callout for a persistent header button `[Go back to setup]`.
 - **Owner with units:** show the operational workspace immediately, with the
   setup link still available in a slim header row ("Setup & units").
-- **Invited officer:** show the operational LSG workspace only (they are never
-  a setup participant).
+- **Invited officer:** `am_i_reviewer` decides the view — a USG-board member
+  sees the same operational USG view as the owner (review inbox, programs); any
+  other invited officer sees the LSG view only. Invited accounts are never
+  setup participants.
 
 ### Types (complete)
 
@@ -2111,8 +2208,9 @@ export const ACTIVITY_OPTIONS = [
 
 ## Task 7 — USG shell (RequirementWorkspace owner view)
 
-**What:** `RequirementWorkspace` decides owner vs invited and renders the USG
-shell (owner) or LSG shell (invited). The USG shell holds four panels:
+**What:** `RequirementWorkspace` decides owner/reviewer vs invited and renders
+the USG shell (owner or USG-board reviewer) or LSG shell (invited officer). The
+USG shell holds four panels:
 
 1. **Review inbox** — proposals from `list_proposals` filtered to
    `submitted`/`returned`, sorted newest first; a row opens
@@ -2142,7 +2240,7 @@ against `ProgramRow`/`ProposalsListRow`.
 ```tsx
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Account } from "@/lib/auth/session";
 import { Workspace } from "@/components/dashboard/Workspace";
 import { UsgShell } from "./UsgShell";
@@ -2157,9 +2255,22 @@ export function RequirementWorkspace({
   unitCount: number;
 }) {
   const isOwner = account.accountScope === "owner";
-  const canProceed = isOwner ? unitCount > 0 : true;
+  const [reviewer, setReviewer] = useState(false);
   const [forced, setForced] = useState(false);
-  const [shell, setShell] = useState<"setup" | "ops">(canProceed ? "ops" : "setup");
+  const [shell, setShell] = useState<"setup" | "ops">(
+    isOwner && unitCount === 0 ? "setup" : "ops",
+  );
+
+  // Invited accounts on the USG board (am_i_reviewer) get the USG view too.
+  useEffect(() => {
+    if (isOwner) return;
+    let alive = true;
+    fetch("/api/reviewer")
+      .then((r) => r.json())
+      .then((d) => { if (alive && d.ok) setReviewer(Boolean(d.reviewer)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [isOwner]);
 
   if (isOwner && shell === "setup") {
     return (
@@ -2186,6 +2297,8 @@ export function RequirementWorkspace({
     );
   }
 
+  const showUsg = isOwner || reviewer;
+
   return (
     <div>
       {isOwner && (forced || unitCount === 0) ? (
@@ -2200,10 +2313,10 @@ export function RequirementWorkspace({
           </button>
         </div>
       ) : null}
-      {isOwner ? (
+      {showUsg ? (
         <UsgShell account={account} />
       ) : (
-        <LsgShell account={account} forcedGate={forced} />
+        <LsgShell account={account} />
       )}
     </div>
   );
@@ -2465,8 +2578,11 @@ back:
 6. owner: `review_proposal` approved → `approved`; second review of the same
    version → `already_reviewed`.
 7. invited: `list_proposals` returns ONLY their unit's rows (a second invited
-   account from another unit cannot see the row).
-8. owner: `set_default_requirements`; standalone `create_proposal` against it.
+   account from another unit cannot see the row); the second account's
+   `am_i_reviewer` → false.
+8. owner (or an invited USG-board account): `am_i_reviewer` → true, and its
+   `list_proposals` returns all org rows.
+8b. owner: `set_default_requirements`; standalone `create_proposal` against it.
 9. All rolled back; no rows remain, no sessions remain.
 
 The storage path in step 3 must match `proposal_items_valid`'s exact shape
@@ -2503,14 +2619,20 @@ separately in the E2E against the deployed route once Storage is live.
 
 ---
 
-## Open questions for the owner (answer before execution starts)
+## Decisions (answered with the owner, 2026-09-29)
 
-1. **Program edit after submissions** — non-goal in the design: a program's
-   template cannot be edited once submissions exist (drop + recreate). Confirm
-   that stays for v1.
-2. **Review scope of invited USG officers** — `review_proposal` is owner-only
-   per the design. An invited USG officer can submit program proposals? No:
-   invited officers are LSG members. Confirm no invited officer needs the inbox.
-3. **Standalone default template blank state** — before the owner saves any
-   default items, `list_default_requirements` returns `[]` and `create_proposal`
-   answers `incomplete_submission`. Good (no invented defaults)?
+1. **Program templates stay frozen after submissions exist** — drop + recreate
+   is the sanctioned edit path (design non-goal kept). No code change needed;
+   `create_program`/`set_default_requirements` already stateless.
+2. **Review is open to the USG board, not only the owner.** The USG board is an
+   invited account holding a current seat in the org's top unit
+   (`unit_type = 'usg'`). `is_org_reviewer` gates `review_proposal` and unlocks
+   the full read scope (`list_proposals`, `proposal_detail`, `get_item_file`,
+   `match_requirement_item`) so the board can run the inbox. `create_program`,
+   `set_default_requirements`, and USG-authored direct publishing stay
+   owner-only; an invited reviewer still submits as an LSG author when they
+   draft proposals. This deviates from the design doc's "owner only" wording.
+3. **Standalone default template blank state = refuse** — before the owner
+   saves any default items, `create_proposal` against `program_id IS NULL`
+   answers `incomplete_submission`. Good: no invented defaults. (The migration
+   does not seed the template.)
