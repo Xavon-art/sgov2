@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
-import { IconCheck, IconClock } from "@/components/ui/Icons";
+import { IconCheck, IconClock, IconClose, IconMail } from "@/components/ui/Icons";
 import type { Account } from "@/lib/auth/session";
 import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
@@ -99,15 +99,27 @@ export function Workspace({
   const [unitError, setUnitError] = useState<string | null>(null);
   const [unitAdded, setUnitAdded] = useState<string | null>(null);
 
-  const fetchInvites = useCallback(async (): Promise<InviteRow[]> => {
+  const [busy, setBusy] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  /**
+   * The rows, or `null` when the read failed. A failure is deliberately not
+   * reported as an empty list: after a cancel or a resend an empty list would
+   * read as "no invitations at all" and blank a table that is still correct.
+   * The first load has nothing to protect, and its loading state and zeroed
+   * counters already stand in for the answer.
+   */
+  const fetchInvites = useCallback(async (): Promise<InviteRow[] | null> => {
     try {
       const res = await fetch("/api/invites");
       const data = await res.json();
       if (res.ok && data.ok) return (data.invites ?? []) as InviteRow[];
     } catch {
-      // Fall through to the empty list; the counters already show a zero state.
+      // Fall through to null so the caller keeps whatever it already has.
     }
-    return [];
+    return null;
   }, []);
 
   /**
@@ -138,7 +150,7 @@ export function Workspace({
         isUsg ? fetchUnits() : Promise.resolve([]),
       ]);
       if (cancelled) return;
-      setInvites(rows);
+      if (rows) setInvites(rows);
       setUnits(list);
       setLoading(false);
       setUnitsLoading(false);
@@ -153,6 +165,8 @@ export function Workspace({
     event.preventDefault();
     setUnitError(null);
     setUnitAdded(null);
+    setNote(null);
+    setActionError(null);
     setAdding(true);
 
     try {
@@ -186,6 +200,8 @@ export function Workspace({
 
     setError(null);
     setSentTo(null);
+    setNote(null);
+    setActionError(null);
     setSending(true);
 
     const selected = units.find((u) => u.id === selectedUnitId);
@@ -219,11 +235,70 @@ export function Workspace({
         setCampusName("");
         setUnitType("lsg");
       }
-      setInvites(await fetchInvites());
+      const rows = await fetchInvites();
+      if (rows) setInvites(rows);
     } catch {
       setError("We could not reach the server. Check your connection and try again.");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function cancelInvitation(id: string) {
+    setBusy(true);
+    setActionError(null);
+    setNote(null);
+    try {
+      const res = await fetch("/api/invites/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setActionError(data.message ?? "We could not cancel that invitation.");
+        return;
+      }
+      // Reported outside the refetch guard: the revoke has already landed, so a
+      // flaky read should not swallow the confirmation.
+      setNote("Invitation cancelled.");
+      // Only leave the confirm state once the row is gone for real. A failed
+      // refetch keeps the previous list, so the officer can simply try again.
+      const rows = await fetchInvites();
+      if (rows) {
+        setInvites(rows);
+        setConfirmId(null);
+      }
+    } catch {
+      setActionError("We could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendInvitation(id: string) {
+    setBusy(true);
+    setActionError(null);
+    setNote(null);
+    try {
+      const res = await fetch("/api/invites/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inviteId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setActionError(data.message ?? "We could not resend that invitation.");
+        return;
+      }
+      setNote(`Invitation re-sent to ${data.email}. The old link no longer works.`);
+      // A re-send extends the expiry, so an expired row turns pending again.
+      const rows = await fetchInvites();
+      if (rows) setInvites(rows);
+    } catch {
+      setActionError("We could not reach the server. Check your connection and try again.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -322,7 +397,9 @@ export function Workspace({
                   disabled={adding}
                   className="w-full sm:w-auto"
                 >
-                  {adding ? "Adding…" : "Add campus"}
+                  {adding
+                    ? "Adding…"
+                    : `Add ${UNIT_TYPE_OPTIONS.find((t) => t.value === newUnitType)?.label ?? "campus"}`}
                 </Button>
               </form>
             </section>
@@ -497,6 +574,25 @@ export function Workspace({
             {variant === "usg" ? "Campuses under you" : "Units on record"}
           </p>
 
+          {note ? (
+            <p
+              role="status"
+              className="mt-4 flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+            >
+              <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+              {note}
+            </p>
+          ) : null}
+
+          {actionError ? (
+            <p
+              role="alert"
+              className="mt-4 animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+            >
+              {actionError}
+            </p>
+          ) : null}
+
           {loading ? (
             <p className="mt-4 text-[0.875rem] text-muted">Loading…</p>
           ) : invites.length === 0 ? (
@@ -509,7 +605,7 @@ export function Workspace({
               <table className="w-full min-w-[34rem] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-line">
-                    {["Email", "Campus or unit", "Status", "Invited", "Activated"].map(
+                    {["Email", "Campus or unit", "Status", "Invited", "Action"].map(
                       (h) => (
                         <th
                           key={h}
@@ -537,8 +633,59 @@ export function Workspace({
                       <td className="py-3 pr-4 text-[0.8125rem] text-muted">
                         {formatDate(invite.createdAt)}
                       </td>
-                      <td className="py-3 text-[0.8125rem] text-muted">
-                        {formatDate(invite.activatedAt)}
+                      <td className="py-3 pl-4">
+                        {invite.status === "activated" ? (
+                          <span className="text-[0.8125rem] text-muted">—</span>
+                        ) : confirmId === invite.id ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              autoFocus
+                              onClick={() => void cancelInvitation(invite.id)}
+                              disabled={busy}
+                              className="rounded-full bg-ink px-3 py-1.5 text-[0.75rem] font-semibold text-canvas disabled:opacity-45"
+                            >
+                              Yes, cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmId(null)}
+                              disabled={busy}
+                              className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-muted disabled:opacity-45"
+                            >
+                              Keep
+                            </button>
+                            <p
+                              role="status"
+                              className="basis-full text-[0.6875rem] text-muted"
+                            >
+                              The link will stop working immediately.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              aria-label={`Resend invitation to ${invite.email}`}
+                              title={`Resend invitation to ${invite.email}`}
+                              onClick={() => void resendInvitation(invite.id)}
+                              disabled={busy}
+                              className="rounded-full p-2 text-muted transition-colors hover:bg-paper hover:text-ink disabled:opacity-45"
+                            >
+                              <IconMail className="h-4 w-4" strokeWidth={1.9} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={`Cancel invitation to ${invite.email}`}
+                              title={`Cancel invitation to ${invite.email}`}
+                              onClick={() => setConfirmId(confirmId === invite.id ? null : invite.id)}
+                              disabled={busy}
+                              className="rounded-full p-2 text-muted transition-colors hover:bg-paper hover:text-[#a5442c] disabled:opacity-45"
+                            >
+                              <IconClose className="h-4 w-4" strokeWidth={1.9} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
