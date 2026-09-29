@@ -876,10 +876,10 @@ revoke all on function smartgov.match_requirement_item(text, uuid) from public;
 -- "storagePath", "originalName", "mimeType", "sizeBytes"} (file) or
 -- {"requirement_item_id": uuid, "kind": "link", "linkUrl"} (link).
 create or replace function smartgov.proposal_items_valid(
-  p_account   smartgov.accounts%rowtype,
-  p_template  jsonb,
-  p_items     jsonb,
-  p_version   int
+  p_account  smartgov.accounts,
+  p_template jsonb,
+  p_items    jsonb,
+  p_version  int
 )
 returns jsonb
 language plpgsql
@@ -896,6 +896,7 @@ declare
   v_path   text;
   v_link   text;
   v_size   bigint;
+  v_frag   text;
   v_found  boolean;
 begin
   -- Every template item must map to exactly one client entry.
@@ -934,10 +935,15 @@ begin
         return jsonb_build_object('ok', false, 'reason', 'unsupported_file_type');
       end if;
       -- The path must be the exact shape the presign route mints:
-      -- <org>/proposals/<uuid>/v<N>/<item>/<name>.
-      if v_path <> p_account.organization_id::text || '/proposals/'
-           || substring(v_path from 'proposals/([^/]+)/' ) || '/v' || p_version || '/'
-           || v_tid || '/' || v_name then
+      -- <org>/proposals/<uuid>/v<N>/<item>/<name>. Comparing against the
+      -- capture is also a NULL guard: if the pattern is absent the capture is
+      -- null, the whole comparison collapses to NULL, and a NULL condition skips
+      -- the reject -- so the capture is tested for null first.
+      v_frag := substring(v_path from 'proposals/([^/]+)/');
+      if v_frag is null
+         or v_path <> p_account.organization_id::text || '/proposals/'
+              || v_frag || '/v' || p_version || '/'
+              || v_tid || '/' || v_name then
         return jsonb_build_object('ok', false, 'reason', 'invalid_request');
       end if;
     else
@@ -981,6 +987,7 @@ declare
   v_check        jsonb;
   v_proposal_id  uuid;
   v_version_id   uuid;
+  v_unit_id      uuid;
   v_i            int;
   v_tid          uuid;
   v_entry        jsonb;
@@ -1015,6 +1022,7 @@ begin
     ) then
       return jsonb_build_object('ok', false, 'reason', 'not_in_unit');
     end if;
+    v_unit_id := p_unit_id;
   end if;
 
   -- Resolve and lock the template.
