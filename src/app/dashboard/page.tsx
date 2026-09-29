@@ -2,11 +2,22 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import ShaderField from "@/components/fx/ShaderField";
 import { Reveal } from "@/components/fx/Reveal";
-import { Wordmark, Seal } from "@/components/ui/Seal";
+import { Seal } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
+import { AppShell, type NavItem } from "@/components/dashboard/AppShell";
 import { Workspace } from "@/components/dashboard/Workspace";
-import { SignOutButton } from "@/components/dashboard/SignOutButton";
-import { IconCheck } from "@/components/ui/Icons";
+import {
+  IconArrowRight,
+  IconBuilding,
+  IconCheck,
+  IconClock,
+  IconDashboard,
+  IconLayers,
+  IconLock,
+  IconMail,
+  IconPyramid,
+  IconUser,
+} from "@/components/ui/Icons";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 
@@ -34,12 +45,10 @@ type WorkspacePayload = RpcResult & {
 
 /**
  * The two dashboards live on one route and differ by `account_kind`, which the
- * database sets from the organization's governance model: federated (USG above
- * its campuses) or unitary (central office above the units).
- *
- * The sign-in gate lives here on the server. `currentAccount` only resolves an
- * `active` account, so someone halfway through the OTP step cannot reach this
- * page even if their session cookie exists.
+ * database sets from the organization's governance model. The sign-in gate
+ * lives here on the server: `currentAccount` only resolves an `active` account,
+ * so someone halfway through the OTP step cannot reach this page even if their
+ * session cookie exists.
  */
 export default async function DashboardPage() {
   const account = await currentAccount();
@@ -77,6 +86,8 @@ export default async function DashboardPage() {
   }
 
   const centralized = data.accountKind === "central";
+  const isOwner = data.accountScope === "owner";
+  const isUsg = data.accountKind === "usg";
 
   const framing = centralized
     ? {
@@ -97,101 +108,226 @@ export default async function DashboardPage() {
   const rows: Array<[string, string]> = [
     ["Account", data.email],
     ["Signed in as", data.displayName],
-    ["Role", data.accountScope === "owner" ? "Account owner" : "Invited member"],
-    ["Workspace", centralized ? "Centralized" : "Decentralized"],
+    ["Role", isOwner ? "Account owner" : "Invited member"],
+    ["Scope", centralized ? "Central office" : "University student government"],
     ["University", data.universityName || "—"],
     ["Campus", data.campusName || "—"],
     ["Charter", data.charterNumber || "—"],
     ["Academic year", data.academicYear || "—"],
   ];
 
+  const nav: NavItem[] = [
+    { id: "overview", label: "Overview", hint: framing.eyebrow, icon: IconDashboard, active: true },
+    ...(isOwner && isUsg
+      ? [{ id: "units", label: "Campuses", hint: "Add a campus or department", icon: IconPyramid }]
+      : []),
+    ...(isOwner ? [{ id: "invitations", label: "Invitations", hint: "Officers you have asked to join", icon: IconUser }] : []),
+    { id: "account", label: "Account", hint: "Your sign-in details", icon: IconLock },
+  ];
+
+  const counters = [
+    {
+      label: "Invitations",
+      value: data.inviteCount,
+      icon: IconMail,
+      hint: "Officers you have asked to join",
+    },
+    {
+      label: "Pending",
+      value: data.pendingCount,
+      icon: IconClock,
+      hint: "Awaiting their emailed code",
+    },
+    {
+      label: "Activated",
+      value: data.activatedCount,
+      icon: IconCheck,
+      hint: "Live in your workspace",
+    },
+  ];
+
   return (
-    <div className="relative isolate flex min-h-dvh flex-col">
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+    <div className="relative isolate min-h-dvh">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
         <ShaderField strength={0.5} scale={1.3} speed={0.022} />
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />
       </div>
 
-      <header className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-[82rem] items-center gap-4 px-5 sm:px-8">
-          <Link href="/" aria-label="SmartGov home">
-            <Wordmark compact />
-          </Link>
-          <span aria-hidden className="hidden h-4 w-px bg-line sm:block" />
-          <p className="hidden truncate text-[0.8125rem] font-medium text-ink-soft sm:block">
-            {data.organizationName || "Workspace"}
-          </p>
-          <div className="ml-auto flex items-center gap-2.5">
-            <span className="hidden rounded-full border border-brass/45 bg-brass-soft/35 px-3 py-1 text-[0.625rem] font-semibold tracking-[0.12em] text-ink uppercase sm:inline-flex">
-              {centralized ? "Centralized" : "Decentralized"}
-            </span>
-            <SignOutButton />
-          </div>
-        </div>
-      </header>
+      <AppShell nav={nav} orgName={data.organizationName || "Workspace"} badge={framing.eyebrow}>
+        {/* Overview */}
+        <section id="overview" className="scroll-mt-24">
+          <Reveal className="flex flex-col items-center text-center">
+            <Seal size={54} accent={data.accent} />
+            <p className="eyebrow mt-6">{framing.eyebrow}</p>
+            <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
+              {framing.title}
+            </h1>
+            <p className="mt-3 max-w-xl text-[0.9375rem] leading-relaxed text-body">
+              {framing.lede}
+            </p>
+          </Reveal>
 
-      <main className="mx-auto w-full max-w-[82rem] flex-1 px-5 py-12 sm:px-8 sm:py-14">
-        <Reveal className="flex flex-col items-center text-center">
-          <Seal size={54} accent={data.accent} />
-          <p className="eyebrow mt-6">{framing.eyebrow}</p>
-          <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
-            {framing.title}
-          </h1>
-          <p className="mt-3 max-w-xl text-[0.9375rem] leading-relaxed text-body">
-            {framing.lede}
-          </p>
-        </Reveal>
+          <Reveal delay={0.06} className="mt-8 flex justify-center">
+            <ol className="flex flex-wrap items-center justify-center gap-2 text-[0.6875rem] font-medium tracking-[0.1em] text-ink-soft uppercase">
+              {framing.chain.map((step, i) => (
+                <li key={step} className="flex items-center gap-2">
+                  {i > 0 ? (
+                    <span aria-hidden className="text-brass">
+                      /
+                    </span>
+                  ) : null}
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </Reveal>
 
-        <Reveal delay={0.06} className="mt-8 flex justify-center">
-          <ol className="flex flex-wrap items-center justify-center gap-2 text-[0.75rem] font-medium tracking-[0.08em] text-ink-soft uppercase">
-            {framing.chain.map((step, i) => (
-              <li key={step} className="flex items-center gap-2">
-                {i > 0 ? (
-                  <span aria-hidden className="text-brass">
-                    /
-                  </span>
-                ) : null}
-                {step}
-              </li>
-            ))}
-          </ol>
-        </Reveal>
-
-        <Reveal delay={0.1} className="mt-10">
           {data.recentlyApproved ? (
-            <div className="mb-8 flex items-start gap-3 rounded-2xl border border-brass/40 bg-brass-soft/25 px-5 py-4 sm:items-center">
-              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-brass-soft">
-                <IconCheck className="h-4 w-4" strokeWidth={2.4} />
-              </span>
-              <p className="text-[0.875rem] leading-relaxed text-ink">
-                <span className="font-semibold">Your USG has been approved.</span>{" "}
-                The emailed code verified this workspace, so it is open for
-                officers, campuses, and submissions.
+            <Reveal delay={0.08} className="mt-8">
+              <div className="flex items-start gap-3 rounded-2xl border border-brass/40 bg-brass-soft/25 px-5 py-4 sm:items-center">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ink text-brass-soft">
+                  <IconCheck className="h-4 w-4" strokeWidth={2.4} />
+                </span>
+                <p className="text-[0.875rem] leading-relaxed text-ink">
+                  <span className="font-semibold">Your USG has been approved.</span>{" "}
+                  The emailed code verified this workspace, so it is open for
+                  officers, campuses, and submissions.
+                </p>
+              </div>
+            </Reveal>
+          ) : null}
+
+          <Reveal delay={0.1} className="mt-8">
+            <div className="grid gap-4 sm:grid-cols-3">
+              {counters.map((stat) => {
+                const Icon = stat.icon;
+                return (
+                  <div
+                    key={stat.label}
+                    className="flex items-start gap-4 rounded-2xl border border-line bg-paper/70 px-5 py-4"
+                  >
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full border border-brass/40 bg-brass-soft/25 text-brass-deep">
+                      <Icon className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.8} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[0.6875rem] font-semibold tracking-[0.1em] text-muted uppercase">
+                        {stat.label}
+                      </p>
+                      <p className="mt-1.5 text-[1.875rem] leading-none font-semibold text-ink">
+                        {stat.value}
+                      </p>
+                      <p className="mt-1 truncate text-[0.75rem] text-muted">{stat.hint}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Reveal>
+
+          {isOwner ? (
+            <Reveal delay={0.12} className="mt-6 grid gap-4 sm:grid-cols-2">
+              <Link
+                href={isUsg ? "#units" : "#invitations"}
+                className="group flex min-h-24 items-center gap-4 rounded-2xl border border-line bg-paper/70 px-5 py-4 transition-[border-color,box-shadow] duration-300 hover:border-line-strong hover:shadow-lift"
+              >
+                <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line-strong bg-canvas text-brass-deep">
+                  {isUsg ? (
+                    <IconBuilding className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.8} />
+                  ) : (
+                    <IconUser className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.8} />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.9375rem] font-medium text-ink">
+                    {isUsg ? "Add a campus or department" : "Invite a unit"}
+                  </span>
+                  <span className="mt-0.5 block text-[0.8125rem] text-muted">
+                    {isUsg
+                      ? "Create a campus first, then invite an LSG officer into it."
+                      : "Record that unit directly under your office."}
+                  </span>
+                </span>
+                <IconArrowRight
+                  className="h-4 w-4 shrink-0 text-brass-deep transition-transform duration-300 group-hover:translate-x-0.5"
+                  strokeWidth={1.8}
+                />
+              </Link>
+
+              <Link
+                href="#invitations"
+                className="group flex min-h-24 items-center gap-4 rounded-2xl border border-line bg-paper/70 px-5 py-4 transition-[border-color,box-shadow] duration-300 hover:border-line-strong hover:shadow-lift"
+              >
+                <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line-strong bg-canvas text-brass-deep">
+                  <IconLayers className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.8} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.9375rem] font-medium text-ink">
+                    Review your invitations
+                  </span>
+                  <span className="mt-0.5 block text-[0.8125rem] text-muted">
+                    See who has activated, who is waiting, and who to follow up with.
+                  </span>
+                </span>
+                <IconArrowRight
+                  className="h-4 w-4 shrink-0 text-brass-deep transition-transform duration-300 group-hover:translate-x-0.5"
+                  strokeWidth={1.8}
+                />
+              </Link>
+            </Reveal>
+          ) : (
+            <Reveal delay={0.12} className="mt-6">
+              <div className="flex items-start gap-3 rounded-2xl border border-brass/40 bg-brass-soft/20 px-5 py-4">
+                <IconCheck className="mt-0.5 h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2} />
+                <p className="text-[0.875rem] leading-relaxed text-ink">
+                  You were invited by {data.organizationName || "your student government"} and
+                  your workspace is scoped to {data.campusName || "your unit"}. Only an
+                  account owner can send invitations.
+                </p>
+              </div>
+            </Reveal>
+          )}
+        </section>
+
+        {/* Owner workspace: add units + send invitations + the table */}
+        {isOwner ? (
+          <section id="invitations" className="mt-12 scroll-mt-24">
+            <div className="mb-5 flex items-end justify-between gap-4 border-b border-line/80 pb-4">
+              <div>
+                <p className="eyebrow">Officers & units</p>
+                <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
+                  Build your umbrella
+                </h2>
+              </div>
+              <p className="hidden text-[0.8125rem] text-muted sm:block">
+                {centralized ? "Units on record" : "Campuses under you"}
               </p>
             </div>
-          ) : null}
-          <Workspace account={account} variant={data.accountKind} />
-        </Reveal>
-
-        <Reveal delay={0.14} className="mt-8">
-          <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-            <p className="eyebrow">Account</p>
-            <dl className="mt-4 flex flex-col">
-              {rows.map(([label, value]) => (
-                <div
-                  key={label}
-                  className="flex items-baseline justify-between gap-6 border-b border-line/70 py-2.5 last:border-b-0"
-                >
-                  <dt className="text-[0.75rem] font-medium tracking-[0.06em] text-muted uppercase">
-                    {label}
-                  </dt>
-                  <dd className="truncate text-[0.875rem] text-ink-deep">{value || "—"}</dd>
-                </div>
-              ))}
-            </dl>
+            <Workspace account={account} variant={data.accountKind} />
           </section>
-        </Reveal>
-      </main>
+        ) : null}
+
+        {/* Account */}
+        <section id="account" className="mt-12 scroll-mt-24">
+          <Reveal>
+            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+              <p className="eyebrow">Account</p>
+              <dl className="mt-4 flex flex-col">
+                {rows.map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-baseline justify-between gap-6 border-b border-line/70 py-2.5 last:border-b-0"
+                  >
+                    <dt className="text-[0.75rem] font-medium tracking-[0.06em] text-muted uppercase">
+                      {label}
+                    </dt>
+                    <dd className="truncate text-[0.875rem] text-ink-deep">{value || "—"}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          </Reveal>
+        </section>
+      </AppShell>
     </div>
   );
 }

@@ -11,9 +11,11 @@ export const runtime = "nodejs";
 const OTP_MINUTES = 15;
 
 /**
- * The tightest of these limits, because each call mints a fresh passcode and
- * spends a real delivery: the previous code is overwritten, so a caller looping
- * here is also invalidating codes people are reading.
+ * The tightest of these limits, because each accepted call mints a fresh
+ * passcode and spends a real delivery. `set_owner_otp` refuses to replace a code
+ * that is still usable, so a caller looping here cannot invalidate a code
+ * someone is reading either -- the deny path just answers honestly instead of
+ * mailing.
  */
 const IP_LIMIT = 6;
 const IP_WINDOW_MS = 15 * 60_000;
@@ -68,13 +70,12 @@ export async function POST(req: Request) {
     });
 
     if (!stored) {
-      return NextResponse.json(
-        {
-          ok: false,
-          message: "That registration has already been approved. Sign in instead.",
-        },
-        { status: 409 },
-      );
+      return NextResponse.json({
+        ok: true,
+        code: "resend_denied",
+        message:
+          "A code is already active for this registration — check your inbox and spam. It stays valid for 15 minutes, so the one you were sent still works. If it never arrived, try again after it expires.",
+      });
     }
 
     try {

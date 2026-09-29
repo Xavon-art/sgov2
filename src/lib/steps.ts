@@ -33,18 +33,11 @@ export const STEPS = [
     short: "Institution",
   },
   {
-    id: "organization",
-    label: "Organization",
-    title: "Name your student organization",
-    path: "/create/organization",
-    short: "Org",
-  },
-  {
     id: "units",
-    label: "Units",
-    title: "What does your USG cover?",
+    label: "Organization & Units",
+    title: "Name your organization and declare local councils",
     path: "/create/units",
-    short: "Units",
+    short: "Org & Units",
   },
   {
     id: "review",
@@ -54,11 +47,18 @@ export const STEPS = [
     short: "Review",
   },
   {
-    id: "success",
-    label: "Charter",
-    title: "Charter granted",
-    path: "/create/success",
-    short: "Charter",
+    id: "verification",
+    label: "Verification",
+    title: "Verify your email",
+    path: "/create/verification",
+    short: "Verify",
+  },
+  {
+    id: "activated",
+    label: "Activated",
+    title: "Your USG is activated",
+    path: "/create/activated",
+    short: "Activated",
   },
 ] as const;
 

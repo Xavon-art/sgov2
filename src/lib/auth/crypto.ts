@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomInt } from "node:crypto";
 
 /**
  * Server-only helpers for the values that must never be stored in plaintext.
@@ -28,16 +28,11 @@ function pepper(): string {
 /**
  * A uniform six-digit code.
  *
- * 2^32 is not a multiple of 1,000,000, so a plain modulo would make the lowest
- * ~295,000 codes marginally more likely to be drawn. Rejection sampling removes
- * that bias for the cost of a few extra bytes.
+ * `randomInt` is a CSPRNG and already rejects out-of-range draws, so the code is
+ * uniform over exactly one million values — no modulo bias to correct for.
  */
 export function otpCode(): string {
-  const limit = 4_294_967_295 - (4_294_967_295 % 1_000_000);
-  for (;;) {
-    const n = randomBytes(4).readUInt32BE(0);
-    if (n <= limit) return (n % 1_000_000).toString().padStart(6, "0");
-  }
+  return randomInt(0, 1_000_000).toString().padStart(6, "0");
 }
 
 /** HMAC-SHA256 of an OTP, which is what actually gets stored. */

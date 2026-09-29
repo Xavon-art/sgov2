@@ -6,7 +6,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { IconCheck } from "@/components/ui/Icons";
 
-const RESEND_COOLDOWN = 30;
+const RESEND_COOLDOWN = 15 * 60;
 
 /**
  * Step two: exchange the emailed code for an active account.
@@ -14,6 +14,10 @@ const RESEND_COOLDOWN = 30;
  * The account is not usable for sign-in until this succeeds, which is why the
  * flow stops here rather than logging the person straight in. The welcome letter
  * is sent on their first real sign-in, not here.
+ *
+ * The cooldown starts at zero on arrival because this page can be revisited
+ * long after the code was minted; after a genuinely fresh send it is set to the
+ * full lifetime, matching what the server allows.
  */
 export function OtpVerify({ token }: { token: string }) {
   const search = useSearchParams();
@@ -25,7 +29,7 @@ export function OtpVerify({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [alreadyActive, setAlreadyActive] = useState(false);
-  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN);
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -90,7 +94,12 @@ export function OtpVerify({ token }: { token: string }) {
         return;
       }
 
-      setNotice(`New code sent to ${data.email ?? "your email"}.`);
+      if (data.code === "resend_denied") {
+        setNotice(data.message ?? "A code is already active for this invitation.");
+        return;
+      }
+
+      setNotice(`New code sent to ${data.email ?? "your email"}. It stays valid for 15 minutes.`);
       setCode("");
       setCooldown(RESEND_COOLDOWN);
     } catch {
@@ -135,8 +144,8 @@ export function OtpVerify({ token }: { token: string }) {
       title="Enter your code"
       lede={
         maskedEmail
-          ? `We sent a six-digit code to ${maskedEmail}. It expires in 15 minutes.`
-          : "We sent a six-digit code to your email. It expires in 15 minutes."
+          ? `We sent a six-digit code to ${maskedEmail}. It stays valid for 15 minutes — check spam just in case.`
+          : "We sent a six-digit code to your email. It stays valid for 15 minutes — check spam just in case."
       }
     >
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">

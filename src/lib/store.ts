@@ -22,21 +22,22 @@ export type AccountDraft = {
 
 export type InstitutionDraft = {
   universityName: string;
-  sealName: string;
+  campusName: string;
+  college: string;
 };
 
-export type OrganizationDraft = {
-  name: string;
-  description: string;
-  accent: string;
-  academicYear: string;
-};
-
+/**
+ * The organization is not a separate step or a separate object any more — there
+ * is no Org screen to go back to. Its three remaining fields sit at the root of
+ * the draft and are edited on the Units step, beside the councils they describe.
+ */
 export type OrgDraft = {
   model: GovernanceModel | null;
   account: AccountDraft;
   institution: InstitutionDraft;
-  organization: OrganizationDraft;
+  organizationName: string;
+  organizationDescription: string;
+  academicYear: string;
   units: DraftUnit[];
 };
 
@@ -51,14 +52,12 @@ export const EMPTY_DRAFT: OrgDraft = {
   },
   institution: {
     universityName: "",
-    sealName: "",
+    campusName: "",
+    college: "",
   },
-  organization: {
-    name: "",
-    description: "",
-    accent: "#16324f",
-    academicYear: "",
-  },
+  organizationName: "",
+  organizationDescription: "",
+  academicYear: "",
   units: [],
 };
 
@@ -102,15 +101,6 @@ export function effectiveRole(
   return role;
 }
 
-export const ACCENTS = [
-  { value: "#16324f", label: "Navy" },
-  { value: "#1e4d6b", label: "Harbour" },
-  { value: "#2f5d50", label: "Laurel" },
-  { value: "#5c3a53", label: "Mulberry" },
-  { value: "#6b3f2a", label: "Terracotta" },
-  { value: "#c9a24b", label: "Brass" },
-];
-
 type Store = OrgDraft & {
   charter: string | null;
   organizationId: string | null;
@@ -119,10 +109,18 @@ type Store = OrgDraft & {
   // so a reload of the success step can resume verification. Cleared on
   // approval; never emailed, never written to the database.
   ownerVerify: { verifyToken: string; email: string; organizationName: string } | null;
+  // Set by the Review step at the moment the user confirms, and consumed by the
+  // Verification step.
+  //
+  // The verification page is also reachable from a failed sign-in, so it cannot
+  // treat "no organization yet" as "go create one" — that would mint a second
+  // organization for a person who had simply followed a link. This flag is the
+  // explicit permission to write, and it is cleared as soon as it is used.
+  confirmIntent: boolean;
   setModel: (model: GovernanceModel) => void;
   patchAccount: (patch: Partial<AccountDraft>) => void;
   patchInstitution: (patch: Partial<InstitutionDraft>) => void;
-  patchOrganization: (patch: Partial<OrganizationDraft>) => void;
+  patchOrganization: (patch: Partial<OrgDraft>) => void;
   // One writer, not add/remove/update: both ways into this array -- typing a row
   // and pasting a roster -- hand over a whole new one, so the incremental
   // actions would be three ways to be wrong about the same array.
@@ -133,6 +131,8 @@ type Store = OrgDraft & {
     verify: { verifyToken: string; email: string; organizationName: string } | null,
   ) => void;
   markSubmitted: () => void;
+  requestSubmit: () => void;
+  clearSubmitIntent: () => void;
   reset: () => void;
 };
 
@@ -144,6 +144,7 @@ export const useOrgDraft = create<Store>()(
       organizationId: null,
       submittedAt: null,
       ownerVerify: null,
+      confirmIntent: false,
       setModel: (model) =>
         set((state) => ({
           model,
@@ -166,32 +167,31 @@ export const useOrgDraft = create<Store>()(
         set((state) => ({
           institution: { ...state.institution, ...patch },
         })),
-      patchOrganization: (patch) =>
-        set((state) => ({
-          organization: { ...state.organization, ...patch },
-        })),
+      patchOrganization: (patch) => set((state) => ({ ...state, ...patch })),
       setUnits: (units) => set({ units }),
       setCharter: (charter) => set({ charter }),
       setOrganizationId: (organizationId) => set({ organizationId }),
       setOwnerVerify: (ownerVerify) => set({ ownerVerify }),
       markSubmitted: () => set({ submittedAt: new Date().toISOString() }),
+      requestSubmit: () => set({ confirmIntent: true }),
+      clearSubmitIntent: () => set({ confirmIntent: false }),
       reset: () =>
-        set({ ...EMPTY_DRAFT, charter: null, organizationId: null, submittedAt: null, ownerVerify: null }),
+        set({
+          ...EMPTY_DRAFT,
+          charter: null,
+          organizationId: null,
+          submittedAt: null,
+          ownerVerify: null,
+          confirmIntent: false,
+        }),
     }),
     {
-      // Bumped from v1: those drafts carry campusName, college, and possibly an
-      // "LSG Officer" role, none of which can survive this change. Discarding
-      // them is the only way to be sure no stale federated draft reaches the
-      // charter step.
-      //
-      // `units` did NOT earn a v3, and the difference is the point. The v1
-      // drafts above held a field the wizard no longer reads, so keeping them
-      // would carry a lie forward; a v2 draft only lacks a `units` key, and
-      // persist shallow-merges the stored state over these initial values, so
-      // such a draft inherits `units: []` and is indistinguishable from a fresh
-      // one. Bumping would throw away a half-filled draft for a missing array
-      // that already defaults correctly.
-      name: "smartgov.draft.v2",
+      // v4: the Org step is gone, so its `organization` object is replaced by
+      // root-level `organizationName` / `organizationDescription` / `academicYear`
+      // fields, and `accent` left with the deleted theme picker. A v3 draft
+      // cannot be reshaped by a merge, so it is discarded rather than
+      // half-read.
+      name: "smartgov.draft.v4",
       storage: createJSONStorage(() => sessionStorage),
     },
   ),
@@ -201,7 +201,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export function validateStep(id: string, state: OrgDraft): string[] {
   const errors: string[] = [];
-  const { model, account, institution, organization, units } = state;
+  const { model, account, institution, units, organizationName, organizationDescription, academicYear } =
+    state;
 
   if (id === "governance-model" && !model) {
     errors.push("Select a governance model to continue.");
@@ -226,18 +227,16 @@ export function validateStep(id: string, state: OrgDraft): string[] {
       errors.push("Enter your university's name.");
   }
 
-  if (id === "organization") {
-    if (organization.name.trim().length < 3)
+  // The organization fields used to live on their own step. That step is gone,
+  // so they are validated on the step that now asks for them.
+  if (id === "units") {
+    if (organizationName.trim().length < 3)
       errors.push("Enter your organization's name.");
-    if (organization.description.trim().length < 12)
+    if (organizationDescription.trim().length < 12)
       errors.push("Add a short description (at least 12 characters).");
-    if (!/^\d{4}\s*[–—-]\s*\d{4}$/.test(organization.academicYear.trim()))
+    if (!/^\d{4}\s*[–—-]\s*\d{4}$/.test(academicYear.trim()))
       errors.push("Academic year must look like 2026 – 2027.");
-  }
 
-  // Only federated has a local tier, so a unitary organization is not asked to
-  // declare one -- the step does not even render for it.
-  if (id === "units" && model === "federated") {
     const result = validateUnits(units);
     if (!result.ok && result.reason === "duplicate")
       errors.push("Declared units can't have the same name.");

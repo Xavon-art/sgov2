@@ -8,7 +8,7 @@ import { TextField } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { IconMail } from "@/components/ui/Icons";
 
-const RESEND_COOLDOWN = 30;
+const RESEND_COOLDOWN = 15 * 60;
 
 type Phase = "login" | "email" | "reset" | "done";
 
@@ -72,10 +72,20 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
+        // A pending account has the right password but no proof of the address
+        // yet. Sending them to the verification step is the useful answer, and
+        // that step carries the resend control.
+        if (data.code === "account_pending") {
+          router.push("/create/verification");
+          return;
+        }
         setError(data.message ?? "We could not sign you in.");
         return;
       }
 
+      // An active account goes straight to the workspace — no onboarding steps
+      // in between. The dashboard re-checks the session server-side, so a
+      // cookie that expired between the two calls bounces back here.
       router.push("/dashboard");
       router.refresh();
     } catch {
@@ -111,7 +121,7 @@ export default function LoginPage() {
       setNotice(
         data.code === "email_failed"
           ? "The code could not be sent. Try sending it again in a moment."
-          : "If an account exists for this email, we sent a code to it.",
+          : "If an account exists for this email, a code is on its way — and it stays valid for 15 minutes.",
       );
       setSentTo(email.trim());
       setCooldown(RESEND_COOLDOWN);
@@ -145,7 +155,7 @@ export default function LoginPage() {
       setNotice(
         data.code === "email_failed"
           ? "The code still did not send. Try again in a moment."
-          : "A new code is on its way.",
+          : "One code at a time: the one we sent stays valid for 15 minutes, so the code already in your inbox still works. Check spam just in case, and come back if it expires.",
       );
       setCode("");
       setCooldown(RESEND_COOLDOWN);
@@ -328,7 +338,7 @@ export default function LoginPage() {
                 <>
                   We sent a code to{" "}
                   <span className="font-medium text-ink">{sentTo ?? "your email"}</span>, if an
-                  account exists for it.
+                  account exists for it. It stays valid for 15 minutes — check spam too.
                 </>
               )}
             </p>

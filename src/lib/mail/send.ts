@@ -16,8 +16,23 @@ let transporter: Transporter | null = null;
 /** Content-ID the templates reference as `cid:smartgov-mark`. */
 export const MARK_CID = "smartgov-mark";
 
+/**
+ * Gmail credentials, read under either the `GMAIL_*` names or the older
+ * `SMTP_*` ones. The `GMAIL_*` pair is what the docs and `.env.example` lead
+ * with; the `SMTP_*` fallback is kept so an existing deployment does not break
+ * on the rename. `GMAIL_APP_PASSWORD` is a Google *app password*, not the
+ * account password — Gmail rejects the account password over SMTP.
+ */
+function mailUser(): string | undefined {
+  return process.env.GMAIL_USER || process.env.SMTP_USER;
+}
+
+function mailPassword(): string | undefined {
+  return process.env.GMAIL_APP_PASSWORD || process.env.SMTP_PASS;
+}
+
 export function isMailConfigured(): boolean {
-  return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+  return Boolean(mailUser() && mailPassword());
 }
 
 export function siteUrl(): string {
@@ -27,18 +42,20 @@ export function siteUrl(): string {
 function getTransporter(): Transporter {
   if (transporter) return transporter;
 
-  if (!isMailConfigured()) {
-    throw new Error("SMTP_USER / SMTP_PASS are not set. Add them to .env.local.");
+  const user = mailUser();
+  const pass = mailPassword();
+
+  if (!user || !pass) {
+    throw new Error(
+      "GMAIL_USER / GMAIL_APP_PASSWORD are not set. Add them to .env.local.",
+    );
   }
 
   transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST ?? "smtp.gmail.com",
     port: Number(process.env.SMTP_PORT ?? 587),
     secure: process.env.SMTP_SECURE === "true",
-    auth: {
-      user: process.env.SMTP_USER as string,
-      pass: process.env.SMTP_PASS as string,
-    },
+    auth: { user, pass },
   });
 
   return transporter;
@@ -69,8 +86,9 @@ export type BrandedMail = {
 export async function sendBranded(mail: BrandedMail): Promise<void> {
   await getTransporter().sendMail({
     from: {
-      name: process.env.SMTP_FROM_NAME ?? "SmartGov",
-      address: process.env.SMTP_FROM_EMAIL ?? (process.env.SMTP_USER as string),
+      name: process.env.MAIL_FROM_NAME ?? process.env.SMTP_FROM_NAME ?? "SmartGov",
+      address:
+        process.env.SMTP_FROM_EMAIL ?? (mailUser() as string),
     },
     to: mail.to,
     subject: mail.subject,

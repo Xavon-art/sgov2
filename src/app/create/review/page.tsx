@@ -12,6 +12,7 @@ import { UNIT_TYPE_LABELS } from "@/lib/units";
 import { STEPS } from "@/lib/steps";
 import { useStepGuard } from "@/lib/useStepGuard";
 import { charterNumber, cn } from "@/lib/utils";
+import { DEFAULT_ACCENT } from "@/lib/submit";
 
 function Row({
   label,
@@ -59,16 +60,16 @@ export default function ReviewPage() {
   useStepGuard("review");
   const router = useRouter();
   const draft = useOrgDraft();
-  const { charter, setCharter } = draft;
+  const { charter, setCharter, requestSubmit } = draft;
 
   useEffect(() => {
-    if (!charter) setCharter(charterNumber(draft.organization.name));
-  }, [charter, draft.organization.name, setCharter]);
+    if (!charter) setCharter(charterNumber(draft.organizationName));
+  }, [charter, draft.organizationName, setCharter]);
 
   const federated = draft.model === "federated";
   const account = draft.account;
   const inst = draft.institution;
-  const org = draft.organization;
+  const org = draft;
 
   return (
     <StepShell
@@ -84,13 +85,13 @@ export default function ReviewPage() {
           <Seal
             size={78}
             inscribed
-            accent={org.accent}
+            accent={DEFAULT_ACCENT}
             className="drop-shadow-[0_8px_24px_rgba(13,33,53,0.16)]"
           />
           <div>
             <p className="eyebrow">Charter of establishment</p>
             <h2 className="mt-3 text-[1.5rem] leading-tight sm:text-[1.875rem]">
-              {org.name}
+              {org.organizationName}
             </h2>
             <p className="mt-2 text-[0.8125rem] text-muted">
               {inst.universityName}
@@ -162,37 +163,33 @@ export default function ReviewPage() {
                   value={inst.universityName}
                   editHref={STEPS[3].path}
                 />
-                {!federated && (
-                  <Row label="Local units" value="None — unitary structure" />
-                )}
-                <Row label="Seal" value={inst.sealName || "Not provided"} />
+                <Row label="Campus" value={inst.campusName} editHref={STEPS[3].path} />
+                <Row label="College" value={inst.college} editHref={STEPS[3].path} />
               </dl>
             </section>
 
-            {federated ? (
-              <section>
-                <h3 className="flex items-center gap-2.5 text-[0.75rem] font-semibold tracking-[0.16em] text-ink-soft uppercase">
-                  <span aria-hidden className="h-px w-5 bg-brass" />
-                  Local Student Governments
-                  <EditLink href={STEPS[5].path} label="units" />
-                </h3>
-                <ul className="mt-3 flex flex-col">
-                  {draft.units.map((unit, i) => (
-                    <li
-                      key={`${unit.type}-${unit.name}-${i}`}
-                      className="flex items-baseline justify-between gap-x-6 gap-y-1 border-b border-line/70 py-2.5 last:border-b-0"
-                    >
-                      <span className="text-[0.875rem] text-ink-deep">
-                        {unit.name}
-                      </span>
-                      <span className="shrink-0 text-[0.625rem] font-semibold tracking-[0.14em] text-faint uppercase">
-                        {UNIT_TYPE_LABELS[unit.type]}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
+            <section>
+              <h3 className="flex items-center gap-2.5 text-[0.75rem] font-semibold tracking-[0.16em] text-ink-soft uppercase">
+                <span aria-hidden className="h-px w-5 bg-brass" />
+                Local Student Governments
+                <EditLink href={STEPS[4].path} label="units" />
+              </h3>
+              <ul className="mt-3 flex flex-col">
+                {draft.units.map((unit, i) => (
+                  <li
+                    key={`${unit.type}-${unit.name}-${i}`}
+                    className="flex items-baseline justify-between gap-x-6 gap-y-1 border-b border-line/70 py-2.5 last:border-b-0"
+                  >
+                    <span className="text-[0.875rem] text-ink-deep">
+                      {unit.name}
+                    </span>
+                    <span className="shrink-0 text-[0.625rem] font-semibold tracking-[0.14em] text-faint uppercase">
+                      {UNIT_TYPE_LABELS[unit.type]}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
           </div>
 
           <aside className="flex flex-col gap-5 lg:border-l lg:border-line/70 lg:pl-7">
@@ -201,16 +198,16 @@ export default function ReviewPage() {
               <div className="mt-2.5">
                 <OrgDiagram
                   model={federated ? "federated" : "unitary"}
-                  accent={org.accent}
+                  accent={DEFAULT_ACCENT}
                 />
               </div>
             </div>
 
-            {org.description ? (
+            {org.organizationDescription ? (
               <div>
                 <p className="eyebrow text-[0.5625rem]">Mandate</p>
                 <p className="mt-2 text-[0.8125rem] leading-relaxed text-body">
-                  {org.description}
+                  {org.organizationDescription}
                 </p>
               </div>
             ) : null}
@@ -218,10 +215,12 @@ export default function ReviewPage() {
             <div className="rounded-xl border border-brass/30 bg-brass-soft/20 px-3.5 py-3">
               <p className="flex items-center gap-1.5 text-[0.625rem] font-semibold tracking-[0.1em] text-brass-deep uppercase">
                 <IconShield className="h-3.5 w-3.5" />
-                Password
+                What happens next
               </p>
               <p className="mt-1.5 text-[0.75rem] leading-snug text-ink-soft">
-                Set during setup. No authentication is wired up in this build.
+                Confirming creates the organization and your account, then emails
+                you a six-digit code to prove the address is yours. The account
+                cannot sign in until that code is entered.
               </p>
             </div>
           </aside>
@@ -234,17 +233,22 @@ export default function ReviewPage() {
           size="lg"
           className="w-full sm:w-auto"
           onClick={() => {
-            if (!charter) setCharter(charterNumber(org.name));
+            if (!charter) setCharter(charterNumber(org.organizationName));
+            // Explicit permission for the verification step to write. Without
+            // this it cannot tell a confirmed setup apart from someone who
+            // followed the sign-in link to a page that would create a second
+            // organization.
+            requestSubmit();
             window.scrollTo({ top: 0, behavior: "smooth" });
-            router.push("/create/success");
+            router.push("/create/verification");
           }}
         >
           Confirm and create organization
           <IconArrowRight className="h-4.5 w-4.5 transition-transform duration-500 group-hover:translate-x-1" />
         </Button>
         <p className="text-center text-[0.75rem] text-muted">
-          By confirming, this organization is created and its founding officer
-          record is written.
+          By confirming, this organization is created, its founding officer
+          record is written, and a verification code is emailed to you.
         </p>
       </div>
     </StepShell>

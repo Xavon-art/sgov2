@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 import { IconCheck, IconClock, IconClose, IconMail } from "@/components/ui/Icons";
+import { cn } from "@/lib/utils";
 import type { Account } from "@/lib/auth/session";
 import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
@@ -302,39 +303,20 @@ export function Workspace({
     }
   }
 
-  const pending = invites.filter((i) => i.status === "pending").length;
-  const activated = invites.filter((i) => i.status === "activated").length;
   const noUnits = units.length === 0 && !unitsLoading;
+
+  const controlClass =
+    "grid size-10 place-items-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45 cursor-pointer";
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: "Invitations", value: invites.length },
-          { label: "Pending", value: pending },
-          { label: "Activated", value: activated },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-2xl border border-line bg-paper/70 px-5 py-4"
-          >
-            <p className="text-[0.6875rem] font-semibold tracking-[0.1em] text-muted uppercase">
-              {stat.label}
-            </p>
-            <p className="mt-1.5 text-[1.75rem] leading-none font-semibold text-ink">
-              {loading ? "—" : stat.value}
-            </p>
-          </div>
-        ))}
-      </div>
-
       {isOwner ? (
-        isUsg ? (
-          <>
-            <section
-              id="units"
-              className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7"
-            >
+        <div
+          id={isUsg ? "units" : "invitations"}
+          className="grid scroll-mt-24 gap-6 xl:grid-cols-2"
+        >
+          {isUsg ? (
+            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
               <p className="eyebrow">Add a campus or department</p>
               <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
                 Create the campus, college, or department first — then you can invite an LSG
@@ -354,7 +336,7 @@ export function Workspace({
                 <div className="flex flex-col gap-2">
                   <label
                     htmlFor="add-unit-type"
-                    className="text-[0.8125rem] font-medium text-ink"
+                    className="text-[0.8125rem] font-semibold text-ink"
                   >
                     Type
                   </label>
@@ -403,7 +385,9 @@ export function Workspace({
                 </Button>
               </form>
             </section>
+          ) : null}
 
+          {isUsg ? (
             <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
               <p className="eyebrow">Invite a campus</p>
               <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
@@ -423,7 +407,7 @@ export function Workspace({
                 />
 
                 {noUnits ? (
-                  <p className="text-[0.875rem] leading-relaxed text-muted">
+                  <p className="rounded-xl border border-dashed border-line-strong bg-canvas/40 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-muted">
                     Add a campus or department first — until then there is no unit to invite
                     someone into.
                   </p>
@@ -431,7 +415,7 @@ export function Workspace({
                   <div className="flex flex-col gap-2">
                     <label
                       htmlFor="invite-unit"
-                      className="text-[0.8125rem] font-medium text-ink"
+                      className="text-[0.8125rem] font-semibold text-ink"
                     >
                       Campus or unit
                     </label>
@@ -482,82 +466,82 @@ export function Workspace({
                 )}
               </form>
             </section>
-          </>
-        ) : (
-          <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-            <p className="eyebrow">Invite a unit</p>
-            <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-              Enter someone&rsquo;s email and the unit they belong to. The central office
-              records them directly.
-            </p>
+          ) : (
+            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7 xl:col-span-2">
+              <p className="eyebrow">Invite a unit</p>
+              <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+                Enter someone&rsquo;s email and the unit they belong to. The central office
+                records them directly.
+              </p>
 
-            <form onSubmit={onInvite} noValidate className="mt-6 flex flex-col gap-5">
-              <TextField
-                id="invite-email"
-                label="Email"
-                type="email"
-                placeholder="officer@campus.edu"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+              <form onSubmit={onInvite} noValidate className="mt-6 flex flex-col gap-5 sm:max-w-xl">
+                <TextField
+                  id="invite-email"
+                  label="Email"
+                  type="email"
+                  placeholder="officer@campus.edu"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
 
-              <TextField
-                id="invite-campus"
-                label="Campus or unit"
-                placeholder="College of Engineering"
-                value={campusName}
-                onChange={(e) => setCampusName(e.target.value)}
-                optional
-                hint="Leave blank if this person represents the whole organization."
-              />
+                <TextField
+                  id="invite-campus"
+                  label="Campus or unit"
+                  placeholder="College of Engineering"
+                  value={campusName}
+                  onChange={(e) => setCampusName(e.target.value)}
+                  optional
+                  hint="Leave blank if this person represents the whole organization."
+                />
 
-              <div className="flex flex-col gap-2">
-                <label
-                  htmlFor="invite-type"
-                  className="text-[0.8125rem] font-medium text-ink"
-                >
-                  Unit type
-                </label>
-                <select
-                  id="invite-type"
-                  value={unitType}
-                  onChange={(e) => setUnitType(e.target.value)}
-                  className={selectClass}
-                >
-                  {UNIT_TYPES.map((u) => (
-                    <option key={u.value} value={u.value}>
-                      {u.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                <div className="flex flex-col gap-2">
+                  <label
+                    htmlFor="invite-type"
+                    className="text-[0.8125rem] font-semibold text-ink"
+                  >
+                    Unit type
+                  </label>
+                  <select
+                    id="invite-type"
+                    value={unitType}
+                    onChange={(e) => setUnitType(e.target.value)}
+                    className={selectClass}
+                  >
+                    {UNIT_TYPES.map((u) => (
+                      <option key={u.value} value={u.value}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              {error ? (
-                <p
-                  role="alert"
-                  className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
-                >
-                  {error}
-                </p>
-              ) : null}
+                {error ? (
+                  <p
+                    role="alert"
+                    className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                  >
+                    {error}
+                  </p>
+                ) : null}
 
-              {sentTo ? (
-                <p
-                  role="status"
-                  className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
-                >
-                  <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
-                  {sentTo}
-                </p>
-              ) : null}
+                {sentTo ? (
+                  <p
+                    role="status"
+                    className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                  >
+                    <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                    {sentTo}
+                  </p>
+                ) : null}
 
-              <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
-                {sending ? "Sending…" : "Send invitation"}
-              </Button>
-            </form>
-          </section>
-        )
+                <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
+                  {sending ? "Sending…" : "Send invitation"}
+                </Button>
+              </form>
+            </section>
+          )}
+        </div>
       ) : (
         <section className="rounded-2xl border border-brass/40 bg-brass-soft/20 px-5 py-4">
           <p className="text-[0.8125rem] leading-relaxed text-ink">
@@ -594,12 +578,23 @@ export function Workspace({
           ) : null}
 
           {loading ? (
-            <p className="mt-4 text-[0.875rem] text-muted">Loading…</p>
+            <div className="mt-4 flex flex-col gap-2.5" aria-live="polite">
+              <div className="h-11 animate-pulse rounded-xl bg-ink/[0.05]" />
+              <div className="h-11 animate-pulse rounded-xl bg-ink/[0.05]" />
+              <div className="h-11 animate-pulse rounded-xl bg-ink/[0.04]" />
+            </div>
           ) : invites.length === 0 ? (
-            <p className="mt-4 text-[0.875rem] leading-relaxed text-muted">
-              No invitations yet. Send the first one above and it will appear here the
-              moment it is delivered.
-            </p>
+            <div className="mt-4 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-line-strong bg-canvas/40 px-5 py-6 sm:flex-row sm:items-center">
+              <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line-strong bg-paper text-brass-deep">
+                <IconMail className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.8} />
+              </span>
+              <div>
+                <p className="text-[0.9375rem] font-medium text-ink">No invitations yet</p>
+                <p className="mt-0.5 text-[0.8125rem] leading-relaxed text-muted">
+                  Send the first one above and it will appear here the moment it is delivered.
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[34rem] border-collapse text-left">
@@ -643,7 +638,7 @@ export function Workspace({
                               autoFocus
                               onClick={() => void cancelInvitation(invite.id)}
                               disabled={busy}
-                              className="rounded-full bg-ink px-3 py-1.5 text-[0.75rem] font-semibold text-canvas disabled:opacity-45"
+                              className="cursor-pointer rounded-full bg-ink px-3 py-1.5 text-[0.75rem] font-semibold text-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45"
                             >
                               Yes, cancel
                             </button>
@@ -651,7 +646,7 @@ export function Workspace({
                               type="button"
                               onClick={() => setConfirmId(null)}
                               disabled={busy}
-                              className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-muted disabled:opacity-45"
+                              className="cursor-pointer rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45"
                             >
                               Keep
                             </button>
@@ -670,7 +665,7 @@ export function Workspace({
                               title={`Resend invitation to ${invite.email}`}
                               onClick={() => void resendInvitation(invite.id)}
                               disabled={busy}
-                              className="rounded-full p-2 text-muted transition-colors hover:bg-paper hover:text-ink disabled:opacity-45"
+                              className={controlClass}
                             >
                               <IconMail className="h-4 w-4" strokeWidth={1.9} />
                             </button>
@@ -680,7 +675,7 @@ export function Workspace({
                               title={`Cancel invitation to ${invite.email}`}
                               onClick={() => setConfirmId(confirmId === invite.id ? null : invite.id)}
                               disabled={busy}
-                              className="rounded-full p-2 text-muted transition-colors hover:bg-paper hover:text-[#a5442c] disabled:opacity-45"
+                              className={cn(controlClass, "hover:text-[#a5442c]")}
                             >
                               <IconClose className="h-4 w-4" strokeWidth={1.9} />
                             </button>

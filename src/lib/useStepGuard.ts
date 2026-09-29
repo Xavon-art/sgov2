@@ -20,13 +20,18 @@ export function useStepGuard(step: StepId) {
       model: draft.model,
       account: draft.account,
       institution: draft.institution,
-      organization: draft.organization,
+      organizationName: draft.organizationName,
+      organizationDescription: draft.organizationDescription,
+      academicYear: draft.academicYear,
       units: draft.units,
     };
 
     for (const s of STEPS) {
       if (s.id === step) break;
-      if (s.id === "success") break;
+      // Verification and activation are driven by the database rather than by
+      // the draft, so the draft's shape says nothing about whether they are
+      // reachable. Stop before them.
+      if (s.id === "verification") break;
       // A step this model does not have cannot be incomplete, so it must not
       // send a unitary draft back to a page about a structure it lacks.
       if (!stepAppliesTo(s.id, draft.model)) continue;

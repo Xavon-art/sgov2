@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { StepShell } from "@/components/create/StepShell";
 import { OrgDiagram } from "@/components/ui/OrgDiagram";
-import { IconLayers, IconPyramid } from "@/components/ui/Icons";
+import { IconLayers } from "@/components/ui/Icons";
 import { useOrgDraft, type GovernanceModel } from "@/lib/store";
 import { useStepForm } from "@/lib/useStepForm";
 import { cn } from "@/lib/utils";
@@ -29,20 +29,26 @@ const MODELS: Array<{
       "Roles: USG Officer, LSG Officer",
     ],
   },
-  {
-    id: "unitary",
-    name: "Unitary",
-    alias: "Centralized",
-    headline: "One council for the whole school",
-    body: "A single governing body serves the entire institution. College and campus representatives sit inside that one council rather than operating as separate local governments — one constitution, one budget, one set of officers.",
-    traits: [
-      "No local tier in your org chart",
-      "One officer set and one shared budget",
-      "Submissions route to the administration",
-      "Role: Council Officer",
-    ],
-  },
 ];
+
+/**
+ * Shown so the option is visible and its absence reads as unfinished rather than
+ * as never having existed. It is deliberately not in `MODELS`: there is no radio
+ * for it, no draft value maps to it, and choosing it would put the user on a
+ * flow that has not been built.
+ */
+const COMING_SOON = {
+  name: "Unitary",
+  alias: "Centralized",
+  headline: "One unified student council",
+  body: "A single student council represents the whole institution. Officers, budget, and approvals all sit in one place, with no local tier beneath it.",
+  traits: [
+    "No LSG tier in your org chart",
+    "One shared officer roster",
+    "Approvals stay at the council",
+    "Roles: Council Officer",
+  ],
+};
 
 export default function GovernanceModelPage() {
   const draft = useOrgDraft();
@@ -68,7 +74,7 @@ export default function GovernanceModelPage() {
           {MODELS.map((model) => {
             const selected = draft.model === model.id;
             const active = selected || hovered === model.id;
-            const Icon = model.id === "federated" ? IconLayers : IconPyramid;
+            const Icon = IconLayers;
 
             return (
               <label
@@ -176,6 +182,53 @@ export default function GovernanceModelPage() {
               </label>
             );
           })}
+
+          <div
+            aria-disabled="true"
+            className="relative block overflow-hidden rounded-2xl border border-dashed border-line-strong/80 bg-paper/30 p-5 opacity-70 sm:p-6"
+          >
+            <span className="relative flex items-start gap-4">
+              <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full border border-line-strong bg-canvas text-ink-muted">
+                <IconLayers className="h-4 w-4" />
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                  <span className="font-display text-[1.25rem] leading-tight font-medium text-ink-deep sm:text-[1.375rem]">
+                    {COMING_SOON.name}
+                  </span>
+                  <span className="text-[0.6875rem] font-semibold tracking-[0.16em] text-ink-muted uppercase">
+                    / {COMING_SOON.alias}
+                  </span>
+                  <span className="rounded-full border border-line-strong bg-canvas px-2.5 py-0.5 text-[0.625rem] font-semibold tracking-[0.14em] text-muted uppercase">
+                    Coming soon
+                  </span>
+                </span>
+                <span className="mt-1 block text-[0.875rem] font-medium text-muted">
+                  {COMING_SOON.headline}
+                </span>
+              </span>
+            </span>
+
+            <span className="relative mt-4 block overflow-hidden rounded-xl border border-line/70 bg-canvas/30 px-3 py-2 grayscale">
+              <OrgDiagram model="unitary" accent="#1e4d6b" />
+            </span>
+
+            <span className="relative mt-4 block text-[0.875rem] leading-relaxed text-muted">
+              {COMING_SOON.body}
+            </span>
+
+            <span className="relative mt-4 flex flex-wrap gap-2">
+              {COMING_SOON.traits.map((trait) => (
+                <span
+                  key={trait}
+                  className="rounded-full border border-line-strong bg-canvas px-2.5 py-1 text-[0.6875rem] font-medium text-muted"
+                >
+                  {trait}
+                </span>
+              ))}
+            </span>
+          </div>
         </div>
       </fieldset>
     </StepShell>

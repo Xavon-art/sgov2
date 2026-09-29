@@ -57,9 +57,17 @@ export async function POST(req: Request) {
     });
 
     if (!res.ok || typeof res.token !== "string") {
+      // A pending account is not an error so much as a redirect: the caller has
+      // the right password, they just have not proved the address yet. The
+      // distinct `code` lets the sign-in page send them to the verification
+      // step instead of showing a dead-end error.
       const pending = res.reason === "account_pending";
       return NextResponse.json(
-        { ok: false, message: messageFor(res.reason) },
+        {
+          ok: false,
+          code: pending ? "account_pending" : undefined,
+          message: messageFor(res.reason),
+        },
         { status: pending ? 409 : 401 },
       );
     }

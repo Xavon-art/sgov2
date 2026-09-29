@@ -25,14 +25,20 @@ The setup flow branches on one early decision, which shapes the org chart, the r
 | `/create` | Step 1 — Welcome |
 | `/create/governance-model` | Step 2 — Federated vs. Unitary |
 | `/create/account` | Step 3 — Administrator details (email + password) |
-| `/create/institution` | Step 4 — University, campus, college, seal |
-| `/create/organization` | Step 5 — Org name, mandate, color, term |
+| `/create/institution` | Step 4 — University, campus, college |
+| `/create/units` | Step 5 — Organization name, description, academic year, and the LSG councils beneath it |
 | `/create/review` | Step 6 — Charter preview + confirm |
-| `/create/success` | Step 7 — Charter granted, org created, owner account registered |
+| `/create/verification` | Step 7 — Email the account's six-digit code and verify it |
+| `/create/activated` | Step 8 — Account is active, with a summary and a link to sign in |
 | `/login` | Sign in with email and password |
 | `/invite/[token]` | Invited step 1 — set a password (server-probed before render) |
 | `/invite/[token]/verify` | Invited step 2 — enter the emailed six-digit code |
 | `/dashboard` | Owner and invited workspaces, gated on the server |
+
+The setup flow is federated-only. The unitary option is present on the model
+step as copy but is not selectable, and `MODELS` in
+`src/app/create/governance-model/page.tsx` no longer contains it — re-enabling
+that path means restoring the model card, its roles, and its units behaviour.
 
 Route handlers, all `runtime = "nodejs"`:
 
@@ -77,14 +83,18 @@ Everything the app reads, all documented in `.env.local.example`. Only two are p
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL, e.g. `https://<project-ref>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | yes | Publishable/anon key. Safe to ship to the browser |
 | `AUTH_PEPPER` | **no** | Server-side secret used to HMAC one-time passcodes before they are stored. Required, never defaulted — see `src/lib/auth/crypto.ts` |
+| `GMAIL_USER` | **no** | The Gmail account that sends every transactional message. Gates all mail together with `GMAIL_APP_PASSWORD` |
+| `GMAIL_APP_PASSWORD` | **no** | A Google **app password**, not the account password — Gmail refuses the account password over SMTP. Create one at <https://myaccount.google.com/apppasswords> (2FA must be on); it is shown once, grouped in fours |
+| `MAIL_FROM_NAME` | no | Display name on the `From:` line. Defaults to `SmartGov` |
 | `SMTP_HOST` | no | Defaults to `smtp.gmail.com` |
 | `SMTP_PORT` | no | Defaults to `587` |
 | `SMTP_SECURE` | no | `"true"` for implicit TLS; otherwise STARTTLS on 587 |
-| `SMTP_USER` | **no** | Mail account. `SMTP_USER` + `SMTP_PASS` together gate all mail |
-| `SMTP_PASS` | **no** | Mail credential |
-| `SMTP_FROM_NAME` | no | Defaults to `SmartGov` |
-| `SMTP_FROM_EMAIL` | no | Defaults to `SMTP_USER` |
+| `SMTP_FROM_EMAIL` | no | Defaults to `GMAIL_USER` |
 | `NEXT_PUBLIC_SITE_URL` | yes | Base URL used to build links inside emails. Defaults to `http://localhost:3000` |
+
+The older `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM_NAME` names still work and are
+read as a fallback, so an existing deployment does not break — but `GMAIL_USER`
+and `GMAIL_APP_PASSWORD` are what `.env.local.example` documents.
 
 Generate a pepper with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
 

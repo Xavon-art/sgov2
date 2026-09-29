@@ -48,6 +48,10 @@ export function InviteSetupForm({
         setError(data.message ?? "We could not send a new code.");
         return;
       }
+      if (data.code === "resend_denied") {
+        setNotice(data.message ?? "A code is already active. Check your inbox and spam.");
+        return;
+      }
       router.push(`/invite/${token}/verify?e=${encodeURIComponent(data.email ?? "")}`);
     } catch {
       setNotice(null);

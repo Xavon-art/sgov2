@@ -3,8 +3,6 @@ import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { hmacOtp } from "@/lib/auth/crypto";
 import { messageFor } from "@/lib/auth/messages";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
-import { sendBranded } from "@/lib/mail/send";
-import { approvalEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
 
@@ -29,9 +27,10 @@ const IP_WINDOW_MS = 10 * 60_000;
  * deliberately no RPC that takes an account id and returns a token, and the
  * registrant's password is already held by the client-side flow.
  *
- * The approval letter is sent here, once, on the transition to `active`. A mail
- * failure never blocks the approval: the account is already usable, and the
- * dashboard's `recentlyApproved` callout is the in-app half of the notice.
+ * No mail goes out here. The emailed passcode already was the activation
+ * notice; the dashboard's `recentlyApproved` callout is the in-app half, so the
+ * owner is not hit with a second "you were approved" letter for an account they
+ * just verified.
  */
 export async function POST(req: Request) {
   let body: { verifyToken?: string; code?: string };
@@ -80,23 +79,6 @@ export async function POST(req: Request) {
         { ok: true, alreadyActive: true, message: "This registration is already approved." },
         { status: 200 },
       );
-    }
-
-    // The account is active now. The approval letter is a courtesy; its failure
-    // is logged, never reflected back as a failed approval.
-    try {
-      await sendBranded(
-        approvalEmail({
-          to: String(res.email),
-          displayName: String(res.displayName ?? ""),
-          accountKind: res.accountKind === "central" ? "central" : "usg",
-          organizationName: String(res.organizationName ?? ""),
-          universityName: String(res.universityName ?? ""),
-          campusName: String(res.campusName ?? ""),
-        }),
-      );
-    } catch (mailError) {
-      console.error("[verify-owner:approval-email]", mailError);
     }
 
     return NextResponse.json({

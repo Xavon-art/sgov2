@@ -3,9 +3,10 @@ import { StepShell } from "@/components/create/StepShell";
 import { StartButton } from "@/components/create/WelcomeStart";
 import {
   IconArchive,
+  IconBuilding,
   IconCompass,
+  IconLayers,
   IconShield,
-  IconTracking,
 } from "@/components/ui/Icons";
 
 export const metadata: Metadata = {
@@ -18,7 +19,7 @@ const PREVIEW = [
   {
     icon: IconCompass,
     title: "Choose your governance model",
-    body: "Federated with local councils, or a single unitary council. This shapes everything after it.",
+    body: "Federated with local councils — a University Student Government at the top, with a Local Student Government under every college, department, or satellite campus.",
   },
   {
     icon: IconShield,
@@ -26,14 +27,19 @@ const PREVIEW = [
     body: "Your name, email, and role. You can invite every other officer afterwards.",
   },
   {
-    icon: IconArchive,
+    icon: IconBuilding,
     title: "Tell us about your institution",
-    body: "University, campus, college, and the seal you want shown on your charter.",
+    body: "University name. Campus and college fields are not needed for the USG model.",
   },
   {
-    icon: IconTracking,
+    icon: IconLayers,
+    title: "Organization & Units",
+    body: "Name your student organization, set its color and academic year, then declare the Local Student Governments beneath your USG.",
+  },
+  {
+    icon: IconArchive,
     title: "Review and confirm",
-    body: "One last look at everything, then your organization is chartered.",
+    body: "One last look at everything, then your organization is chartered and verification begins.",
   },
 ];
 
@@ -48,7 +54,7 @@ export default function CreateWelcomePage() {
           <br className="hidden sm:block" /> student government system.
         </>
       }
-      lede="Four short steps. You can go back and change anything before you confirm — nothing is submitted until the very end."
+      lede="Eight short steps. You can go back and change anything before you confirm — nothing is submitted until the very end."
     >
       <ol className="flex flex-col">
         {PREVIEW.map((item, i) => {

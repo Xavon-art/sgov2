@@ -10,10 +10,11 @@ export const runtime = "nodejs";
 const OTP_MINUTES = 15;
 
 /**
- * The tightest of these limits, because each call beyond a known account mints
- * a fresh passcode and spends a real delivery (mirroring `resend-owner-code`).
- * The window sits above the one human recovering a password in a hurry while
- * still turning a mailbox into a plausible flood.
+ * The tightest of these limits, because an accepted call mints a fresh passcode
+ * and spends a real delivery (mirroring `resend-owner-code`). A code that is
+ * still usable is never replaced, but a loop can still force a re-mint once a
+ * code lapses, so the window sits above the one human recovering a password in
+ * a hurry while still turning a mailbox into a plausible flood.
  */
 const IP_LIMIT = 6;
 const IP_WINDOW_MS = 15 * 60_000;
@@ -54,9 +55,11 @@ export async function POST(req: Request) {
       p_ttl_minutes: OTP_MINUTES,
     });
 
-    // No account, or a reset currently on cooldown / past its lifetime budget.
-    // Either way the caller learns nothing: no email, but the exact same reply
-    // as a successful send.
+    // No account, an existing usable code, or a reset currently on cooldown /
+    // past its lifetime budget. Either way the caller learns nothing and a
+    // usable code is never overwritten: no email, but the exact same reply as a
+    // successful send, so this endpoint cannot be walked to probe for
+    // registered addresses.
     if (!started) {
       return NextResponse.json({ ok: true });
     }

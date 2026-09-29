@@ -12,6 +12,9 @@ type RpcResponse = {
   unitCount: number;
 };
 
+/** The seal color a new organization is issued when nobody picks one. */
+export const DEFAULT_ACCENT = "#16324f";
+
 /**
  * Creates the organization, its founding officer, and its governance units in a
  * single database transaction via the `create_organization` RPC.
@@ -32,7 +35,7 @@ export async function submitOrganization(
   draft: OrgDraft,
   existingCharter: string | null,
 ): Promise<SubmitResult> {
-  const charter = existingCharter ?? charterNumber(draft.organization.name);
+  const charter = existingCharter ?? charterNumber(draft.organizationName);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -54,18 +57,19 @@ export async function submitOrganization(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        slug: slugify(draft.organization.name) || "student-organization",
-        organizationName: draft.organization.name.trim(),
-        description: draft.organization.description.trim(),
+        slug: slugify(draft.organizationName) || "student-organization",
+        organizationName: draft.organizationName.trim(),
+        description: draft.organizationDescription.trim(),
         governanceModel: draft.model,
-        academicYear: draft.organization.academicYear.trim(),
-        accent: draft.organization.accent,
+        academicYear: draft.academicYear.trim(),
+        // The accent was a theme-picker choice; that step is gone, so the
+        // organization's seal keeps the product default rather than carrying a
+        // field in the draft that nothing can set.
+        accent: DEFAULT_ACCENT,
         universityName: draft.institution.universityName.trim(),
-        // A USG has no single campus, and the columns are still needed for
-        // invited local councils. The API coerces an absent value to "".
-        campusName: "",
-        college: "",
-        sealName: draft.institution.sealName ?? "",
+        campusName: draft.institution.campusName.trim(),
+        college: draft.institution.college.trim(),
+        sealName: "",
         charterNumber: charter,
         officerName: draft.account.fullName.trim(),
         officerEmail: draft.account.email.trim(),
@@ -80,7 +84,7 @@ export async function submitOrganization(
               name: unit.name.trim(),
               type: unit.type,
             }))
-          : [{ name: draft.organization.name.trim(), unitType: "council" }],
+          : [{ name: draft.organizationName.trim(), unitType: "council" }],
       }),
     });
   } catch {
@@ -149,7 +153,7 @@ export async function registerAccount(
       accountKind: draft.model === "unitary" ? "central" : "usg",
       organizationId,
       universityName: draft.institution.universityName.trim(),
-      campusName: "",
+      campusName: draft.institution.campusName.trim(),
     }),
   });
 
