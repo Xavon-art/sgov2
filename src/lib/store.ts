@@ -186,13 +186,26 @@ export const useOrgDraft = create<Store>()(
         }),
     }),
     {
-      // v4: the Org step is gone, so its `organization` object is replaced by
-      // root-level `organizationName` / `organizationDescription` / `academicYear`
-      // fields, and `accent` left with the deleted theme picker. A v3 draft
-      // cannot be reshaped by a merge, so it is discarded rather than
-      // half-read.
-      name: "smartgov.draft.v4",
+      // v5: the account credentials (full name, email, password) are no longer
+      // persisted. This step is where real names and passwords are typed, and
+      // sessionStorage is not a place for them — the inputs must start blank on
+      // every visit. The rest of the draft (institution, units, resume keys) is
+      // still saved so a mid-flow reload does not drop everything.
+      name: "smartgov.draft.v5",
       storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        charter: state.charter,
+        organizationId: state.organizationId,
+        submittedAt: state.submittedAt,
+        ownerVerify: state.ownerVerify,
+        confirmIntent: state.confirmIntent,
+        model: state.model,
+        institution: state.institution,
+        organizationName: state.organizationName,
+        organizationDescription: state.organizationDescription,
+        academicYear: state.academicYear,
+        units: state.units,
+      }),
     },
   ),
 );
