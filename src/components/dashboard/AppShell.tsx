@@ -4,14 +4,35 @@ import { useState } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
-import { IconDashboard, IconClose, IconMenu } from "@/components/ui/Icons";
+import {
+  IconDashboard,
+  IconClose,
+  IconLock,
+  IconMenu,
+  IconPyramid,
+  IconUser,
+} from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
+
+export type NavIcon = "dashboard" | "pyramid" | "user" | "lock";
+
+const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
+  dashboard: IconDashboard,
+  pyramid: IconPyramid,
+  user: IconUser,
+  lock: IconLock,
+};
 
 export type NavItem = {
   id: string;
   label: string;
   hint: string;
-  icon: typeof IconDashboard;
+  // A key, not a component: this prop crosses from the server component that
+  // builds `nav` into this client component, and functions cannot cross that
+  // boundary -- passing the component threw "Functions cannot be passed directly
+  // to Client Components" and crashed the whole dashboard. The icon is resolved
+  // here instead.
+  icon: NavIcon;
   active?: boolean;
 };
 
@@ -55,7 +76,7 @@ export function AppShell({
 
         <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
           {nav.map((item) => {
-            const Icon = item.icon;
+            const Icon = NAV_ICONS[item.icon];
             const selected = item.active;
             return (
               <a
@@ -113,7 +134,7 @@ export function AppShell({
 
             <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
               {nav.map((item) => {
-                const Icon = item.icon;
+                const Icon = NAV_ICONS[item.icon];
                 const selected = item.active;
                 return (
                   <a

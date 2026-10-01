@@ -11,11 +11,8 @@ import {
   IconBuilding,
   IconCheck,
   IconClock,
-  IconDashboard,
   IconLayers,
-  IconLock,
   IconMail,
-  IconPyramid,
   IconUser,
 } from "@/components/ui/Icons";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
@@ -117,12 +114,12 @@ export default async function DashboardPage() {
   ];
 
   const nav: NavItem[] = [
-    { id: "overview", label: "Overview", hint: framing.eyebrow, icon: IconDashboard, active: true },
+    { id: "overview", label: "Overview", hint: framing.eyebrow, icon: "dashboard", active: true },
     ...(isOwner && isUsg
-      ? [{ id: "units", label: "Campuses", hint: "Add a campus or department", icon: IconPyramid }]
+      ? [{ id: "units", label: "Campuses", hint: "Add a campus or department", icon: "pyramid" as const }]
       : []),
-    ...(isOwner ? [{ id: "invitations", label: "Invitations", hint: "Officers you have asked to join", icon: IconUser }] : []),
-    { id: "account", label: "Account", hint: "Your sign-in details", icon: IconLock },
+    ...(isOwner ? [{ id: "invitations", label: "Invitations", hint: "Officers you have asked to join", icon: "user" as const }] : []),
+    { id: "account", label: "Account", hint: "Your sign-in details", icon: "lock" },
   ];
 
   const counters = [
