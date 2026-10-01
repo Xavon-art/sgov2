@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
-import { hmacOtp, otpCode } from "@/lib/auth/crypto";
 import { maskEmail, messageFor } from "@/lib/auth/messages";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { sendBranded } from "@/lib/mail/send";
-import { otpEmail } from "@/lib/mail/templates";
+import { activationEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
-
-const OTP_MINUTES = 15;
 
 /**
  * Account creation is a one-shot per person, so nothing legitimate comes close
@@ -30,22 +27,18 @@ type OwnerBody = {
 };
 
 /**
- * Step 1 of the USG flow: create the registration, then mail a passcode.
+ * Step 1 of the USG flow: create the registration, then mail an activation
+ * link.
  *
  * The account is created in `pending` — the `verifyToken` returned here is the
- * only way to feed the OTP back in — and only becomes `active` once
- * `/api/auth/verify-owner` succeeds. "Approval" is precisely that: proving the
- * registration email belongs to the person who registered.
+ * only way to flip it to `active`. The email carries a button that calls
+ * `/activate` with that token; `activate_owner` proves the registration belongs
+ * to the mailbox, activates it, and mints the session in one step, so the
+ * click lands the owner straight on their dashboard without a password entry.
  *
- * Unlike the invited flow, the session is NOT minted here: `login_account`
- * refuses `pending` accounts, and approving the code on the client re-runs
- * `login_account` through the existing login route, so sign-in is only possible
- * after approval.
- *
- * The code is never returned to the caller — it exists in the mail and in the
- * HMAC that was stored. If the code email fails, the registration still exists,
- * so the response says `canResend` and the client offers a retry rather than a
- * dead end.
+ * The token is never returned to anyone who does not have the email. If the
+ * mail fails, the registration still exists, so the response says `canResend`
+ * and the client offers a retry rather than a dead end.
  */
 export async function POST(req: Request) {
   let body: OwnerBody;
@@ -94,33 +87,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const code = otpCode();
-
-    const stored = await callRpc<boolean>("set_owner_otp", {
-      p_verify_token: verifyToken,
-      p_otp_hash: hmacOtp(code),
-      p_ttl_minutes: OTP_MINUTES,
-    });
-
-    if (!stored) {
-      return NextResponse.json(
-        { ok: false, message: "We could not start verification. Please try again." },
-        { status: 500 },
-      );
-    }
-
     try {
       await sendBranded(
-        otpEmail({
+        activationEmail({
           to: email,
-          code,
           organizationName: String(created.organizationName ?? ""),
           campusName: String(created.campusName ?? ""),
-          minutes: OTP_MINUTES,
+          token: verifyToken,
         }),
       );
     } catch (mailError) {
-      console.error("[register:otp-email]", mailError);
+      console.error("[register:activation-email]", mailError);
       return NextResponse.json({
         ok: true,
         code: "email_failed",
@@ -128,7 +105,7 @@ export async function POST(req: Request) {
         verifyToken,
         email: maskEmail(email),
         organizationName: String(created.organizationName ?? ""),
-        message: "Your registration was saved but the code did not send. Use “Send the code again” below.",
+        message: "Your registration was saved but the email did not send. Use “Send the email again” below.",
       });
     }
 

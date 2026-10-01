@@ -28,8 +28,9 @@ The setup flow branches on one early decision, which shapes the org chart, the r
 | `/create/institution` | Step 4 — University, campus, college |
 | `/create/units` | Step 5 — Organization name, description, academic year, and the LSG councils beneath it |
 | `/create/review` | Step 6 — Charter preview + confirm |
-| `/create/verification` | Step 7 — Email the account's six-digit code and verify it |
-| `/create/activated` | Step 8 — Account is active, with a summary and a link to sign in |
+| `/create/verification` | Step 7 — Emails an activation link; the mail's button activates the account |
+| `/activate` | GET handler for that button — activates the account, mints the session, lands on `/dashboard` |
+| `/create/activated` | Legacy confirmation page (no longer reached by the new flow) |
 | `/login` | Sign in with email and password |
 | `/invite/[token]` | Invited step 1 — set a password (server-probed before render) |
 | `/invite/[token]/verify` | Invited step 2 — enter the emailed six-digit code |
@@ -45,7 +46,9 @@ Route handlers, all `runtime = "nodejs"`:
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/organization` | Atomic `create_organization` — org, founding officer, governance units |
-| `POST /api/auth/register` | `create_owner_account`, then mints a session by re-running `login_account` |
+| `POST /api/auth/register` | `create_owner_account` (writes `pending`, returns `verifyToken`), then mails the activation link |
+| `GET /activate` | `activate_owner` — flips the pending owner to `active` and mints the session in one step |
+| `POST /api/auth/resend-owner-code` | Re-sends the activation email against a live pending registration |
 | `POST /api/auth/login` | `login_account`; sets the session cookie; sends the welcome letter if owed |
 | `POST /api/auth/logout` | `delete_session`, then clears the cookie |
 | `GET /api/invites` | `list_invites` — pending vs. activated, for owners |
@@ -118,8 +121,9 @@ Postgres on Supabase. Migrations live in `supabase/migrations/` and **must be ap
 | `20260101000800_unit_chart_functions.sql` | `unit_chart` — the scoping centrepiece. An owner sees every unit; an LSG officer sees only their own units plus the parent USG, filtered in the SQL `where` clause so other units are never in the result set. Plus the owner-only writes: `add_position`, `toggle_unit_position`, `assign_officer`, `release_officer` |
 | `20260101000900_roster_invites.sql` | Extends `create_invite` with unit/position args: it writes the roster row and the membership in the same transaction, so the seat is filled at invite time and accepting only links the account. `accept_invite` sets `roster.account_id` |
 | `20260101001000_list_roster.sql` | Owner-only roster read for the seat-assignment picker. Necessary because the roster is one row per email per org: without it an officer could never be moved between seats, since re-inviting the same address collides with the unique index |
-| `20260101001100_owner_otp_approval.sql` | Owners are approved by an emailed OTP, not at submission. `create_owner_account` now writes `pending`, mints a one-time `verifyToken` (only its SHA-256 is stored), and `set_owner_otp` / `verify_owner_otp` gate activation on the code — the same HMAC/per-code-attempt ceiling invites use. `account_workspace` gains `recentlyApproved` for the dashboard banner |
+| `20260101001100_owner_otp_approval.sql` | `create_owner_account` now writes `pending`, mints a one-time `verifyToken` (only its SHA-256 is stored), and `verify_owner_otp` gates activation on an emitted code. Superseded for owners by 016 below, but `set_owner_otp` / `verify_owner_otp` are still the invite verification path (`account_workspace` gains `recentlyApproved` for the dashboard banner) |
 | `20260101001200_password_reset.sql` | Password recovery keyed on a dedicated `password_resets` row (at most one live reset per account). `begin_password_reset` emails a code only to an `active` account and answers identically for a missing one, so the endpoint cannot probe for registered addresses; `complete_password_reset` re-hashes the password and revokes every session on a match |
+| `20260101001600_owner_activation_link.sql` | Owners now approve by magic link instead of a typed code: the registration emails a button for `activate_owner`, which flips the pending account to `active` **and** mints the session in one step, so the owner lands directly on their dashboard. `owner_send_activation` is the cooldown/limit gate for resends |
 
 Apply them either way:
 
@@ -186,6 +190,8 @@ An invited account is created `pending` and only becomes `active` when the email
 The six-digit code is generated in the application — it has to be emailed — and only `HMAC-SHA256(code, AUTH_PEPPER)` is stored, so a dump of `smartgov.accounts` cannot be replayed. The `AUTH_PEPPER` is required rather than defaulted: an unkeyed digest would let anyone who reads the database brute-force all one million codes for an account in seconds. Guessing is bounded at five wrong codes per code, five re-sends per invite (lifetime, not per window, plus a two-minute cooldown), and twenty raw `verify_otp` calls per invite per fifteen minutes.
 
 Invitation links carry 24 bytes from `gen_random_bytes(24)`, stored the same way as sessions — SHA-256 in `smartgov.invites.token_hash`, plaintext only in the email. Both `set_otp` and `verify_otp` are bound to the **invite token** rather than an account id, because a uuid is enumerable in bulk while the invite token is the only secret the recipient actually holds.
+
+Owners approve the same way, minus the code: `create_owner_account` keeps the `verifyToken` in the email as a magic link, and the link's click proves address ownership. `activate_owner` is a magic-link log-in — it stages the activation and the session mint in one call, and rejects anything that is not a live, still-pending `verifyToken` (guessed tokens hit a 10-minute IP budget on `/activate`).
 
 ### No function trusts an identity from the client
 

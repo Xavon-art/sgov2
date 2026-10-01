@@ -273,6 +273,63 @@ export function inviteEmail(opts: {
   return { to: opts.to, subject: `You're invited to ${opts.organizationName} — SmartGov`, html, text };
 }
 
+// ---------------------------------------------------------------- activation
+
+export function activationEmail(opts: {
+  to: string;
+  organizationName: string;
+  campusName: string;
+  token: string;
+}): BrandedMail {
+  const url = `${siteUrl()}/activate?token=${opts.token}`;
+  const where = opts.campusName || opts.organizationName;
+
+  const html = shell({
+    preheader: `Your SmartGov account for ${where} is ready to activate.`,
+    body: [
+      eyebrow("Almost there"),
+      heading("Activate your USG account"),
+      paragraph(
+        `Your workspace for ${where} is set up. Click the button below to activate your account and open your dashboard — it signs you in as your student government's administrator.`,
+      ),
+      detailsPanel([
+        detail("Workspace", where),
+        opts.organizationName && opts.organizationName !== where
+          ? detail("Organization", opts.organizationName)
+          : "",
+        detail("Scope", "Federated student government"),
+      ]),
+      button(url, "Activate my USG account"),
+      fallbackLink(url),
+      paragraph(
+        "The link is unique to your registration — using it proves the address is yours. If you did not register on SmartGov, you can ignore this email.",
+      ),
+    ].join(""),
+    footnote: "This link activates your account and opens your dashboard.",
+  });
+
+  const text = [
+    "ACTIVATE YOUR USG ACCOUNT",
+    "",
+    `Your SmartGov workspace for ${where} is ready.`,
+    "",
+    `Workspace: ${where}`,
+    opts.organizationName && opts.organizationName !== where
+      ? `Organization: ${opts.organizationName}`
+      : "",
+    "Scope: Federated student government",
+    "",
+    "Click or paste this into your browser to activate and open your dashboard:",
+    url,
+    "",
+    "If you did not register on SmartGov, ignore this email.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return { to: opts.to, subject: `Activate your USG account — SmartGov`, html, text };
+}
+
 // ---------------------------------------------------------------- passcode
 
 export function otpEmail(opts: {

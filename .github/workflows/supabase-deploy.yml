@@ -1,0 +1,46 @@
+name: Deploy migrations to Supabase
+
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/migrations/**"]
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends postgresql-client
+
+      - name: Apply new migrations
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DB_URL}" ]]; then
+            echo "Missing SUPABASE_DB_URL secret. Set it to the pooler connection string."
+            exit 1
+          fi
+
+          applied=$(psql "$DB_URL" -t -A -c \
+            "select version from supabase_migrations.schema_migrations order by version;" 2>/dev/null || true)
+
+          for f in supabase/migrations/*.sql; do
+            ver=$(basename "$f" | cut -c1-14)
+            if ! printf '%s\n' "$applied" | grep -qx "$ver"; then
+              echo "Applying $f ($ver)"
+              psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+              psql "$DB_URL" -q -c \
+                "insert into supabase_migrations.schema_migrations (version, name, statements)
+                 values ('$ver', '$(basename "$f" .sql)', '{}')
+                 on conflict version do nothing;"
+            else
+              echo "Already applied: $ver"
+            fi
+          done

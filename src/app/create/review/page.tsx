@@ -219,8 +219,8 @@ export default function ReviewPage() {
               </p>
               <p className="mt-1.5 text-[0.75rem] leading-snug text-ink-soft">
                 Confirming creates the organization and your account, then emails
-                you a six-digit code to prove the address is yours. The account
-                cannot sign in until that code is entered.
+                you a link to activate your USG account. Using it proves the
+                address is yours and opens your dashboard.
               </p>
             </div>
           </aside>
@@ -248,7 +248,7 @@ export default function ReviewPage() {
         </Button>
         <p className="text-center text-[0.75rem] text-muted">
           By confirming, this organization is created, its founding officer
-          record is written, and a verification code is emailed to you.
+          record is written, and an activation email is sent to you.
         </p>
       </div>
     </StepShell>

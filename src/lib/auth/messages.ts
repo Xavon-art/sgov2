@@ -8,7 +8,7 @@
  */
 const RPC_MESSAGES: Record<string, string> = {
   invalid_credentials: "Email or password is incorrect.",
-  account_pending: "Finish activating your account using the code we emailed you.",
+  account_pending: "Finish activating your account using the link we emailed you.",
   unauthenticated: "Your session has expired. Please sign in again.",
   forbidden: "Your account is not allowed to do that.",
   no_organization: "This workspace is not linked to an organization yet.",
