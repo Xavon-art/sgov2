@@ -6,11 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { FieldShell, TextArea, TextField, control } from "@/components/ui/Field";
 import { IconClose, IconLayers, IconPyramid, IconSparkle } from "@/components/ui/Icons";
 import { useOrgDraft } from "@/lib/store";
-import {
-  UNIT_TYPE_LABELS,
-  parseBulkUnits,
-  type UnitType,
-} from "@/lib/units";
+import { UNIT_TYPE_LABELS, type UnitType } from "@/lib/units";
 import { pick, useStepForm } from "@/lib/useStepForm";
 import { useStepGuard } from "@/lib/useStepGuard";
 import { cn } from "@/lib/utils";
@@ -38,7 +34,6 @@ export default function UnitsPage() {
   );
   const [name, setName] = useState("");
   const [type, setType] = useState<UnitType>("college");
-  const [pasted, setPasted] = useState("");
 
   const org = draft;
 
@@ -50,13 +45,6 @@ export default function UnitsPage() {
     if (!trimmed) return;
     setUnits([...units, { name: trimmed, type }]);
     setName("");
-  };
-
-  const applyPastedRoster = () => {
-    const parsed = parseBulkUnits(pasted);
-    if (!parsed.length) return;
-    setUnits(parsed);
-    setPasted("");
   };
 
   return (
@@ -231,38 +219,9 @@ export default function UnitsPage() {
             </ul>
           ) : (
             <p className="text-[0.75rem] leading-relaxed text-muted">
-              Nothing declared yet. Add a council above, or paste the roster you
-              already have.
+              Nothing declared yet. Add a council above.
             </p>
           )}
-        </div>
-
-        <div className="rule" />
-
-        <div className="flex flex-col gap-2.5">
-          <TextArea
-            id="pastedUnits"
-            label="Paste a roster"
-            placeholder={"College of Engineering\nBaguio Campus\nNursing Department"}
-            className="font-mono"
-            value={pasted}
-            onChange={(e) => setPasted(e.target.value)}
-            hint="One council per line. A line may name its type after a dash — “College of Engineering — college” — and a bare name is read as a campus or a department when it says so."
-          />
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={applyPastedRoster}
-              disabled={!pasted.trim()}
-            >
-              Use this roster
-            </Button>
-            <p className="text-[0.75rem] text-muted">
-              A pasted roster replaces everything above it.
-            </p>
-          </div>
         </div>
       </div>
     </StepShell>
