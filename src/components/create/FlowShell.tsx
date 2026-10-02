@@ -7,8 +7,7 @@ import { FloatingField, type FloatingChip } from "@/components/fx/FloatingField"
 import { Wordmark } from "@/components/ui/Seal";
 import { IconClose, IconPyramid } from "@/components/ui/Icons";
 import { useOrgDraft } from "@/lib/store";
-import { STEPS, visibleSteps } from "@/lib/steps";
-import { useDraftHydrated } from "@/lib/useDraftHydrated";
+import { visibleSteps } from "@/lib/steps";
 import { cn } from "@/lib/utils";
 
 const AMBIENT_CHIPS: FloatingChip[] = [
@@ -55,12 +54,11 @@ const AMBIENT_CHIPS: FloatingChip[] = [
 
 export function FlowShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // The header renders before the draft is back, and a model-scoped step only
-  // counts once it is known: reading the model during the first client render
-  // would give the stepper a different length than the server sent.
-  const hydrated = useDraftHydrated();
+  // The draft is in memory only, so the model is null on the server and on the
+  // first client render alike -- visibleSteps(null) is what both already produce,
+  // and the header needs no hydration gate to agree with the server markup.
   const model = useOrgDraft((state) => state.model);
-  const steps = hydrated ? visibleSteps(model) : STEPS;
+  const steps = visibleSteps(model);
   const active = steps.find((s) => s.path === pathname) ?? steps[0];
   const index = steps.findIndex((s) => s.id === active.id);
   const progress = ((index + 1) / steps.length) * 100;

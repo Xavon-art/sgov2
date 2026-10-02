@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
 import { validateUnits, type DraftUnit } from "@/lib/units";
 
 export type GovernanceModel = "federated" | "unitary";
@@ -105,9 +104,10 @@ type Store = OrgDraft & {
   charter: string | null;
   organizationId: string | null;
   submittedAt: string | null;
-  // One-shot key to the owner OTP flow, kept for the life of the browser tab
-  // so a reload of the success step can resume verification. Cleared on
-  // approval; never emailed, never written to the database.
+  // One-shot key to the owner activation flow, held for the life of the page so
+  // the success step can render after the redirect. Never emailed, never
+  // written to the database, and gone the moment the page is reloaded -- the
+  // activation link already in the user's inbox is the durable copy.
   ownerVerify: { verifyToken: string; email: string; organizationName: string } | null;
   // Set by the Review step at the moment the user confirms, and consumed by the
   // Verification step.
@@ -136,79 +136,67 @@ type Store = OrgDraft & {
   reset: () => void;
 };
 
-export const useOrgDraft = create<Store>()(
-  persist(
-    (set) => ({
+/**
+ * The setup draft, held in memory only.
+ *
+ * It deliberately does not persist. A refresh, a second tab, or a stray
+ * "reopen closed tab" reloads the module and starts the wizard empty, so a half
+ * filled registration -- an administrator's real name, their institution, the
+ * councils they declared -- is never left sitting in browser storage where a
+ * later visitor on the same machine could read it back out.
+ *
+ * Client-side navigation between steps is not a reload, so the draft survives
+ * moving through the wizard; only the page going away loses it. Refreshing
+ * mid-flow sends the user back to the first step via `useStepGuard`, which now
+ * has no stored state to validate against.
+ */
+export const useOrgDraft = create<Store>()((set) => ({
+  ...EMPTY_DRAFT,
+  charter: null,
+  organizationId: null,
+  submittedAt: null,
+  ownerVerify: null,
+  confirmIntent: false,
+  setModel: (model) =>
+    set((state) => ({
+      model,
+      // Federated is USG-only, so the role is settled here rather than
+      // asked. Unitary keeps the picker, so a role that is no longer
+      // available under the new model is cleared.
+      account: {
+        ...state.account,
+        role:
+          model === "federated"
+            ? "usg_officer"
+            : rolesForModel(model).includes(state.account.role as MemberRole)
+              ? state.account.role
+              : "",
+      },
+    })),
+  patchAccount: (patch) =>
+    set((state) => ({ account: { ...state.account, ...patch } })),
+  patchInstitution: (patch) =>
+    set((state) => ({
+      institution: { ...state.institution, ...patch },
+    })),
+  patchOrganization: (patch) => set((state) => ({ ...state, ...patch })),
+  setUnits: (units) => set({ units }),
+  setCharter: (charter) => set({ charter }),
+  setOrganizationId: (organizationId) => set({ organizationId }),
+  setOwnerVerify: (ownerVerify) => set({ ownerVerify }),
+  markSubmitted: () => set({ submittedAt: new Date().toISOString() }),
+  requestSubmit: () => set({ confirmIntent: true }),
+  clearSubmitIntent: () => set({ confirmIntent: false }),
+  reset: () =>
+    set({
       ...EMPTY_DRAFT,
       charter: null,
       organizationId: null,
       submittedAt: null,
       ownerVerify: null,
       confirmIntent: false,
-      setModel: (model) =>
-        set((state) => ({
-          model,
-          // Federated is USG-only, so the role is settled here rather than
-          // asked. Unitary keeps the picker, so a role that is no longer
-          // available under the new model is cleared.
-          account: {
-            ...state.account,
-            role:
-              model === "federated"
-                ? "usg_officer"
-                : rolesForModel(model).includes(state.account.role as MemberRole)
-                  ? state.account.role
-                  : "",
-          },
-        })),
-      patchAccount: (patch) =>
-        set((state) => ({ account: { ...state.account, ...patch } })),
-      patchInstitution: (patch) =>
-        set((state) => ({
-          institution: { ...state.institution, ...patch },
-        })),
-      patchOrganization: (patch) => set((state) => ({ ...state, ...patch })),
-      setUnits: (units) => set({ units }),
-      setCharter: (charter) => set({ charter }),
-      setOrganizationId: (organizationId) => set({ organizationId }),
-      setOwnerVerify: (ownerVerify) => set({ ownerVerify }),
-      markSubmitted: () => set({ submittedAt: new Date().toISOString() }),
-      requestSubmit: () => set({ confirmIntent: true }),
-      clearSubmitIntent: () => set({ confirmIntent: false }),
-      reset: () =>
-        set({
-          ...EMPTY_DRAFT,
-          charter: null,
-          organizationId: null,
-          submittedAt: null,
-          ownerVerify: null,
-          confirmIntent: false,
-        }),
     }),
-    {
-      // v5: the account credentials (full name, email, password) are no longer
-      // persisted. This step is where real names and passwords are typed, and
-      // sessionStorage is not a place for them — the inputs must start blank on
-      // every visit. The rest of the draft (institution, units, resume keys) is
-      // still saved so a mid-flow reload does not drop everything.
-      name: "smartgov.draft.v5",
-      storage: createJSONStorage(() => sessionStorage),
-      partialize: (state) => ({
-        charter: state.charter,
-        organizationId: state.organizationId,
-        submittedAt: state.submittedAt,
-        ownerVerify: state.ownerVerify,
-        confirmIntent: state.confirmIntent,
-        model: state.model,
-        institution: state.institution,
-        organizationName: state.organizationName,
-        organizationDescription: state.organizationDescription,
-        academicYear: state.academicYear,
-        units: state.units,
-      }),
-    },
-  ),
-);
+}));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
