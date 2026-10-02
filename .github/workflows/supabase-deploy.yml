@@ -36,10 +36,14 @@ jobs:
             if ! printf '%s\n' "$applied" | grep -qx "$ver"; then
               echo "Applying $f ($ver)"
               psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$f"
-              psql "$DB_URL" -q -c \
-                "insert into supabase_migrations.schema_migrations (version, name, statements)
-                 values ('$ver', '$(basename "$f" .sql)', '{}')
-                 on conflict version do nothing;"
+              # "version" is a keyword in Postgres and must be quoted in a column
+              # list; statements is text[] so the empty literal needs its cast.
+              # Without both, this insert fails with a syntax error and the whole
+              # run is marked failed even though the migration above succeeded.
+              psql "$DB_URL" -v ON_ERROR_STOP=1 -q -c \
+                "insert into supabase_migrations.schema_migrations (\"version\", name, statements)
+                 values ('$ver', '$(basename "$f" .sql)', '{}'::text[])
+                 on conflict (\"version\") do nothing;"
             else
               echo "Already applied: $ver"
             fi
