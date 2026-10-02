@@ -128,16 +128,16 @@ export type RegisterAccountResult =
 
 /**
  * Turns the administrator details collected in the setup flow into a
- * registration that is waiting on its emailed code.
+ * registration that is waiting on its activation email.
  *
  * Runs after `submitOrganization` because the account is linked to the
  * organization row. `accountKind` comes from the governance model: federated
  * (decentralized) accounts land on the USG dashboard, unitary (centralized) on
  * the central one.
  *
- * The returned `verifyToken` is the registrant's one-time key to the OTP flow;
- * it is stored for this session only and never emailed. The account is not
- * approved yet — `/api/auth/verify-owner` does that.
+ * The returned `verifyToken` is the registrant's one-time key to the activation
+ * link; it is stored for this session only and never emailed. The account is not
+ * approved yet — `/activate` does that.
  */
 export async function registerAccount(
   draft: OrgDraft,
