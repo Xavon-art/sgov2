@@ -1,13 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
+import { Enter } from "@/components/fx/Presence";
 import { TextField } from "@/components/ui/Field";
 import { IconCheck, IconClock, IconClose, IconMail } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 import type { Account } from "@/lib/auth/session";
 import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
+
+/**
+ * Row stagger ceiling. Rows are keyed by invitation id, so an existing row is
+ * never remounted when a refetch returns and only genuinely new ones animate.
+ * The cap is what stops a long table from taking a visible quarter second to
+ * settle -- past a handful of rows the cascade stops reading as a sequence and
+ * starts reading as lag.
+ */
+const ROW_STAGGER_MS = 40;
+const ROW_STAGGER_CAP_MS = 200;
 
 /** Types a campus, college, or department can be added as. */
 const UNIT_TYPE_OPTIONS = [
@@ -27,10 +38,19 @@ const UNIT_TYPES = [
 const selectClass =
   "h-12 w-full appearance-none rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none transition-[border-color,box-shadow,background-color] duration-300 hover:border-line-strong focus:border-ink/25 focus:bg-paper";
 
+/**
+ * `key={status}` is load-bearing. All three branches render a `span`, so without
+ * it React reconciles a status change in place -- same element, new classes --
+ * and a mount-time animation never fires. The status would then change with no
+ * acknowledgement at all, which is the exact moment that most needs one.
+ */
 function StatusBadge({ status }: { status: InviteRow["status"] }) {
   if (status === "activated") {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-ink px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-canvas uppercase">
+      <span
+        key={status}
+        className="pop-in inline-flex items-center gap-1.5 rounded-full bg-ink px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-canvas uppercase"
+      >
         <IconCheck className="h-3 w-3" strokeWidth={2.6} />
         Activated
       </span>
@@ -39,14 +59,20 @@ function StatusBadge({ status }: { status: InviteRow["status"] }) {
 
   if (status === "expired") {
     return (
-      <span className="inline-flex items-center rounded-full border border-line px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-muted uppercase">
+      <span
+        key={status}
+        className="pop-in inline-flex items-center rounded-full border border-line px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-muted uppercase"
+      >
         Expired
       </span>
     );
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-brass-soft/45 px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-brass-deep uppercase">
+    <span
+      key={status}
+      className="pop-in inline-flex items-center gap-1.5 rounded-full bg-brass-soft/45 px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-brass-deep uppercase"
+    >
       <IconClock className="h-3 w-3" strokeWidth={2.4} />
       Pending
     </span>
@@ -305,15 +331,20 @@ export function Workspace({
 
   const noUnits = units.length === 0 && !unitsLoading;
 
+  /* `transition-colors` deliberately not used here. It is a Tailwind utility,
+     and utilities are layered after components, so it would win over
+     `.pressable` and replace transition-property with the colour list alone --
+     dropping `transform` and leaving the press to snap instead of easing.
+     `.pressable` transitions the same properties itself. */
   const controlClass =
-    "grid size-10 place-items-center rounded-full text-muted transition-colors hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45 cursor-pointer";
+    "pressable grid size-10 place-items-center rounded-full text-muted hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45 cursor-pointer";
 
   return (
     <div className="flex flex-col gap-8">
       {isOwner ? (
         <div
           id={isUsg ? "units" : "invitations"}
-          className="grid scroll-mt-24 gap-6 xl:grid-cols-2"
+          className="fade-in grid scroll-mt-24 gap-6 xl:grid-cols-2"
         >
           {isUsg ? (
             <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
@@ -355,22 +386,29 @@ export function Workspace({
                 </div>
 
                 {unitError ? (
-                  <p
+                  <Enter
+                    open
+                    as="p"
                     role="alert"
-                    className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                    className="rise-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
                   >
                     {unitError}
-                  </p>
+                  </Enter>
                 ) : null}
 
                 {unitAdded ? (
-                  <p
+                  <Enter
+                    open
+                    as="p"
                     role="status"
-                    className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                    className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
                   >
-                    <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                    <IconCheck
+                      className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                      strokeWidth={2.2}
+                    />
                     {unitAdded}
-                  </p>
+                  </Enter>
                 ) : null}
 
                 <Button
@@ -407,7 +445,7 @@ export function Workspace({
                 />
 
                 {noUnits ? (
-                  <p className="rounded-xl border border-dashed border-line-strong bg-canvas/40 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-muted">
+                  <p className="rise-in rounded-xl border border-dashed border-line-strong bg-canvas/40 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-muted">
                     Add a campus or department first — until then there is no unit to invite
                     someone into.
                   </p>
@@ -436,22 +474,29 @@ export function Workspace({
                 )}
 
                 {error ? (
-                  <p
+                  <Enter
+                    open
+                    as="p"
                     role="alert"
-                    className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                    className="rise-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
                   >
                     {error}
-                  </p>
+                  </Enter>
                 ) : null}
 
                 {sentTo ? (
-                  <p
+                  <Enter
+                    open
+                    as="p"
                     role="status"
-                    className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                    className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
                   >
-                    <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                    <IconCheck
+                      className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                      strokeWidth={2.2}
+                    />
                     {sentTo}
-                  </p>
+                  </Enter>
                 ) : null}
 
                 {noUnits ? null : (
@@ -517,22 +562,29 @@ export function Workspace({
                 </div>
 
                 {error ? (
-                  <p
+                  <Enter
+                    open
+                    as="p"
                     role="alert"
-                    className="animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+                    className="rise-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
                   >
                     {error}
-                  </p>
+                  </Enter>
                 ) : null}
 
                 {sentTo ? (
-                  <p
+                  <Enter
+                    open
+                    as="p"
                     role="status"
-                    className="flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+                    className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
                   >
-                    <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+                    <IconCheck
+                      className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                      strokeWidth={2.2}
+                    />
                     {sentTo}
-                  </p>
+                  </Enter>
                 ) : null}
 
                 <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
@@ -553,38 +605,54 @@ export function Workspace({
       )}
 
       {isOwner ? (
-        <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+        <section
+          className="rise-in rounded-2xl border border-line bg-paper/70 p-6 sm:p-7"
+          style={{ animationDelay: "90ms" }}
+        >
           <p className="eyebrow">
             {variant === "usg" ? "Campuses under you" : "Units on record"}
           </p>
 
           {note ? (
-            <p
+            <Enter
+              open
+              as="p"
               role="status"
-              className="mt-4 flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
+              className="rise-in mt-4 flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
             >
-              <IconCheck className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={2.2} />
+              <IconCheck
+                className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                strokeWidth={2.2}
+              />
               {note}
-            </p>
+            </Enter>
           ) : null}
 
           {actionError ? (
-            <p
+            <Enter
+              open
+              as="p"
               role="alert"
-              className="mt-4 animate-float-in rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+              className="rise-in mt-4 rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
             >
               {actionError}
-            </p>
+            </Enter>
           ) : null}
 
           {loading ? (
             <div className="mt-4 flex flex-col gap-2.5" aria-live="polite">
-              <div className="h-11 animate-pulse rounded-xl bg-ink/[0.05]" />
-              <div className="h-11 animate-pulse rounded-xl bg-ink/[0.05]" />
-              <div className="h-11 animate-pulse rounded-xl bg-ink/[0.04]" />
+              <div className="fade-in h-11 animate-pulse rounded-xl bg-ink/[0.05]" />
+              <div
+                className="fade-in h-11 animate-pulse rounded-xl bg-ink/[0.05]"
+                style={{ animationDelay: "70ms" }}
+              />
+              <div
+                className="fade-in h-11 animate-pulse rounded-xl bg-ink/[0.04]"
+                style={{ animationDelay: "140ms" }}
+              />
             </div>
           ) : invites.length === 0 ? (
-            <div className="mt-4 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-line-strong bg-canvas/40 px-5 py-6 sm:flex-row sm:items-center">
+            <div className="rise-in mt-4 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-line-strong bg-canvas/40 px-5 py-6 sm:flex-row sm:items-center">
               <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line-strong bg-paper text-brass-deep">
                 <IconMail className="h-[1.15rem] w-[1.15rem]" strokeWidth={1.8} />
               </span>
@@ -596,7 +664,7 @@ export function Workspace({
               </div>
             </div>
           ) : (
-            <div className="mt-4 overflow-x-auto">
+            <div className="fade-in mt-4 overflow-x-auto">
               <table className="w-full min-w-[34rem] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-line">
@@ -614,8 +682,16 @@ export function Workspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {invites.map((invite) => (
-                    <tr key={invite.id} className="border-b border-line/70 last:border-b-0">
+                  {invites.map((invite, index) => (
+                    <tr
+                      key={invite.id}
+                      className="row-in border-b border-line/70 last:border-b-0"
+                      style={
+                        {
+                          "--motion-delay": `${Math.min(index * ROW_STAGGER_MS, ROW_STAGGER_CAP_MS)}ms`,
+                        } as CSSProperties
+                      }
+                    >
                       <td className="py-3 pr-4 text-[0.875rem] text-ink-deep">
                         {invite.email}
                       </td>
@@ -632,13 +708,21 @@ export function Workspace({
                         {invite.status === "activated" ? (
                           <span className="text-[0.8125rem] text-muted">—</span>
                         ) : confirmId === invite.id ? (
-                          <div className="flex flex-wrap items-center gap-2">
+                          /* key is load-bearing. Both branches render a div, so
+                             React would otherwise patch the attributes onto the
+                             same node and the confirm panel would swap in with
+                             no motion at all -- the exact moment a user most
+                             needs to see that something changed. */
+                          <div
+                            key="confirm"
+                            className="rise-in flex flex-wrap items-center gap-2"
+                          >
                             <button
                               type="button"
                               autoFocus
                               onClick={() => void cancelInvitation(invite.id)}
                               disabled={busy}
-                              className="cursor-pointer rounded-full bg-ink px-3 py-1.5 text-[0.75rem] font-semibold text-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45"
+                              className="pressable cursor-pointer rounded-full bg-ink px-3 py-1.5 text-[0.75rem] font-semibold text-canvas focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45"
                             >
                               Yes, cancel
                             </button>
@@ -646,7 +730,7 @@ export function Workspace({
                               type="button"
                               onClick={() => setConfirmId(null)}
                               disabled={busy}
-                              className="cursor-pointer rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45"
+                              className="pressable cursor-pointer rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45"
                             >
                               Keep
                             </button>
@@ -658,7 +742,7 @@ export function Workspace({
                             </p>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-1.5">
+                          <div key="actions" className="rise-in flex items-center gap-1.5">
                             <button
                               type="button"
                               aria-label={`Resend invitation to ${invite.email}`}

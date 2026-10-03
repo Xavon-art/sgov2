@@ -26,6 +26,16 @@
 
   --radius-card: 1.125rem;
 
+  /* Motion easings. Named once here so a transition and the keyframe that has
+     to agree with it cannot drift apart, and so Tailwind exposes them as
+     `ease-out-soft` and friends alongside the colour tokens.
+     `out-soft` is the house curve -- it is what `.reveal` already used, spelled
+     out. `in-soft` is its mirror for things leaving. `spring` overshoots
+     slightly and is reserved for a control acknowledging a press. */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-soft: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.32, 0.64, 1);
+
   --shadow-lift: 0 1px 2px rgba(13, 33, 53, 0.04),
     0 12px 32px -12px rgba(13, 33, 53, 0.14);
   --shadow-float: 0 2px 4px rgba(13, 33, 53, 0.05),
@@ -354,6 +364,147 @@
   animation: sg-stamp 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* ------------------------------------------------------------- motion layer
+   `.reveal` above animates a section once, when it scrolls into view on a page
+   that is arriving. These animate a component's own state changes instead: a
+   banner that appears after a request, a table row that joins the list, a badge
+   that flips from Pending to Activated. A dashboard does that constantly, and
+   without motion each one is a hard cut -- something appears or vanishes with no
+   interval at all, which reads as a glitch rather than as a response.
+
+   Every rule here moves `transform` and `opacity` only. Neither of those
+   participates in layout, so a table can stagger a dozen rows without the page
+   reflowing once per row, and nothing in this layer can be the reason a frame
+   is dropped. That is what lets the durations stay generous.
+
+   Fill mode is `backwards`, never `both`. `both` keeps the 100% frame applied
+   after the animation ends, so anything that stopped the animation from running
+   -- a hidden tab, a renderer quirk, a stylesheet that lost a race -- would
+   leave the element parked at its end state forever. `backwards` applies the
+   start frame only for the length of the delay and then hands the element back
+   to its own styles, so the resting state is always the visible one. */
+
+@layer components {
+  /* The workhorse. A block arriving: a confirmation, a form section, an empty
+     state. Reads as the same motion as `.reveal` so the two do not look like
+     different systems when a wizard step hands off to the dashboard. */
+  .rise-in {
+    animation: sg-rise var(--motion-in, 420ms) var(--ease-out-soft) backwards;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  /* Opacity with no displacement, for swapping content that occupies the same
+     box -- a table for its skeleton, or one empty state for another. */
+  .fade-in {
+    animation: sg-fade var(--motion-in, 420ms) var(--ease-out-soft) backwards;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  /* A row joining a list. Enters from the leading edge rather than from below,
+     because it is arriving horizontally among its neighbours and dropping in
+     from underneath would read as a different kind of event. */
+  .row-in {
+    animation: sg-row-in var(--motion-in, 380ms) var(--ease-out-soft) backwards;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  /* A small element acknowledging something -- a status pill, the tick in a
+     confirmation. Overshoots a little, on a spring, because it is reporting a
+     discrete event rather than occupying space. */
+  .pop-in {
+    animation: sg-pop var(--motion-pop, 420ms) var(--ease-spring) backwards;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+
+  /* Press feedback for the small circular controls, where `active:translate-y`
+     reads as the whole page shifting rather than as this control responding.
+     Scale is the only property here, so the press costs one composite frame. */
+  .pressable {
+    transition:
+      transform 180ms var(--ease-spring),
+      background-color 180ms var(--ease-out-soft),
+      color 180ms var(--ease-out-soft),
+      border-color 180ms var(--ease-out-soft);
+  }
+
+  .pressable:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
+  /* WebKit draws its own tap flash on a bare button unless this is set, and it
+     lands on top of the scale above as a grey square for a few hundred ms. */
+  .pressable {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The departure half of <Enter>. Entering is a mount-time keyframe and needs no
+     rule of its own, but the transition has to live on the base state as well
+     as the leaving one: re-opening a banner mid-exit flips `data-leaving` back
+     off, and without a transition on the base state it would snap back to full
+     opacity instead of easing. `animation: none` on the leaving state matters --
+     otherwise the entry keyframe and the exit transition are both live on the
+     same element and the transition loses. Duration is duplicated as EXIT_MS in
+     Presence.tsx; the two must agree or the node is dropped mid-move. */
+  .presence {
+    animation: sg-rise var(--motion-in, 420ms) var(--ease-out-soft) backwards;
+    transition:
+      opacity 240ms var(--ease-in-soft),
+      transform 240ms var(--ease-in-soft);
+  }
+
+  .presence[data-leaving="true"] {
+    animation: none;
+    opacity: 0;
+    transform: translate3d(0, -8px, 0) scale(0.985);
+  }
+}
+
+@keyframes sg-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes sg-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sg-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-10px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes sg-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -368,6 +519,12 @@
     /* Inline transitionDelay from Reveal would otherwise outlive the
        0.001ms duration clamp, holding the stagger open. */
     transition-delay: 0s !important;
+    /* The motion-layer stagger is an animation-delay, so it needs the same
+       clamp. Left alone it is worse than a long transition: the duration drops
+       to nothing but the delay still holds the element on its 0% frame, which
+       for .rise-in and .row-in is opacity 0. Someone asking for reduced motion
+       would get a flash of invisible content per row and then a snap. */
+    animation-delay: 0s !important;
   }
 
   .has-js .reveal,

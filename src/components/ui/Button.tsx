@@ -26,7 +26,7 @@ export type ButtonVariant = keyof typeof variants;
 export type ButtonSize = keyof typeof sizes;
 
 const base =
-  "group relative inline-flex select-none items-center justify-center whitespace-nowrap rounded-full border font-medium transition-[transform,background-color,border-color,box-shadow,color] duration-300 ease-out active:translate-y-px disabled:pointer-events-none disabled:opacity-45 cursor-pointer";
+  "group relative inline-flex select-none items-center justify-center whitespace-nowrap rounded-full border font-medium transition-[transform,background-color,border-color,box-shadow,color] duration-300 ease-out active:translate-y-px active:scale-[0.985] disabled:pointer-events-none disabled:opacity-45 disabled:active:translate-y-0 disabled:active:scale-100 cursor-pointer";
 
 function classes(variant: ButtonVariant, size: ButtonSize, className?: string) {
   return cn(base, variants[variant], sizes[size], className);
