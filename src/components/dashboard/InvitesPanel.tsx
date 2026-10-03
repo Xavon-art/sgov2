@@ -22,7 +22,7 @@ import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
 
 /**
- * Sentinel for the "name a new campus" option in the unit picker.
+ * Sentinel for the "name a new unit" option in the unit picker.
  *
  * A uuid is the only other thing that select can hold, so this can never collide
  * with a real unit id.
@@ -90,7 +90,7 @@ export function InvitesPanel() {
       if (rows) setInvites(rows);
       setUnits(list);
       // An empty tree has nothing to pick, so the form opens on naming a new
-      // campus instead of on a select that could only ever be empty.
+      // unit instead of on a select that could only ever be empty.
       setSelectedUnitId(list.length === 0 ? NEW_UNIT : "");
       setLoading(false);
       setUnitsLoading(false);
@@ -108,7 +108,7 @@ export function InvitesPanel() {
     const chosenUnit = units.find((u) => u.id === selectedUnitId);
 
     if (isUsg && !selectedUnitId) {
-      setError("Choose a campus, or name a new one to create.");
+      setError("Choose a unit, or name a new one to create.");
       return;
     }
 
@@ -118,7 +118,7 @@ export function InvitesPanel() {
     if (creatingUnit) {
       const name = newUnitName.trim();
       if (!name) {
-        setError("Give the new campus a name.");
+        setError("Give the new unit a name.");
         return;
       }
       const clash = units.find((u) => u.name.trim().toLowerCase() === name.toLowerCase());
@@ -262,9 +262,9 @@ export function InvitesPanel() {
       <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
         {isUsg ? (
           <>
-            <p className="eyebrow">Invite a campus</p>
+            <p className="eyebrow">Invite an officer</p>
             <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-              Enter someone&rsquo;s email and the campus they belong to. They will sit under your
+              Enter someone&rsquo;s email and the unit they belong to. They will sit under your
               umbrella once they activate.
             </p>
 
@@ -285,7 +285,7 @@ export function InvitesPanel() {
               {!unitsLoading && units.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   <label htmlFor="invite-unit" className="text-[0.8125rem] font-semibold text-ink">
-                    Campus or unit
+                    Unit
                   </label>
                   <select
                     id="invite-unit"
@@ -293,7 +293,7 @@ export function InvitesPanel() {
                     onChange={(e) => setSelectedUnitId(e.target.value)}
                     className={selectClass}
                   >
-                    <option value="">Choose a campus or department…</option>
+                    <option value="">Choose a unit…</option>
                     {units.map((u) => (
                       <option key={u.id} value={u.id}>
                         {u.name}
@@ -308,11 +308,11 @@ export function InvitesPanel() {
                 <>
                   <TextField
                     id="invite-new-unit"
-                    label="New campus name"
-                    placeholder="Main Campus"
+                    label="Unit name"
+                    placeholder="Engineering, Main Campus, Biology"
                     value={newUnitName}
                     onChange={(e) => setNewUnitName(e.target.value)}
-                    hint="Created as part of this invitation, so the officer has a place to sit."
+                    hint="Created with this invitation and placed under your LSG."
                     required
                   />
 
