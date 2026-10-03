@@ -437,25 +437,34 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  /* The departure half of <Enter>. Entering is a mount-time keyframe and needs no
-     rule of its own, but the transition has to live on the base state as well
-     as the leaving one: re-opening a banner mid-exit flips `data-leaving` back
-     off, and without a transition on the base state it would snap back to full
-     opacity instead of easing. `animation: none` on the leaving state matters --
-     otherwise the entry keyframe and the exit transition are both live on the
-     same element and the transition loses. Duration is duplicated as EXIT_MS in
-     Presence.tsx; the two must agree or the node is dropped mid-move. */
+  /* The departure half of <Enter>.
+     No entry animation lives here on purpose -- the caller owns that, so a
+     drawer can slide from the edge while a banner rises. The transition is on
+     the base state as well as the leaving one: re-opening a banner mid-exit
+     flips `data-leaving` back off, and without a base transition it would snap
+     to full opacity instead of easing.
+     Both values come off the element as custom properties so the JS timer and
+     the CSS transition read from one prop and cannot drift apart. */
   .presence {
-    animation: sg-rise var(--motion-in, 420ms) var(--ease-out-soft) backwards;
     transition:
-      opacity 240ms var(--ease-in-soft),
-      transform 240ms var(--ease-in-soft);
+      opacity var(--presence-duration, 240ms) var(--ease-in-soft),
+      transform var(--presence-duration, 240ms) var(--ease-in-soft);
   }
 
   .presence[data-leaving="true"] {
-    animation: none;
     opacity: 0;
-    transform: translate3d(0, -8px, 0) scale(0.985);
+    transform: var(--presence-exit-transform, translate3d(0, -8px, 0) scale(0.985));
+  }
+
+  /* Slide-over panel. Pure translate with no opacity change: a drawer is a
+     surface moving in from the edge, and fading it in at the same time reads
+     as two separate effects fighting. */
+  .drawer-in {
+    animation: sg-slide-left 300ms var(--ease-out-soft) backwards;
+  }
+
+  .drawer-in[data-leaving="true"] {
+    animation: none;
   }
 
   /* Hover lift for a card. Guarded behind `hover: hover` on purpose -- without
@@ -506,6 +515,15 @@
 @keyframes sg-spin {
   to {
     transform: rotate(1turn);
+  }
+}
+
+@keyframes sg-slide-left {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
   }
 }
 

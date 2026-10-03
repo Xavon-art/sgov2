@@ -3,15 +3,33 @@
 import { useEffect, useState, type ComponentProps, type ElementType, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-/** Kept in step with the `.presence` transition duration in globals.css. */
+/** Default exit length. The CSS reads the same value back off the element. */
 const EXIT_MS = 240;
 
 type EnterProps = {
   open: boolean;
-  children: ReactNode;
+  /**
+   * Optional because `as="button"` is legitimately self-closing -- the drawer's
+   * click-to-dismiss backdrop is a button with nothing inside it.
+   */
+  children?: ReactNode;
   className?: string;
   as?: ElementType;
-} & Omit<ComponentProps<"div">, "className" | "children">;
+  /**
+   * Exit length in ms. Drives the unmount timer and, via `--presence-duration`,
+   * the CSS transition -- one prop, so the two cannot drift and the node cannot
+   * be dropped mid-move.
+   */
+  duration?: number;
+} & Omit<ComponentProps<"div">, "className" | "children"> & {
+    /**
+     * Present only so `as="button"` typechecks. The props are typed against a
+     * div, so without this a caller rendering a real button -- the drawer's
+     * click-to-dismiss backdrop -- gets an error on the one attribute a button
+     * requires.
+     */
+    type?: "button" | "submit" | "reset";
+  };
 
 /**
  * Holds a node on screen while it animates out, then removes it.
@@ -26,6 +44,16 @@ type EnterProps = {
  * Only the departure costs anything here. Entering stays a mount-time keyframe
  * with no JavaScript involved, and `leaving` is not state at all -- it is just
  * `!open`, which means it can never disagree with the prop that caused it.
+ *
+ * This component deliberately owns no entry animation. It used to hardcode
+ * `sg-rise`, which quietly made every animated surface rise by 12px whether or
+ * not that was the right gesture -- a slide-over drawer has to travel sideways
+ * across the viewport, not drop down into place. The entry keyframe is now
+ * entirely the caller's: pair `rise-in` for a block arriving, `drawer-in` for a
+ * panel coming from the edge. All this owns is the exit.
+ *
+ * Set `--presence-exit-transform` in `style` to send it somewhere other than
+ * the default small rise -- the drawer needs to leave the way it arrived.
  *
  * Only mount this where something is genuinely arriving and leaving on its own.
  * A row in a list that can be reordered should animate from its key instead;
@@ -42,6 +70,8 @@ export function Enter({
   children,
   className,
   as: Tag = "div",
+  duration = EXIT_MS,
+  style,
   ...rest
 }: EnterProps) {
   const [shown, setShown] = useState(open);
@@ -59,9 +89,9 @@ export function Enter({
 
     // The only setState in here is inside the timer callback, which is the
     // case an effect is actually for. Nothing is set synchronously.
-    const id = window.setTimeout(() => setShown(false), EXIT_MS);
+    const id = window.setTimeout(() => setShown(false), duration);
     return () => window.clearTimeout(id);
-  }, [open, shown]);
+  }, [open, duration, shown]);
 
   if (!shown) return null;
 
@@ -72,6 +102,7 @@ export function Enter({
       // confirmation is not still being described while it slides away.
       aria-hidden={!open || undefined}
       data-leaving={!open || undefined}
+      style={{ ...style, "--presence-duration": `${duration}ms` }}
       className={cn("presence", className)}
     >
       {children}

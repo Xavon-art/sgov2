@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { Enter } from "@/components/fx/Presence";
 import {
   IconDashboard,
   IconClose,
@@ -64,6 +65,36 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const active = nav.find((n) => n.active) ?? nav[0];
 
+  // Escape to dismiss, plus a scroll lock while it is up.
+  //
+  // Both belong to the drawer rather than to the animation, but neither is
+  // optional once it animates: a slide-over that closes only by hitting the dim
+  // area is not a dialog, it is a decoration. And without the lock the page
+  // behind scrolls under the panel on touch, which reads as the drawer being
+  // broken rather than as the page being scrollable.
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+
+    // Padding compensates for the scrollbar that `overflow: hidden` removes,
+    // otherwise the whole page jumps sideways as the drawer opens.
+    const gap = window.innerWidth - document.documentElement.clientWidth;
+    const prevOverflow = document.body.style.overflow;
+    const prevPad = document.body.style.paddingRight;
+    document.body.style.overflow = "hidden";
+    if (gap > 0) document.body.style.paddingRight = `${gap}px`;
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPad;
+    };
+  }, [open]);
+
   return (
     <div className="relative isolate flex min-h-dvh">
       {/* Desktop rail */}
@@ -110,68 +141,94 @@ export function AppShell({
         </div>
       </aside>
 
-      {/* Mobile slide-over */}
-      {open ? (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Workspace menu">
+      {/* Mobile slide-over.
+
+          Two separate <Enter> surfaces rather than one wrapper containing both.
+          A single wrapper would have to unmount on a timer while its children
+          were running their own timers, and whichever lost the race would take
+          the other down with it mid-slide. Letting each own its own presence
+          also means the dim area can be gone a beat before the panel finishes
+          travelling, which is how a layered surface actually behaves.
+
+          The panel carries the dialog role rather than a wrapper around both,
+          so `aria-modal` describes the thing the user is actually meant to be
+          inside. */}
+
+      <Enter
+        open={open}
+        as="button"
+        type="button"
+        aria-label="Close menu"
+        onClick={() => setOpen(false)}
+        duration={300}
+        className="fade-in fixed inset-0 z-40 cursor-pointer bg-ink/30 backdrop-blur-sm lg:hidden"
+        style={{ "--presence-exit-transform": "translate3d(0, 0, 0)" } as CSSProperties}
+      />
+
+      <Enter
+        open={open}
+        duration={300}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Workspace menu"
+        className="drawer-in fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-line bg-canvas shadow-2xl lg:hidden"
+        style={{ "--presence-exit-transform": "translate3d(-100%, 0, 0)" } as CSSProperties}
+      >
+        <div className="flex h-16 items-center justify-between border-b border-line/70 px-5">
+          <Link href="/" aria-label="SmartGov home" onClick={() => setOpen(false)}>
+            <Wordmark compact />
+          </Link>
           <button
             type="button"
             aria-label="Close menu"
-            className="absolute inset-0 cursor-pointer bg-ink/30 backdrop-blur-sm"
             onClick={() => setOpen(false)}
-          />
-          <div className="absolute inset-y-0 left-0 flex w-72 flex-col border-r border-line bg-canvas shadow-2xl">
-            <div className="flex h-16 items-center justify-between border-b border-line/70 px-5">
-              <Link href="/" aria-label="SmartGov home" onClick={() => setOpen(false)}>
-                <Wordmark compact />
-              </Link>
-              <button
-                type="button"
-                aria-label="Close menu"
-                onClick={() => setOpen(false)}
-                className="grid size-10 cursor-pointer place-items-center rounded-full text-ink-soft transition-colors hover:bg-ink/[0.05] hover:text-ink"
-              >
-                <IconClose className="h-5 w-5" strokeWidth={1.7} />
-              </button>
-            </div>
-
-            <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
-              {nav.map((item) => {
-                const Icon = NAV_ICONS[item.icon];
-                const selected = item.active;
-                return (
-                  <a
-                    key={item.id}
-                    href={`#${item.id}`}
-                    aria-current={selected ? "page" : undefined}
-                    onClick={() => setOpen(false)}
-                    className={cn(
-                      "flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] font-medium transition-colors duration-300",
-                      selected
-                        ? "bg-ink text-white"
-                        : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
-                    )}
-                  >
-                    <Icon
-                      className={cn(
-                        "h-5 w-5 shrink-0 transition-transform duration-200 ease-out",
-                        selected
-                          ? "text-brass"
-                          : "text-brass-deep/80 group-hover:translate-x-0.5",
-                      )}
-                      strokeWidth={1.7}
-                    />
-                    {item.label}
-                  </a>
-                );
-              })}
-            </nav>
-
-            <div className="border-t border-line/70 p-3">
-              <SignOutButton />
-            </div>
-          </div>
+            className="pressable grid size-10 cursor-pointer place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink"
+          >
+            <IconClose className="h-5 w-5" strokeWidth={1.7} />
+          </button>
         </div>
-      ) : null}
+
+        <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
+          {nav.map((item) => {
+            const Icon = NAV_ICONS[item.icon];
+            const selected = item.active;
+            return (
+              <a
+                key={item.id}
+                href={`#${item.id}`}
+                aria-current={selected ? "page" : undefined}
+                onClick={() => setOpen(false)}
+                className={cn(
+                  // `group` was missing here. The icon below asks for
+                  // group-hover:translate-x-0.5, and without the parent class
+                  // that selector matches nothing at all -- the nudge was
+                  // silently dead on mobile, which is the only place this
+                  // drawer exists.
+                  "group flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] font-medium transition-colors duration-300",
+                  selected
+                    ? "bg-ink text-white"
+                    : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "h-5 w-5 shrink-0 transition-transform duration-200 ease-out",
+                    selected
+                      ? "text-brass"
+                      : "text-brass-deep/80 group-hover:translate-x-0.5",
+                  )}
+                  strokeWidth={1.7}
+                />
+                {item.label}
+              </a>
+            );
+          })}
+        </nav>
+
+        <div className="border-t border-line/70 p-3">
+          <SignOutButton />
+        </div>
+      </Enter>
 
       {/* Content column */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -181,7 +238,7 @@ export function AppShell({
               type="button"
               aria-label="Open menu"
               onClick={() => setOpen(true)}
-              className="grid size-10 cursor-pointer place-items-center rounded-full text-ink-soft transition-colors hover:bg-ink/[0.05] hover:text-ink lg:hidden"
+              className="pressable grid size-10 cursor-pointer place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink lg:hidden"
             >
               <IconMenu className="h-5 w-5" strokeWidth={1.7} />
             </button>
