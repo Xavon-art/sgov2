@@ -92,8 +92,10 @@ export function AppShell({
               >
                 <Icon
                   className={cn(
-                    "h-[1.1rem] w-[1.1rem] shrink-0",
-                    selected ? "text-brass" : "text-brass-deep/80 group-hover:text-brass-deep",
+                    "h-[1.1rem] w-[1.1rem] shrink-0 transition-transform duration-200 ease-out",
+                    selected
+                      ? "text-brass"
+                      : "text-brass-deep/80 group-hover:translate-x-0.5 group-hover:text-brass-deep",
                   )}
                   strokeWidth={1.7}
                 />
@@ -150,7 +152,12 @@ export function AppShell({
                     )}
                   >
                     <Icon
-                      className={cn("h-5 w-5 shrink-0", selected ? "text-brass" : "text-brass-deep/80")}
+                      className={cn(
+                        "h-5 w-5 shrink-0 transition-transform duration-200 ease-out",
+                        selected
+                          ? "text-brass"
+                          : "text-brass-deep/80 group-hover:translate-x-0.5",
+                      )}
                       strokeWidth={1.7}
                     />
                     {item.label}

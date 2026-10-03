@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
 import { Enter } from "@/components/fx/Presence";
+import { SwapText } from "@/components/fx/SwapText";
 import { TextField } from "@/components/ui/Field";
 import { IconCheck, IconClock, IconClose, IconMail } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
@@ -80,9 +81,9 @@ function StatusBadge({ status }: { status: InviteRow["status"] }) {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "—";
+  if (!value) return "Ã¢â‚¬â€";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "Ã¢â‚¬â€";
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -347,10 +348,10 @@ export function Workspace({
           className="fade-in grid scroll-mt-24 gap-6 xl:grid-cols-2"
         >
           {isUsg ? (
-            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
               <p className="eyebrow">Add a campus or department</p>
               <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-                Create the campus, college, or department first — then you can invite an LSG
+                Create the campus, college, or department first Ã¢â‚¬â€ then you can invite an LSG
                 officer into it.
               </p>
 
@@ -404,7 +405,7 @@ export function Workspace({
                     className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
                   >
                     <IconCheck
-                      className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                      className="stamp-in h-4 w-4 shrink-0 text-brass-deep"
                       strokeWidth={2.2}
                     />
                     {unitAdded}
@@ -417,16 +418,18 @@ export function Workspace({
                   disabled={adding}
                   className="w-full sm:w-auto"
                 >
-                  {adding
-                    ? "Adding…"
-                    : `Add ${UNIT_TYPE_OPTIONS.find((t) => t.value === newUnitType)?.label ?? "campus"}`}
+                  <SwapText
+                    isPending={adding}
+                    idle={`Add ${UNIT_TYPE_OPTIONS.find((t) => t.value === newUnitType)?.label ?? "campus"}`}
+                    pending="AddingÃ¢â‚¬Â¦"
+                  />
                 </Button>
               </form>
             </section>
           ) : null}
 
           {isUsg ? (
-            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
               <p className="eyebrow">Invite a campus</p>
               <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
                 Enter someone&rsquo;s email and the campus they belong to. They will sit
@@ -446,7 +449,7 @@ export function Workspace({
 
                 {noUnits ? (
                   <p className="rise-in rounded-xl border border-dashed border-line-strong bg-canvas/40 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-muted">
-                    Add a campus or department first — until then there is no unit to invite
+                    Add a campus or department first Ã¢â‚¬â€ until then there is no unit to invite
                     someone into.
                   </p>
                 ) : (
@@ -463,7 +466,7 @@ export function Workspace({
                       onChange={(e) => setSelectedUnitId(e.target.value)}
                       className={selectClass}
                     >
-                      <option value="">Choose a campus or department…</option>
+                      <option value="">Choose a campus or departmentÃ¢â‚¬Â¦</option>
                       {units.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
@@ -492,7 +495,7 @@ export function Workspace({
                     className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
                   >
                     <IconCheck
-                      className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                      className="stamp-in h-4 w-4 shrink-0 text-brass-deep"
                       strokeWidth={2.2}
                     />
                     {sentTo}
@@ -506,13 +509,13 @@ export function Workspace({
                     disabled={sending || !selectedUnitId}
                     className="w-full sm:w-auto"
                   >
-                    {sending ? "Sending…" : "Send invitation"}
+                    <SwapText isPending={sending} idle="Send invitation" pending="SendingÃ¢â‚¬Â¦" />
                   </Button>
                 )}
               </form>
             </section>
           ) : (
-            <section className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7 xl:col-span-2">
+            <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7 xl:col-span-2">
               <p className="eyebrow">Invite a unit</p>
               <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
                 Enter someone&rsquo;s email and the unit they belong to. The central office
@@ -580,7 +583,7 @@ export function Workspace({
                     className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
                   >
                     <IconCheck
-                      className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                      className="stamp-in h-4 w-4 shrink-0 text-brass-deep"
                       strokeWidth={2.2}
                     />
                     {sentTo}
@@ -588,14 +591,14 @@ export function Workspace({
                 ) : null}
 
                 <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
-                  {sending ? "Sending…" : "Send invitation"}
+                  <SwapText isPending={sending} idle="Send invitation" pending="SendingÃ¢â‚¬Â¦" />
                 </Button>
               </form>
             </section>
           )}
         </div>
       ) : (
-        <section className="rounded-2xl border border-brass/40 bg-brass-soft/20 px-5 py-4">
+        <section className="card-lift rounded-2xl border border-brass/40 bg-brass-soft/20 px-5 py-4">
           <p className="text-[0.8125rem] leading-relaxed text-ink">
             You were invited by {account.universityName || "your student government"} and
             your workspace is scoped to {account.campusName || "your unit"}. Only an
@@ -606,7 +609,7 @@ export function Workspace({
 
       {isOwner ? (
         <section
-          className="rise-in rounded-2xl border border-line bg-paper/70 p-6 sm:p-7"
+          className="rise-in card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7"
           style={{ animationDelay: "90ms" }}
         >
           <p className="eyebrow">
@@ -621,7 +624,7 @@ export function Workspace({
               className="rise-in mt-4 flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink"
             >
               <IconCheck
-                className="pop-in h-4 w-4 shrink-0 text-brass-deep"
+                className="stamp-in h-4 w-4 shrink-0 text-brass-deep"
                 strokeWidth={2.2}
               />
               {note}
@@ -696,7 +699,7 @@ export function Workspace({
                         {invite.email}
                       </td>
                       <td className="py-3 pr-4 text-[0.875rem] text-body">
-                        {invite.campusName || "—"}
+                        {invite.campusName || "Ã¢â‚¬â€"}
                       </td>
                       <td className="py-3 pr-4">
                         <StatusBadge status={invite.status} />
@@ -706,7 +709,7 @@ export function Workspace({
                       </td>
                       <td className="py-3 pl-4">
                         {invite.status === "activated" ? (
-                          <span className="text-[0.8125rem] text-muted">—</span>
+                          <span className="text-[0.8125rem] text-muted">Ã¢â‚¬â€</span>
                         ) : confirmId === invite.id ? (
                           /* key is load-bearing. Both branches render a div, so
                              React would otherwise patch the attributes onto the

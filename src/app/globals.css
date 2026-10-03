@@ -457,6 +457,56 @@
     opacity: 0;
     transform: translate3d(0, -8px, 0) scale(0.985);
   }
+
+  /* Hover lift for a card. Guarded behind `hover: hover` on purpose -- without
+     it, a touch tap leaves the :hover state stuck on the card after the finger
+     lifts, so the card sits slightly raised until the user taps elsewhere. */
+  .card-lift {
+    transition:
+      transform 200ms var(--ease-out-soft),
+      box-shadow 200ms var(--ease-out-soft),
+      border-color 200ms var(--ease-out-soft);
+  }
+
+  /* A 1px lift, not more. The point is that the surface acknowledges the
+     pointer, not that it looks like it is coming toward you. */
+  @media (hover: hover) {
+    .card-lift:hover {
+      transform: translate3d(0, -1px, 0);
+      box-shadow: 0 8px 24px -16px rgb(26 26 24 / 0.35);
+    }
+  }
+
+  /* Confirmation stamp. Wraps the existing sg-stamp keyframe, which was already
+     in the file doing nothing -- it lands oversized and rotated, settles back,
+     and stays tilted so it reads as a stamp pressed onto the page rather than
+     an icon fading in. */
+  .stamp-in {
+    animation: sg-stamp 0.85s var(--ease-out-soft) backwards;
+    transform-origin: center;
+  }
+
+  /* Pending indicator for a control whose label is crossfading. A border arc
+     rather than an SVG so it inherits currentColor and needs no extra markup.
+     Under reduced motion the global duration clamp freezes it after one
+     revolution -- still a legible partial ring, and the label beside it is what
+     actually carries the state. */
+  .spin-ring {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    opacity: 0.45;
+    animation: sg-spin 640ms linear infinite;
+  }
+}
+
+@keyframes sg-spin {
+  to {
+    transform: rotate(1turn);
+  }
 }
 
 @keyframes sg-rise {
