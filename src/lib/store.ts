@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { validateUnits, type DraftUnit } from "@/lib/units";
+import { type DraftUnit } from "@/lib/units";
 
 export type GovernanceModel = "federated" | "unitary";
 
@@ -202,7 +202,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 export function validateStep(id: string, state: OrgDraft): string[] {
   const errors: string[] = [];
-  const { model, account, institution, units, organizationName, organizationDescription, academicYear } =
+  const { model, account, institution, organizationName, organizationDescription, academicYear } =
     state;
 
   if (id === "governance-model" && !model) {
@@ -229,7 +229,9 @@ export function validateStep(id: string, state: OrgDraft): string[] {
   }
 
   // The organization fields used to live on their own step. That step is gone,
-  // so they are validated on the step that now asks for them.
+  // so they are validated on the step that now asks for them. Councils are no
+  // longer declared here either, so there is nothing left to validate beyond the
+  // organization's own fields.
   if (id === "units") {
     if (organizationName.trim().length < 3)
       errors.push("Enter your organization's name.");
@@ -237,12 +239,6 @@ export function validateStep(id: string, state: OrgDraft): string[] {
       errors.push("Add a short description (at least 12 characters).");
     if (!/^\d{4}\s*[–—-]\s*\d{4}$/.test(academicYear.trim()))
       errors.push("Academic year must look like 2026 – 2027.");
-
-    const result = validateUnits(units);
-    if (!result.ok && result.reason === "duplicate")
-      errors.push("Declared units can't have the same name.");
-    else if (!result.ok)
-      errors.push("Add at least one college, campus, or department.");
   }
 
   return errors;

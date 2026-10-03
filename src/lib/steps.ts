@@ -34,10 +34,10 @@ export const STEPS = [
   },
   {
     id: "units",
-    label: "Organization & Units",
-    title: "Name your organization and declare local councils",
+    label: "Organization",
+    title: "Name your organization",
     path: "/create/units",
-    short: "Org & Units",
+    short: "Organization",
   },
   {
     id: "review",

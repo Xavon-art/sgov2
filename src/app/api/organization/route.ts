@@ -123,9 +123,16 @@ export async function POST(req: Request) {
     }))
     .filter((unit) => unit.name !== "");
 
-  if (!units.length || units.some((unit) => !UNIT_TYPES.includes(unit.type))) {
+  // An empty list is the normal case now. The wizard no longer asks a
+  // registrant to declare councils, and `create_organization` always writes the
+  // organization its own root row from the organization name -- the USG row for
+  // a federated org, a single council for a unitary one -- before it loops over
+  // whatever children it was given. So there is nothing to require here, and a
+  // type the enum does not hold is still rejected rather than reaching a
+  // not-null column.
+  if (units.some((unit) => !UNIT_TYPES.includes(unit.type))) {
     return NextResponse.json(
-      { ok: false, message: "Your organization needs at least one named governance unit." },
+      { ok: false, message: "One of the governance units has a type this system does not recognize." },
       { status: 400 },
     );
   }

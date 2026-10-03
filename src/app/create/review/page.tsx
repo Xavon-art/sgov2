@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import { IconArrowRight, IconPencil, IconShield } from "@/components/ui/Icons";
 import { ROLE_LABELS, useOrgDraft, type MemberRole } from "@/lib/store";
-import { UNIT_TYPE_LABELS } from "@/lib/units";
 import { STEPS } from "@/lib/steps";
 import { useStepGuard } from "@/lib/useStepGuard";
 import { charterNumber, cn } from "@/lib/utils";
@@ -166,29 +165,6 @@ export default function ReviewPage() {
                 <Row label="Campus" value={inst.campusName} editHref={STEPS[3].path} />
                 <Row label="College" value={inst.college} editHref={STEPS[3].path} />
               </dl>
-            </section>
-
-            <section>
-              <h3 className="flex items-center gap-2.5 text-[0.75rem] font-semibold tracking-[0.16em] text-ink-soft uppercase">
-                <span aria-hidden className="h-px w-5 bg-brass" />
-                Local Student Governments
-                <EditLink href={STEPS[4].path} label="units" />
-              </h3>
-              <ul className="mt-3 flex flex-col">
-                {draft.units.map((unit, i) => (
-                  <li
-                    key={`${unit.type}-${unit.name}-${i}`}
-                    className="flex items-baseline justify-between gap-x-6 gap-y-1 border-b border-line/70 py-2.5 last:border-b-0"
-                  >
-                    <span className="text-[0.875rem] text-ink-deep">
-                      {unit.name}
-                    </span>
-                    <span className="shrink-0 text-[0.625rem] font-semibold tracking-[0.14em] text-faint uppercase">
-                      {UNIT_TYPE_LABELS[unit.type]}
-                    </span>
-                  </li>
-                ))}
-              </ul>
             </section>
           </div>
 

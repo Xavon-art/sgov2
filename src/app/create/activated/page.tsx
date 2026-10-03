@@ -90,7 +90,6 @@ export default function ActivatedPage() {
             ["Institution", inst.universityName],
             ["Governance model", "Federated (decentralized)"],
             ["Academic year", draft.academicYear],
-            ["Local councils", String(draft.units.length)],
             [
               "Organization",
               organizationId ? organizationId.slice(0, 8) : "—",
@@ -111,13 +110,13 @@ export default function ActivatedPage() {
         {[
           {
             icon: IconLayers,
-            title: "Invite your officers",
-            body: "Send invitations to treasurers, auditors, and every council president. Each council below your USG gets its own officer.",
+            title: "Add your councils",
+            body: "Create a college, campus, or department from the org chart. Each one becomes a Local Student Government under your USG.",
           },
           {
             icon: IconMail,
-            title: "Activate the local councils",
-            body: "An invited officer sets their password, verifies their email, and their council appears in your org chart.",
+            title: "Invite an officer into each",
+            body: "An invited officer sets their password, verifies their email, and their council appears in your org chart with its own seats.",
           },
         ].map((item, i) => {
           const Icon = item.icon;
