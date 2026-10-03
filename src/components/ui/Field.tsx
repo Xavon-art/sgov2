@@ -1,6 +1,7 @@
 "use client";
 
-import type { ComponentProps, ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import { IconEye, IconEyeOff } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 
 export const control =
@@ -114,6 +115,74 @@ export function TextField({
           {...rest}
         />
         <span className={underline} />
+      </div>
+    </FieldShell>
+  );
+}
+
+type PasswordFieldProps = Omit<ComponentProps<"input">, "id" | "type"> & {
+  id: string;
+  label: string;
+  hint?: ReactNode;
+  error?: string;
+  optional?: boolean;
+  srLabel?: boolean;
+};
+
+/**
+ * A masked input with a reveal control. The toggle flips the input's own `type`
+ * rather than mirroring the value into a second field, so the caret, the
+ * browser's password manager, and the form's submit value all stay on one
+ * element. The control is `type="button"`, so pressing it cannot submit the
+ * form by accident, and the label names the action the press will take.
+ */
+export function PasswordField({
+  id,
+  label,
+  hint,
+  error,
+  optional,
+  srLabel = false,
+  className,
+  ...rest
+}: PasswordFieldProps) {
+  const [revealed, setRevealed] = useState(false);
+  const action = revealed ? "Hide password" : "Show password";
+
+  return (
+    <FieldShell
+      id={id}
+      label={label}
+      hint={hint}
+      error={error}
+      optional={optional}
+      srLabel={srLabel}
+    >
+      <div className="relative">
+        <input
+          id={id}
+          type={revealed ? "text" : "password"}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
+          className={cn(
+            control,
+            "h-12 pr-11",
+            error ? "border-[#d9a99c] focus:border-[#c16549]" : undefined,
+            className,
+          )}
+          {...rest}
+        />
+        <span className={underline} />
+        <button
+          type="button"
+          onClick={() => setRevealed((v) => !v)}
+          aria-label={action}
+          aria-pressed={revealed}
+          title={action}
+          className="absolute top-1/2 right-2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-ink-muted transition-colors duration-300 hover:bg-brass-soft/25 hover:text-ink focus-visible:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink/40 [&>svg]:h-[1.05rem] [&>svg]:w-[1.05rem]"
+        >
+          {revealed ? <IconEyeOff /> : <IconEye />}
+        </button>
       </div>
     </FieldShell>
   );

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { TextField } from "@/components/ui/Field";
+import { TextField, PasswordField } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { IconMail } from "@/components/ui/Icons";
 
@@ -268,10 +268,9 @@ export default function LoginPage() {
           />
 
           <div className="flex flex-col gap-1">
-            <TextField
+            <PasswordField
               id="password"
               label="Password"
-              type="password"
               autoComplete="current-password"
               placeholder="••••••••"
               value={password}

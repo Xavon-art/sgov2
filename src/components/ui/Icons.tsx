@@ -251,3 +251,24 @@ export function IconCompass(p: IconProps) {
     </svg>
   );
 }
+
+export function IconEye(p: IconProps) {
+  return (
+    <svg {...base} {...p}>
+      <path d="M2.5 12S6 5.75 12 5.75 21.5 12 21.5 12 18 18.25 12 18.25 2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+/** The same eye with a strike through it, so the two states read as one pair. */
+export function IconEyeOff(p: IconProps) {
+  return (
+    <svg {...base} {...p}>
+      <path d="M4 4l16 16" />
+      <path d="M9.9 5.9A9.9 9.9 0 0 1 12 5.75c6 0 9.5 6.25 9.5 6.25a17.6 17.6 0 0 1-2.4 3.2" />
+      <path d="M6.6 7.85A17.8 17.8 0 0 0 2.5 12S6 18.25 12 18.25a9.8 9.8 0 0 0 3.35-.6" />
+      <path d="M10.3 10.3a2.5 2.5 0 0 0 3.4 3.4" />
+    </svg>
+  );
+}
