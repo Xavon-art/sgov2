@@ -7,6 +7,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { TextField, PasswordField } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 import { IconMail } from "@/components/ui/Icons";
+import { markBooted } from "@/lib/auth/boot";
 
 const RESEND_COOLDOWN = 15 * 60;
 
@@ -86,6 +87,12 @@ export default function LoginPage() {
       // An active account goes straight to the workspace — no onboarding steps
       // in between. The dashboard re-checks the session server-side, so a
       // cookie that expired between the two calls bounces back here.
+      //
+      // Marked booted first: the dashboard signs out any document that was loaded
+      // fresh rather than navigated to, and `router.push` navigates within this
+      // one. The marker has to exist before the navigation starts, or the guard
+      // reads it on the next page and tears down the session just created.
+      markBooted();
       router.push("/dashboard");
       router.refresh();
     } catch {

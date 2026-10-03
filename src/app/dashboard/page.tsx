@@ -6,6 +6,7 @@ import { Seal } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
 import { AppShell, type NavItem } from "@/components/dashboard/AppShell";
 import { Workspace } from "@/components/dashboard/Workspace";
+import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import {
   IconArrowRight,
   IconBuilding,
@@ -144,6 +145,7 @@ export default async function DashboardPage() {
   ];
 
   return (
+    <SessionGuard>
     <div className="relative isolate min-h-dvh">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
         <ShaderField strength={0.5} scale={1.3} speed={0.022} />
@@ -326,5 +328,6 @@ export default async function DashboardPage() {
         </section>
       </AppShell>
     </div>
+    </SessionGuard>
   );
 }

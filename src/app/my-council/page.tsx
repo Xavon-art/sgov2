@@ -6,6 +6,7 @@ import { Reveal } from "@/components/fx/Reveal";
 import { Wordmark } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 import { ChartRefresher } from "@/components/org-chart/ChartRefresher";
 import {
@@ -204,6 +205,7 @@ export default async function MyCouncilPage() {
   const title = cardUnits.length === 1 ? cardUnits[0].name : "Your council";
 
   return (
+    <SessionGuard>
     <PageShell title={title}>
       <Reveal className="flex flex-col items-center text-center">
         <p className="eyebrow">My council</p>
@@ -243,5 +245,6 @@ export default async function MyCouncilPage() {
         </div>
       </div>
     </PageShell>
+    </SessionGuard>
   );
 }

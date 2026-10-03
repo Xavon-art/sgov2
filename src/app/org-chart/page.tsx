@@ -5,6 +5,7 @@ import { Reveal } from "@/components/fx/Reveal";
 import { Wordmark } from "@/components/ui/Seal";
 import { ButtonLink } from "@/components/ui/Button";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import {
   AddPositionControl,
   SeatRow,
@@ -125,6 +126,7 @@ export default async function OrgChartPage() {
   const title = root?.name || account.universityName || "Organization chart";
 
   return (
+    <SessionGuard>
     <div className="relative isolate flex min-h-dvh flex-col">
       <ChartRefresher />
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
@@ -215,5 +217,6 @@ export default async function OrgChartPage() {
         </div>
       </main>
     </div>
+    </SessionGuard>
   );
 }
