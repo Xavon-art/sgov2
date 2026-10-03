@@ -81,9 +81,9 @@ function StatusBadge({ status }: { status: InviteRow["status"] }) {
 }
 
 function formatDate(value: string | null): string {
-  if (!value) return "Ã¢â‚¬â€";
+  if (!value) return "—";
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "Ã¢â‚¬â€";
+  if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
@@ -351,7 +351,7 @@ export function Workspace({
             <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
               <p className="eyebrow">Add a campus or department</p>
               <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-                Create the campus, college, or department first Ã¢â‚¬â€ then you can invite an LSG
+                Create the campus, college, or department first — then you can invite an LSG
                 officer into it.
               </p>
 
@@ -421,7 +421,7 @@ export function Workspace({
                   <SwapText
                     isPending={adding}
                     idle={`Add ${UNIT_TYPE_OPTIONS.find((t) => t.value === newUnitType)?.label ?? "campus"}`}
-                    pending="AddingÃ¢â‚¬Â¦"
+                    pending="Adding…"
                   />
                 </Button>
               </form>
@@ -449,7 +449,7 @@ export function Workspace({
 
                 {noUnits ? (
                   <p className="rise-in rounded-xl border border-dashed border-line-strong bg-canvas/40 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-muted">
-                    Add a campus or department first Ã¢â‚¬â€ until then there is no unit to invite
+                    Add a campus or department first — until then there is no unit to invite
                     someone into.
                   </p>
                 ) : (
@@ -466,7 +466,7 @@ export function Workspace({
                       onChange={(e) => setSelectedUnitId(e.target.value)}
                       className={selectClass}
                     >
-                      <option value="">Choose a campus or departmentÃ¢â‚¬Â¦</option>
+                      <option value="">Choose a campus or department…</option>
                       {units.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
@@ -509,7 +509,7 @@ export function Workspace({
                     disabled={sending || !selectedUnitId}
                     className="w-full sm:w-auto"
                   >
-                    <SwapText isPending={sending} idle="Send invitation" pending="SendingÃ¢â‚¬Â¦" />
+                    <SwapText isPending={sending} idle="Send invitation" pending="Sending…" />
                   </Button>
                 )}
               </form>
@@ -591,7 +591,7 @@ export function Workspace({
                 ) : null}
 
                 <Button type="submit" size="md" disabled={sending} className="w-full sm:w-auto">
-                  <SwapText isPending={sending} idle="Send invitation" pending="SendingÃ¢â‚¬Â¦" />
+                  <SwapText isPending={sending} idle="Send invitation" pending="Sending…" />
                 </Button>
               </form>
             </section>
@@ -699,7 +699,7 @@ export function Workspace({
                         {invite.email}
                       </td>
                       <td className="py-3 pr-4 text-[0.875rem] text-body">
-                        {invite.campusName || "Ã¢â‚¬â€"}
+                        {invite.campusName || "—"}
                       </td>
                       <td className="py-3 pr-4">
                         <StatusBadge status={invite.status} />
@@ -709,7 +709,7 @@ export function Workspace({
                       </td>
                       <td className="py-3 pl-4">
                         {invite.status === "activated" ? (
-                          <span className="text-[0.8125rem] text-muted">Ã¢â‚¬â€</span>
+                          <span className="text-[0.8125rem] text-muted">—</span>
                         ) : confirmId === invite.id ? (
                           /* key is load-bearing. Both branches render a div, so
                              React would otherwise patch the attributes onto the
