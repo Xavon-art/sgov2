@@ -21,6 +21,9 @@ const IP_WINDOW_MS = 10 * 60_000;
  * than surfacing as a 500 out of the PostgREST cast. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The only `unit_type` values `add_unit` accepts: children of a root USG. */
+const TREE_UNIT_TYPES = new Set(["campus", "college", "department"]);
+
 export type InviteRow = {
   id: string;
   email: string;
@@ -108,13 +111,69 @@ export async function POST(req: Request) {
 
   const account = await currentAccount();
 
+  let targetUnitId = unitId === "" ? null : unitId;
+  const campusName = body.campusName?.trim() ?? "";
+
+  /* A name with no id does not make a unit. `accept_invite` copies the name onto
+     the account and stops, while the seat in the org chart is written by
+     `create_invite` only when `p_unit_id` is present -- so on a federated org that
+     shape mints an invite for somebody who joins no campus and appears nowhere in
+     the chart. `add_unit` is the writer that does create the unit, so an invite
+     naming a campus that does not exist yet creates it first and invites into the
+     result. Both are owner-gated, so this cannot widen who may extend the tree,
+     only what a single request may do.
+
+     Only the three tree types are attempted. `lsg` and `council` are deliberately
+     absent: they are seats and tiers rather than children of the root USG, so
+     `add_unit` would refuse them, and the centralized branch below already sends
+     `lsg` for an org-wide invite that must keep working untouched.
+
+     A duplicate name is refused rather than silently reusing the row. The officer
+     is told which unit already exists and can pick it, instead of a typed
+     near-match quietly filing somebody under the wrong campus. `unitary_model` is
+     the centralized org declining a tree it does not have, and falls through to
+     the original org-wide shape unchanged. */
+  if (targetUnitId === null && campusName !== "" && TREE_UNIT_TYPES.has(body.unitType ?? "")) {
+    try {
+      const created = await callRpc<RpcResult & { unitId?: string }>("add_unit", {
+        p_session_token: token,
+        p_name: campusName,
+        p_unit_type: body.unitType as string,
+      });
+
+      if (created.ok) {
+        targetUnitId = created.unitId ?? null;
+      } else if (created.reason === "duplicate_unit_name") {
+        return NextResponse.json(
+          {
+            ok: false,
+            reason: created.reason,
+            message: `You already have a unit called \u201c${campusName}\u201d. Choose it from the list instead of creating it again.`,
+          },
+          { status: 409 },
+        );
+      } else if (created.reason !== "unitary_model") {
+        return NextResponse.json(
+          { ok: false, reason: created.reason, message: messageFor(created.reason) },
+          { status: 400 },
+        );
+      }
+    } catch (error) {
+      console.error("[invites:resolve-unit]", error);
+      return NextResponse.json(
+        { ok: false, message: "We could not create that unit. Please try again." },
+        { status: 500 },
+      );
+    }
+  }
+
   try {
     const res = await callRpc<RpcResult>("create_invite", {
       p_session_token: token,
       p_email: body.email?.trim() ?? "",
-      p_campus_name: body.campusName?.trim() ?? "",
+      p_campus_name: campusName,
       p_unit_type: body.unitType ?? "lsg",
-      p_unit_id: unitId === "" ? null : unitId,
+      p_unit_id: targetUnitId,
     });
 
     if (!res.ok) {
@@ -125,8 +184,6 @@ export async function POST(req: Request) {
     // `create_invite` does not echo the campus back, so the letter is addressed
     // from the name that was validated above -- the unit's name on the
     // units-first flow, the free-text campus on the centralized one.
-    const campusName = body.campusName?.trim() ?? "";
-
     try {
       await sendBranded(
         inviteEmail({

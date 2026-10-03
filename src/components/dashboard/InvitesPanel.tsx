@@ -22,6 +22,25 @@ import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
 
 /**
+ * Sentinel for the "name a new campus" option in the unit picker.
+ *
+ * A uuid is the only other thing that select can hold, so this can never collide
+ * with a real unit id.
+ */
+const NEW_UNIT = "__new__";
+
+/**
+ * The three types `add_unit` will create under the root USG. `lsg` and `council`
+ * are deliberately absent: they are a seat and a tier, not children of the tree,
+ * so offering them here would produce a unit the server refuses to make.
+ */
+const TREE_UNIT_OPTIONS = [
+  { value: "campus", label: "Campus" },
+  { value: "college", label: "College" },
+  { value: "department", label: "Department" },
+] as const;
+
+/**
  * Invitations, and the officers they produced.
  *
  * Separate from `UnitsPanel` so that neither page pays for the other's list. The
@@ -50,6 +69,8 @@ export function InvitesPanel() {
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [selectedUnitId, setSelectedUnitId] = useState("");
+  const [newUnitName, setNewUnitName] = useState("");
+  const [newUnitType, setNewUnitType] = useState<string>("campus");
 
   const [busy, setBusy] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -68,6 +89,9 @@ export function InvitesPanel() {
       if (cancelled) return;
       if (rows) setInvites(rows);
       setUnits(list);
+      // An empty tree has nothing to pick, so the form opens on naming a new
+      // campus instead of on a select that could only ever be empty.
+      setSelectedUnitId(list.length === 0 ? NEW_UNIT : "");
       setLoading(false);
       setUnitsLoading(false);
     })();
@@ -80,9 +104,28 @@ export function InvitesPanel() {
   async function onInvite(event: React.FormEvent) {
     event.preventDefault();
 
+    const creatingUnit = isUsg && selectedUnitId === NEW_UNIT;
+    const chosenUnit = units.find((u) => u.id === selectedUnitId);
+
     if (isUsg && !selectedUnitId) {
-      setError("Choose a campus or department first.");
+      setError("Choose a campus, or name a new one to create.");
       return;
+    }
+
+    // Checked here as well as on the server so the officer is told which unit
+    // already exists without a round trip, and the server keeps the same refusal
+    // for the case where two of these land at once.
+    if (creatingUnit) {
+      const name = newUnitName.trim();
+      if (!name) {
+        setError("Give the new campus a name.");
+        return;
+      }
+      const clash = units.find((u) => u.name.trim().toLowerCase() === name.toLowerCase());
+      if (clash) {
+        setError(`You already have a unit called \u201c${clash.name}\u201d. Choose it from the list instead.`);
+        return;
+      }
     }
 
     setError(null);
@@ -91,14 +134,15 @@ export function InvitesPanel() {
     setActionError(null);
     setSending(true);
 
-    const selected = units.find((u) => u.id === selectedUnitId);
     const body = isUsg
-      ? {
-          email,
-          campusName: selected?.name ?? "",
-          unitType: selected?.unitType ?? "lsg",
-          unitId: selectedUnitId,
-        }
+      ? creatingUnit
+        ? { email, campusName: newUnitName.trim(), unitType: newUnitType, unitId: "" }
+        : {
+            email,
+            campusName: chosenUnit?.name ?? "",
+            unitType: chosenUnit?.unitType ?? "lsg",
+            unitId: selectedUnitId,
+          }
       : { email, campusName, unitType };
 
     try {
@@ -116,12 +160,28 @@ export function InvitesPanel() {
 
       setSentTo(`Invitation sent to ${data.email}.`);
       setEmail("");
+
       if (isUsg) {
-        setSelectedUnitId("");
+        // Refetched apart from the invite list on purpose: a campus created by
+        // this very request has to reach the picker, or the next invite would
+        // either be unable to target it or would try to create it a second time.
+        const createdName = creatingUnit ? newUnitName.trim().toLowerCase() : "";
+        const list = await fetchUnits();
+        if (list) {
+          setUnits(list);
+          // Selecting what was just made is the point: inviting officers one at a
+          // time into the same new campus is the normal case, and landing back on
+          // an empty name box would make the second person create a duplicate.
+          setSelectedUnitId(
+            list.find((u) => u.name.trim().toLowerCase() === createdName)?.id ?? "",
+          );
+        }
+        setNewUnitName("");
       } else {
         setCampusName("");
         setUnitType("lsg");
       }
+
       const rows = await fetchInvites();
       if (rows) setInvites(rows);
     } catch {
@@ -189,8 +249,6 @@ export function InvitesPanel() {
     }
   }
 
-  const noUnits = units.length === 0 && !unitsLoading;
-
   /* `transition-colors` deliberately not used here. It is a Tailwind utility,
      and utilities are layered after components, so it would win over
      `.pressable` and replace transition-property with the colour list alone --
@@ -221,12 +279,10 @@ export function InvitesPanel() {
                 required
               />
 
-              {noUnits ? (
-                <p className="rise-in rounded-xl border border-dashed border-line-strong bg-canvas/40 px-3.5 py-3 text-[0.8125rem] leading-relaxed text-muted">
-                  Add a campus or department first — until then there is no unit to invite someone
-                  into.
-                </p>
-              ) : (
+              {/* Held back until the list lands, so the form cannot flash the "name a new
+                  campus" fields at somebody whose tree already has a dozen
+                  campuses, and then swap them for a picker. */}
+              {!unitsLoading && units.length > 0 ? (
                 <div className="flex flex-col gap-2">
                   <label htmlFor="invite-unit" className="text-[0.8125rem] font-semibold text-ink">
                     Campus or unit
@@ -243,9 +299,42 @@ export function InvitesPanel() {
                         {u.name}
                       </option>
                     ))}
+                    <option value={NEW_UNIT}>+ Name a new one…</option>
                   </select>
                 </div>
-              )}
+              ) : null}
+
+              {!unitsLoading && selectedUnitId === NEW_UNIT ? (
+                <>
+                  <TextField
+                    id="invite-new-unit"
+                    label="New campus name"
+                    placeholder="Main Campus"
+                    value={newUnitName}
+                    onChange={(e) => setNewUnitName(e.target.value)}
+                    hint="Created as part of this invitation, so the officer has a place to sit."
+                    required
+                  />
+
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="invite-new-type" className="text-[0.8125rem] font-semibold text-ink">
+                      What kind of unit?
+                    </label>
+                    <select
+                      id="invite-new-type"
+                      value={newUnitType}
+                      onChange={(e) => setNewUnitType(e.target.value)}
+                      className={selectClass}
+                    >
+                      {TREE_UNIT_OPTIONS.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : null}
 
               {error ? (
                 <Enter
@@ -273,11 +362,20 @@ export function InvitesPanel() {
                 </Enter>
               ) : null}
 
-              {noUnits ? null : (
-                <Button type="submit" size="md" disabled={sending || !selectedUnitId}>
-                  <SwapText isPending={sending} idle="Send invitation" pending="Sending…" />
-                </Button>
-              )}
+              {/* Not gated on having a campus any more. With an empty tree the
+                  picker is replaced by the name-and-type fields, and the officer
+                  still needs a way to submit -- which is the whole point. */}
+              <Button
+                type="submit"
+                size="md"
+                disabled={
+                  sending ||
+                  !selectedUnitId ||
+                  (selectedUnitId === NEW_UNIT && newUnitName.trim() === "")
+                }
+              >
+                <SwapText isPending={sending} idle="Send invitation" pending="Sending…" />
+              </Button>
             </form>
           </>
         ) : (
