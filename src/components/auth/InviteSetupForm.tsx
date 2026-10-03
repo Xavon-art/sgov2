@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { TextField } from "@/components/ui/Field";
+import { PasswordField } from "@/components/ui/Field";
 import { Button } from "@/components/ui/Button";
 
 /**
@@ -128,10 +128,9 @@ export function InviteSetupForm({
       </dl>
 
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
-        <TextField
+        <PasswordField
           id="password"
           label="Password"
-          type="password"
           autoComplete="new-password"
           placeholder="At least 8 characters"
           value={password}
@@ -140,10 +139,9 @@ export function InviteSetupForm({
           required
         />
 
-        <TextField
+        <PasswordField
           id="confirm"
           label="Confirm password"
-          type="password"
           autoComplete="new-password"
           placeholder="Type it again"
           value={confirm}

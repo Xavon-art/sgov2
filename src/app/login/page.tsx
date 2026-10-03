@@ -368,10 +368,9 @@ export default function LoginPage() {
             />
           </div>
 
-          <TextField
+          <PasswordField
             id="reset-password"
             label="New password"
-            type="password"
             autoComplete="new-password"
             placeholder="At least 8 characters"
             value={newPassword}
