@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { Enter } from "@/components/fx/Presence";
@@ -28,13 +29,27 @@ export type NavItem = {
   id: string;
   label: string;
   hint: string;
+  /**
+   * A route, not an `#id` anchor.
+   *
+   * Sections used to be anchors into one long page, which meant the whole
+   * document shipped every section whether or not the reader scrolled to it, and
+   * `active` had to be passed in from the server because only the server knew
+   * which section was on screen. Real routes fix both: each section is its own
+   * entry in the build, and `AppShell` can work out `active` from the pathname
+   * by itself rather than being told.
+   *
+   * Kept as `<Link>` rather than `<a>` deliberately -- it is what gets the
+   * prefetch. An anchor costs nothing to click; a route costs a server render
+   * unless something has already fetched it.
+   */
+  href: string;
   // A key, not a component: this prop crosses from the server component that
   // builds `nav` into this client component, and functions cannot cross that
   // boundary -- passing the component threw "Functions cannot be passed directly
   // to Client Components" and crashed the whole dashboard. The icon is resolved
   // here instead.
   icon: NavIcon;
-  active?: boolean;
 };
 
 /**
@@ -47,9 +62,9 @@ export type NavItem = {
  * screen.
  *
  * The sidebar is fixed on desktop and becomes a slide-over on mobile, driven by
- * a plain menu toggle so it works without a focus-trap library. Links are
- * same-page anchors against `#id` sections so navigation never reloads the
- * server-gated data.
+ * a plain menu toggle so it works without a focus-trap library. Nav items are
+ * routes under `/dashboard`, so switching sections is a client transition rather
+ * than a jump inside one long document.
  */
 export function AppShell({
   nav,
@@ -63,7 +78,14 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const active = nav.find((n) => n.active) ?? nav[0];
+  const pathname = usePathname();
+
+  // Read from the URL rather than passed in. The server can know which section a
+  // page is, but making it responsible for that meant every nav change was a
+  // round trip to find out something the client already has, and it made the
+  // highlight flicker through `active={false}` on anything that was not a
+  // hardcoded link.
+  const active = nav.find((n) => n.href === pathname) ?? nav[0];
 
   // Escape to dismiss, plus a scroll lock while it is up.
   //
@@ -108,11 +130,11 @@ export function AppShell({
         <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
-            const selected = item.active;
+            const selected = item.href === pathname;
             return (
-              <a
+              <Link
                 key={item.id}
-                href={`#${item.id}`}
+                href={item.href}
                 aria-current={selected ? "page" : undefined}
                 className={cn(
                   "group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.875rem] font-medium transition-colors duration-300",
@@ -131,7 +153,7 @@ export function AppShell({
                   strokeWidth={1.7}
                 />
                 <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </a>
+              </Link>
             );
           })}
         </nav>
@@ -191,11 +213,11 @@ export function AppShell({
         <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
-            const selected = item.active;
+            const selected = item.href === pathname;
             return (
-              <a
+              <Link
                 key={item.id}
-                href={`#${item.id}`}
+                href={item.href}
                 aria-current={selected ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className={cn(
@@ -220,7 +242,7 @@ export function AppShell({
                   strokeWidth={1.7}
                 />
                 {item.label}
-              </a>
+              </Link>
             );
           })}
         </nav>
