@@ -22,6 +22,18 @@ export function buildDashboardNav(account: Account): NavItem[] {
       href: "/dashboard",
       icon: "dashboard",
     },
+    // Proposals and requirements is the one section both roles get, and it is
+    // deliberately not gated on `isOwner`. The USG officer gets the review inbox
+    // and its programs; an LSG officer gets the programs to draft against and its
+    // own unit's submissions. Hiding it from non-owners is what left an invited
+    // officer staring at a dashboard with nothing on it but "you were invited".
+    {
+      id: "requirements",
+      label: "Proposals",
+      hint: isOwner ? "Review inbox and programs" : "Your unit's submissions",
+      href: "/dashboard/requirements",
+      icon: "submission" as const,
+    },
     // A centralized office records its units directly, so there is no campus
     // layer to build first -- offering the route would be offering a form the
     // database refuses.

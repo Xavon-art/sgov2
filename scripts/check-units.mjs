@@ -29,8 +29,11 @@
  *      no position seat.
  *  13. An owner can cancel and resend an invitation, and a cancelled one
  *      cannot be completed by a code that was already in the mailbox.
+ *  14. LSG requirement submissions: programs, templates, versioned proposal
+ *      review, storage-backed uploads, and the two dashboard shells with the
+ *      skip-setup gate.
  *
- * Run: node scripts/check-units.mjs (13 items, 94 assertions)
+ * Run: node scripts/check-units.mjs (14 items, 127 assertions)
  *
  * These assertions are only worth their green if they can go red, so the
  * load-bearing ones were mutation-tested against the exact regressions they
@@ -108,6 +111,20 @@ const readPendingMigration = (name) => {
   }
 };
 
+/**
+ * The same principle for source files: item 14 is written before the feature,
+ * so a route or component that has not landed yet must read as empty so the
+ * new guards report FAIL while the older assertions still report. A stack
+ * trace would take the whole contract dark.
+ */
+const readPendingSource = (path) => {
+  try {
+    return withoutComments(readFileSync(join(ROOT, path), "utf8"));
+  } catch {
+    return "";
+  }
+};
+
 const m5 = readMigration("20260101000500_add_department_unit_type.sql");
 const m6 = readMigration("20260101000600_unit_hierarchy_tables.sql");
 const m7 = readMigration("20260101000700_create_organization_unit_tree.sql");
@@ -118,6 +135,11 @@ const m11 = readMigration("20260101001100_owner_otp_approval.sql");
 const m12 = readMigration("20260101001200_password_reset.sql");
 const m14 = readPendingMigration("20260101001400_add_unit_and_seatless_invites.sql");
 const m15 = readPendingMigration("20260101001500_invite_cancel_and_resend.sql");
+const m20 = readPendingMigration("20260101002000_lsg_requirement_submissions.sql");
+const m150 = readPendingMigration("20260101002150_proposal_detail_exposes_submission_id.sql");
+const m160 = readPendingMigration("20260101002160_jsonb_text_array_repair.sql");
+const m170 = readPendingMigration("20260101002170_jsonb_text_array_proposal_validator.sql");
+const m180 = readPendingMigration("20260101002180_rowtype_read_repair.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -380,6 +402,39 @@ const MIGRATION_FUNCTIONS = [
       "public.resend_invite",
     ],
   ],
+  [
+    "002000",
+    m20,
+    [
+      "smartgov.lsg_unit_ids",
+      "smartgov.is_org_reviewer",
+      "smartgov.proposal_items_valid",
+      "smartgov.create_program",
+      "smartgov.list_programs",
+      "smartgov.list_default_requirements",
+      "smartgov.set_default_requirements",
+      "smartgov.match_requirement_item",
+      "smartgov.create_proposal",
+      "smartgov.submit_revision",
+      "smartgov.list_proposals",
+      "smartgov.proposal_detail",
+      "smartgov.review_proposal",
+      "smartgov.get_item_file",
+      "smartgov.am_i_reviewer",
+      "public.create_program",
+      "public.list_programs",
+      "public.list_default_requirements",
+      "public.set_default_requirements",
+      "public.match_requirement_item",
+      "public.create_proposal",
+      "public.submit_revision",
+      "public.list_proposals",
+      "public.proposal_detail",
+      "public.review_proposal",
+      "public.get_item_file",
+      "public.am_i_reviewer",
+    ],
+  ],
 ];
 for (const [file, sql, expected] of MIGRATION_FUNCTIONS) {
   const gaps = hardeningGaps(sql, expected);
@@ -404,7 +459,7 @@ check(
 );
 check(
   "no feature migration creates a policy",
-  ![m5, m6, m7, m8, m9, m10, m11, m12, m14, m15].some((sql) => /create policy/i.test(sql)),
+  ![m5, m6, m7, m8, m9, m10, m11, m12, m14, m15, m20].some((sql) => /create policy/i.test(sql)),
   "on this project one permissive policy turns a locked table into a read surface for anyone holding the publishable key",
 );
 
@@ -866,6 +921,234 @@ check(
   m15Grants.length
     ? `granted: ${m15Grants.join(", ")} -- the audited allowlist is the whole attack surface, so it has to be these two wrappers and nothing else`
     : "neither wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
+);
+
+// --- 14. LSG requirement submission + review ---
+// The load-bearing rows here are mutation-tested the same way as the older
+// guards: deleting an `enable row level security` off a new table, stripping
+// the `lsg_unit_ids`/reviewer predicate out of the read functions, and
+// deleting the size cap out of the uploads route each turn this item red. The
+// reviewer gate (is_org_reviewer) is asserted as part of the read scope too,
+// because the USG board shares the owner's inbox by *decision of the feature*,
+// not by accident of the schema.
+const m20Flat = flat(m20);
+const m20Blocks = functionBlocks(m20);
+const block20 = (name) => m20Blocks.find((b) => b.name === name);
+const flat20 = (b) => (b ? flat(b.body) : "");
+
+for (const table of ["programs", "requirement_items", "proposals", "proposal_versions", "item_submissions", "reviews"]) {
+  check(
+    `002000 enables RLS on smartgov.${table}`,
+    new RegExp(`alter table smartgov\\.${table} enable row level security`).test(m20Flat),
+  );
+}
+check(
+  "002000 creates no policies",
+  !/create policy/i.test(m20),
+  "RLS with no policies already denies everything; on this project one permissive policy turns a locked table into a read surface for anyone holding the publishable key",
+);
+
+for (const fn of ["create_program", "set_default_requirements", "create_proposal", "submit_revision", "review_proposal"]) {
+  const body = flat20(block20(`smartgov.${fn}`));
+  check(
+    `002000 ${fn} meters a rate-limit bucket`,
+    /smartgov\.consume_rate_limit\(/.test(body),
+    "every mutating RPC has an authenticated, org-scoped meter like 001400/001500",
+  );
+}
+
+const CAST_EXT = /smartgov\.jsonb_text_array\(coalesce\(p_items->v_i->'allowed_extensions', jsonb '\[\]'\)\)/;
+check(
+  "002000 casts jsonb allowed_extensions into the text[] column",
+  CAST_EXT.test(flat20(block20("smartgov.create_program"))) &&
+    CAST_EXT.test(flat20(block20("smartgov.set_default_requirements"))),
+  "the bare jsonb->text[] insert dies at runtime with 42804/42846 (seen live); template writes must fold through smartgov.jsonb_text_array",
+);
+
+const m150Flat = flat(m150);
+const m150Blocks = functionBlocks(m150);
+const flat150 = (b) => (b ? flat(b.body) : "");
+const block150 = (name) => m150Blocks.find((b) => b.name === name);
+check(
+  "002150 submissionId appears on proposal_detail version items",
+  /'submissionId', isub\.id/.test(m150Flat),
+);
+check(
+  "002150 re-declares template writers through jsonb_text_array",
+  CAST_EXT.test(flat150(block150("smartgov.create_program"))) &&
+    CAST_EXT.test(flat150(block150("smartgov.set_default_requirements"))),
+  "a fresh 002150 push must repair the live 42804 on both template writers",
+);
+check(
+  "002150 publishes my_unit and nothing new beyond the template writers",
+  (m150.match(/grant execute on function\s+\S+/g) ?? []).every((g) =>
+    /public\.my_unit|public\.create_program|public\.set_default_requirements|public\.proposal_detail/.test(g),
+  ) && /public\.my_unit/.test(m150),
+);
+
+check(
+  "002160 repairs template writers through jsonb_text_array",
+  /smartgov\.jsonb_text_array\(/i.test(flat(m160)) &&
+    CAST_EXT.test(flat(functionBlocks(m160).find((b) => b.name === "smartgov.create_program")?.body ?? "")) &&
+    CAST_EXT.test(flat(functionBlocks(m160).find((b) => b.name === "smartgov.set_default_requirements")?.body ?? "")) &&
+    /v_ext = any\(smartgov\.jsonb_text_array\(v_t->'allowedExtensions'\)\)/.test(
+      flat(functionBlocks(m160).find((b) => b.name === "smartgov.proposal_items_valid")?.body ?? ""),
+    ),
+  "the 002150 that reached production carried ::text[] which raises 42846; 002160 must carry the aggregate form in both template writers and the item validator",
+);
+
+check(
+  "002170 re-declares proposal_items_valid through jsonb_text_array",
+  /v_ext = any\(smartgov\.jsonb_text_array\(v_t->'allowedExtensions'\)\)/.test(
+    flat(functionBlocks(m170).find((b) => b.name === "smartgov.proposal_items_valid")?.body ?? ""),
+  ) && /smartgov\.jsonb_text_array\(p_value jsonb\)/.test(flat(m170)),
+  "the 002160 that reached production omitted the validator; 002170 must carry the aggregate form",
+);
+
+// A %rowtype target assigns positionally, so a partial column list like
+// `select id, organization_id, created_by, status into v_proposal` writes
+// status into the fourth table column (unit_id, uuid) and raises 22P02. Every
+// read into a rowtype variable must name explicit field targets.
+check(
+  "002000 rowtype reads use explicit field targets",
+  /into v_proposal\.id, v_proposal\.organization_id, v_proposal\.program_id,\s*v_proposal\.unit_id, v_proposal\.created_by, v_proposal\.status/.test(
+    flat20(block20("smartgov.submit_revision")),
+  ) &&
+    /into v_proposal\.id, v_proposal\.organization_id,\s*v_proposal\.created_by, v_proposal\.status/.test(
+      flat20(block20("smartgov.review_proposal")),
+    ),
+  "a partial `into v_proposal` assigns by table column order, not select order -- status lands in unit_id and dies on the uuid cast",
+);
+
+const m180Blocks = functionBlocks(m180);
+const flat180 = (b) => (b ? flat(b.body) : "");
+const block180 = (name) => m180Blocks.find((b) => b.name === name);
+check(
+  "002180 re-declares submit_revision and review_proposal with explicit rowtype targets",
+  /into v_proposal\.id, v_proposal\.organization_id, v_proposal\.program_id,\s*v_proposal\.unit_id, v_proposal\.created_by, v_proposal\.status/.test(
+    flat180(block180("smartgov.submit_revision")),
+  ) &&
+    /into v_proposal\.id, v_proposal\.organization_id,\s*v_proposal\.created_by, v_proposal\.status/.test(
+      flat180(block180("smartgov.review_proposal")),
+    ),
+);
+
+check(
+  "002000 list_programs hides non-published from invited officers",
+  block20("smartgov.list_programs") !== undefined &&
+    /where pr\.organization_id = v_account\.organization_id/.test(flat20(block20("smartgov.list_programs"))) &&
+    /v_account\.account_scope = 'owner' or pr\.status = 'published'/.test(flat20(block20("smartgov.list_programs"))),
+);
+check(
+  "002000 list_proposals is scoped in SQL, and reviewers share the owner's inbox",
+  block20("smartgov.list_proposals") !== undefined &&
+    /smartgov\.lsg_unit_ids\(/.test(flat20(block20("smartgov.list_proposals"))) &&
+    /created_by = v_account\.id/.test(flat20(block20("smartgov.list_proposals"))) &&
+    /smartgov\.is_org_reviewer\(/.test(flat20(block20("smartgov.list_proposals"))),
+);
+check(
+  "002000 the USG board reviews: is_org_reviewer gates review_proposal",
+  block20("smartgov.is_org_reviewer") !== undefined &&
+    /unit_type = 'usg'/.test(flat20(block20("smartgov.is_org_reviewer"))) &&
+    block20("smartgov.review_proposal") !== undefined &&
+    /smartgov\.is_org_reviewer\(/.test(flat20(block20("smartgov.review_proposal"))) &&
+    block20("smartgov.am_i_reviewer") !== undefined,
+);
+check(
+  "002000 usg proposals publish directly; lsg proposals wait for review",
+  /v_author_kind := 'usg'[\s\S]*v_status := 'published'/.test(flat20(block20("smartgov.create_proposal"))) &&
+    /v_author_kind := 'lsg'[\s\S]*v_status := 'submitted'/.test(flat20(block20("smartgov.create_proposal"))),
+);
+check(
+  "002000 revisions are only from a returned proposal",
+  /v_proposal\.status <> 'returned'/.test(flat20(block20("smartgov.submit_revision"))),
+);
+check(
+  "002000 review decisions are the terminal set",
+  /'approved','returned','rejected'/.test(flat20(block20("smartgov.review_proposal"))),
+);
+check(
+  "002000 detail and file reads scope in SQL, not by hiding rows",
+  block20("smartgov.proposal_detail") !== undefined &&
+    /v_ok := v_account\.account_scope = 'owner'/.test(flat20(block20("smartgov.proposal_detail"))) &&
+    /smartgov\.is_org_reviewer\(/.test(flat20(block20("smartgov.proposal_detail"))) &&
+    block20("smartgov.get_item_file") !== undefined &&
+    /v_scope := v_account\.account_scope = 'owner'/.test(flat20(block20("smartgov.get_item_file"))),
+);
+
+// The published surface is measured, not asserted in prose: every grant has to
+// name one of the twelve intended `public.` wrappers and nothing else.
+const m20Grants = [...m20Flat.matchAll(/grant execute on function\s+([\w.]+)\s*\(/g)].map((m) => m[1]);
+const M20_WRAPPERS = [
+  "public.create_program", "public.list_programs", "public.list_default_requirements",
+  "public.set_default_requirements", "public.match_requirement_item", "public.create_proposal",
+  "public.submit_revision", "public.list_proposals", "public.proposal_detail",
+  "public.review_proposal", "public.get_item_file", "public.am_i_reviewer",
+];
+check(
+  "002000 publishes exactly the twelve intended wrappers to PostgREST",
+  m20Grants.length === 12 && m20Grants.every((g) => M20_WRAPPERS.includes(g)),
+  m20Grants.length
+    ? `granted: ${m20Grants.join(", ")} -- the audited allowlist is the whole attack surface`
+    : "no wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
+);
+
+const messagesText = readPendingSource("src/lib/auth/messages.ts");
+for (const key of [
+  "no_program", "no_proposal", "not_in_unit", "incomplete_submission",
+  "unsupported_file_type", "file_too_large", "not_returned", "already_reviewed",
+]) {
+  check(`messages.ts maps ${key}`, new RegExp(`\\b${key}:\\s*"`).test(messagesText));
+}
+
+const uploadsRoute = readPendingSource("src/app/api/uploads/route.ts");
+check(
+  "uploads route caps bytes at the bucket limit and enforces allowed extensions",
+  /MAX_FILE_BYTES/.test(uploadsRoute) && /sizeBytes\s*>/.test(uploadsRoute) && /ALLOWED_EXTENSIONS/.test(uploadsRoute),
+  "the mutation to guard is deleting the cap: then a signed URL can mint for a 12 MB file the bucket later rejects at upload time",
+);
+
+const storageText = readPendingSource("src/lib/storage.ts");
+const exampleEnv = readPendingSource(".env.local.example");
+check(
+  "service key is server-only: only storage.ts reads it, never the example env",
+  /SUPABASE_SERVICE_ROLE_KEY/.test(storageText) && !/SUPABASE_SERVICE_ROLE_KEY/.test(exampleEnv),
+  "the whole storage story stands on that key never reaching the browser; the moment it lands in .env.local.example the client bundle can see it",
+);
+
+  // Design decision 7 put a "proceed to dashboard anyway" gate in front of the
+  // operational dashboard while the owner had no units. It is gone, and this now
+  // guards why. The gate was rendered inline with the old combined `Workspace`,
+  // which the per-section routes replaced: units and invitations are their own
+  // pages, so there is no setup screen left to trap anybody in, and nav reaches
+  // Proposals whatever the unit count. Re-adding a count-gated screen would put
+  // the owner back where decision 7 was written to get them out of.
+  const gateWs = readPendingSource("src/components/dashboard/requirement/RequirementWorkspace.tsx");
+  check(
+    "the operational dashboard is not gated on having built any units",
+    !/unitCount|Proceed to dashboard anyway|Go back to setup/.test(gateWs),
+  );
+
+  // The reason the gate went: nav used to list only owner-scoped sections, so an
+  // invited LSG officer signed in to a dashboard with nothing on it but an
+  // invitation notice. Proposals must stay listed for non-owners, or that empty
+  // dashboard is the default again.
+  //
+  // Tested structurally rather than by searching for `isOwner`, because this entry
+  // legitimately mentions `isOwner` in its `hint` ternary. What matters is that it
+  // is a bare sibling object in the returned array -- `, {` straight into the id --
+  // and not an element of a `...(isOwner ? [` spread like the two beside it.
+  const navText = readPendingSource("src/components/dashboard/nav.ts");
+  check(
+    "Proposals is listed for invited officers too, not owner-gated",
+    /,\s*\{\s*id: "requirements"/.test(navText) &&
+      /href: "\/dashboard\/requirements"/.test(navText),
+    "the requirements entry is inside an isOwner spread; an LSG officer cannot reach their own proposals",
+  );
+
+check(
+  "002000 adds no email or notification machinery (YAGNI gate)",
+  !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m20Flat),
 );
 
 console.log(

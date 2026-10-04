@@ -44,6 +44,20 @@ const RPC_MESSAGES: Record<string, string> = {
   duplicate_unit_name: "Your organization already has a campus or department by that name.",
   unitary_model:
     "Only a decentralized student government can add campuses or departments. Your organization's structure is fixed.",
+  no_program:
+    "You must attach this submission to a program, or the owner has to add what office will accept it.",
+  no_proposal: "That submission no longer exists.",
+  not_in_unit:
+    "Your account is not seated in a candidate unit yet, so you cannot submit for one.",
+  incomplete_submission:
+    "The owner has not finalized the template for this program yet, so no standalone submission is accepted. Come back once the items are set.",
+  unsupported_file_type:
+    "That file type is not accepted here. Choose one of the allowed types for this item.",
+  file_too_large: "That file is larger than the 10 MB limit for one item.",
+  not_returned:
+    "Only a submission that was returned can be resubmitted with changes.",
+  already_reviewed:
+    "That submission has already been acted on, so it can no longer be reviewed.",
 };
 
 export function messageFor(reason?: string): string {

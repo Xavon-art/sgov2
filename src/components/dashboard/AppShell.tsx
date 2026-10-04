@@ -12,17 +12,19 @@ import {
   IconLock,
   IconMenu,
   IconPyramid,
+  IconSubmission,
   IconUser,
 } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 
-export type NavIcon = "dashboard" | "pyramid" | "user" | "lock";
+export type NavIcon = "dashboard" | "pyramid" | "user" | "lock" | "submission";
 
 const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
   dashboard: IconDashboard,
   pyramid: IconPyramid,
   user: IconUser,
   lock: IconLock,
+  submission: IconSubmission,
 };
 
 export type NavItem = {
