@@ -82,11 +82,13 @@ begin
   v_is_org := v_account.account_scope = 'owner'
              or smartgov.is_org_reviewer(v_account.id, v_account.organization_id);
 
-  -- `order by u.id` keeps the answer stable when an account holds more than one
-  -- LSG seat; which one it is will get a real picker in the LSG settings slice.
-  select u.id into v_unit
-    from smartgov.lsg_unit_ids(v_account.id, v_account.organization_id) u
-   order by u.id
+  -- `lsg_unit_ids` yields a scalar per row, not a table with an `id` column, so
+  -- it has to be wrapped in a subquery before it can be ordered. That keeps the
+  -- answer stable when an account holds more than one LSG seat; which one it is
+  -- will get a real picker in the LSG settings slice.
+  select t.u into v_unit
+    from (select smartgov.lsg_unit_ids(v_account.id, v_account.organization_id) as u) t
+   order by t.u
    limit 1;
 
   select gu.name into v_unitname

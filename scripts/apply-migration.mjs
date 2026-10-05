@@ -44,9 +44,13 @@ if (!url) {
   process.exit(1);
 }
 
-const files = process.argv.slice(2);
+const files = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+// `--force` re-applies a file that is already recorded. Needed when a migration
+// is still being edited in the same slice and has already gone out once.
+const force = process.argv.includes("--force");
+
 if (files.length === 0) {
-  console.error("Usage: node scripts/apply-migration.mjs <file.sql> [more.sql ...]");
+  console.error("Usage: node scripts/apply-migration.mjs [--force] <file.sql> [more.sql ...]");
   process.exit(1);
 }
 
@@ -74,7 +78,7 @@ try {
       [name],
     );
 
-    if (seen.rowCount > 0) {
+    if (seen.rowCount > 0 && !force) {
       console.log(`skip    ${name} (already applied)`);
       continue;
     }
@@ -85,8 +89,11 @@ try {
     await client.query("begin");
     try {
       await client.query(sql);
+      // Upsert, not insert: a `--force` re-run has to refresh the timestamp
+      // rather than trip the primary key.
       await client.query(
-        "insert into smartgov.applied_migrations (name) values ($1)",
+        `insert into smartgov.applied_migrations (name) values ($1)
+         on conflict (name) do update set applied_at = now()`,
         [name],
       );
       await client.query("commit");
