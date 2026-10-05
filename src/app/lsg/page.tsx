@@ -20,23 +20,26 @@ type ProposalsPayload = RpcResult & { proposals?: ProposalRow[] };
 /**
  * What the statuses mean for the person holding the phone.
  *
- * Only three of these are things an LSG officer can act on. `submitted` and
- * `under_review` are USG's turn, not ours, and listing them as "needs action"
- * would be the single most demoralizing thing this dashboard could do.
+ * These are the five values `smartgov.proposals.status` actually allows:
+ * `submitted`, `returned`, `approved`, `rejected`, `published`. An earlier
+ * version of this file used `draft` and `needs_revision`, which do not exist, so
+ * the action list below was silently empty for the one case that matters most:
+ * a proposal USG had sent back.
+ *
+ * Only two statuses are things an LSG officer can act on. `submitted` is USG's
+ * turn, and listing it as "needs action" would be the single most demoralizing
+ * thing this dashboard could do.
  */
 const ACTION: Record<string, { verb: string; detail: string } | undefined> = {
-  draft: { verb: "Finish and submit", detail: "Not sent to USG yet" },
-  needs_revision: { verb: "Revise and resubmit", detail: "USG sent this back" },
+  returned: { verb: "Revise and resubmit", detail: "USG sent this back" },
   approved: { verb: "Publish to feed", detail: "Approved, not announced yet" },
 };
 
 const COUNTED: Record<string, string> = {
   submitted: "With USG",
-  under_review: "With USG",
+  returned: "Sent back",
   approved: "Approved",
   rejected: "Rejected",
-  needs_revision: "Sent back",
-  draft: "Drafts",
   published: "Published",
 };
 

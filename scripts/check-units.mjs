@@ -140,6 +140,7 @@ const m150 = readPendingMigration("20260101002150_proposal_detail_exposes_submis
 const m160 = readPendingMigration("20260101002160_jsonb_text_array_repair.sql");
 const m170 = readPendingMigration("20260101002170_jsonb_text_array_proposal_validator.sql");
 const m180 = readPendingMigration("20260101002180_rowtype_read_repair.sql");
+const m23 = readPendingMigration("20260101002300_budget_requests.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -1198,9 +1199,167 @@ check(
     "the LSG help page is missing its Contact USG line, or grew a form",
   );
 
+// --- 15. Budget requests: money asked for, and money given.
+// The load-bearing claim is that a client cannot influence a number that USG
+// approves. So the subtotal has to be a generated column rather than a value the
+// browser sends, the total has to be recomputed from the stored lines, and the
+// review read has to show the two figures side by side.
+const m23Flat = flat(m23);
+const lsgBudgetPage = readPendingSource("src/app/lsg/budgets/page.tsx");
+const usgBudgetPage = readPendingSource("src/app/usg/budgets/page.tsx");
+const budgetsRoute = readPendingSource("src/app/api/budgets/route.ts");
+const budgetReviewRoute = readPendingSource("src/app/api/budgets/[id]/review/route.ts");
+const budgetsLib = readPendingSource("src/lib/budgets.ts");
+
 check(
-  "002000 adds no email or notification machinery (YAGNI gate)",
-  !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m20Flat),
+  "023000 creates both budget tables",
+  /create table if not exists smartgov\.budget_requests/.test(m23) &&
+    /create table if not exists smartgov\.budget_items/.test(m23),
+  "a budget request or its line items is missing its table",
+);
+
+check(
+  "a line's subtotal is a generated column, so the browser cannot choose the total",
+  /subtotal\s+numeric\(14,2\)\s+generated always as \(round\(quantity \* unit_cost, 2\)\) stored/.test(
+    m23Flat,
+  ),
+  "subtotal became a plain column an officer could edit in devtools",
+);
+
+check(
+  "neither budget table is reachable by anon or authenticated",
+  /revoke all on smartgov\.budget_requests from public, anon, authenticated/.test(m23Flat) &&
+    /revoke all on smartgov\.budget_items from public, anon, authenticated/.test(m23Flat),
+  "a budget table was granted straight to a client role",
+);
+
+check(
+  "the four budget statuses are exactly what the table allows",
+  /check \(status in \('submitted', 'returned', 'approved', 'rejected'\)\)/.test(m23Flat),
+  "the status check drifted from what the review functions accept",
+);
+
+check(
+  "a request may hang off a proposal or stand alone",
+  /proposal_id\s+uuid references smartgov\.proposals/.test(m23Flat) &&
+    /'proposal_not_open'/.test(m23),
+  "the optional proposal link, or the guard on a decided proposal, is gone",
+);
+
+check(
+  "a decided request cannot be decided again",
+  /status not in \('submitted', 'returned'\)/.test(m23Flat) &&
+    /'already_decided'/.test(m23),
+  "an approved or rejected request became re-decidable",
+);
+
+check(
+  "an approval can be less than the ask but never more",
+  /v_amount < 0 or v_amount > v_budget\.requested_total/.test(m23Flat) &&
+    /'invalid_amount'/.test(m23),
+  "the range check on approved_total was dropped",
+);
+
+check(
+  "returning or turning down needs a note for the officer",
+  /'remark_required'/.test(m23),
+  "a decision with no remark became possible, leaving the officer nothing to act on",
+);
+
+check(
+  "the uncommitted figure leaves out anything already turned down",
+  (m23.match(/status <> 'rejected'/g) || []).length >= 3,
+  "rejected requests are being counted as money still on the table",
+);
+
+const m23Fns = (m23.match(/create or replace function/g) || []).length;
+check(
+  "every budget function is security definer with a pinned search_path and revoked",
+  m23Fns >= 11 &&
+    (m23.match(/security definer/g) || []).length === m23Fns &&
+    (m23.match(/set search_path = public, extensions, smartgov, pg_temp/g) || []).length === m23Fns &&
+    (m23.match(/revoke all on function (smartgov|public)\./g) || []).length >= m23Fns,
+  `${m23Fns} functions are declared but one is not definer, pinned, or revoked`,
+);
+
+check(
+  "PostgREST can reach all five budget functions and nothing more",
+  /create or replace function public\.submit_budget/.test(m23) &&
+    /create or replace function public\.list_budgets/.test(m23) &&
+    /create or replace function public\.budget_detail/.test(m23) &&
+    /create or replace function public\.review_budget/.test(m23) &&
+    /create or replace function public\.budget_summary/.test(m23) &&
+    (m23.match(/create or replace function public\./g) || []).length === 5,
+  "a sixth public wrapper exists, or one of the five went missing",
+);
+
+check(
+  "the summary is USG-only in SQL, not by hiding it in the UI",
+  /budget_summary[\s\S]*?is_org_reviewer[\s\S]*?'forbidden'/.test(m23),
+  "budget_summary stopped refusing a caller who is not on the USG side",
+);
+
+check(
+  "the LSG budget page posts lines and holds no other unit's numbers",
+  /fetch\("\/api\/budgets"/.test(lsgBudgetPage) &&
+    !/budget_summary|summary/.test(withoutComments(lsgBudgetPage)) &&
+    !/\/usg\//.test(lsgBudgetPage),
+  "the LSG page asks for the money summary, or links to the USG tree",
+);
+
+check(
+  "the USG budget page shows the summary and all three decisions",
+  /state\.summary\.units/.test(usgBudgetPage) &&
+    /decide\(row, "approved"\)/.test(usgBudgetPage) &&
+    /decide\(row, "returned"\)/.test(usgBudgetPage) &&
+    /decide\(row, "rejected"\)/.test(usgBudgetPage),
+  "the review desk lost its per-unit table or one of the decisions",
+);
+
+check(
+  "the review route refuses an unknown decision before it reaches the database",
+  /DECISIONS = new Set\(\["approved", "returned", "rejected"\]\)/.test(
+    budgetReviewRoute.replace(/\s+/g, " "),
+  ),
+  "the decision vocabulary widened on the client side",
+);
+
+check(
+  "both budget nav items point at routes that exist",
+  /href:\s*"\/lsg\/budgets"/.test(lsgNav) && /href:\s*"\/usg\/budgets"/.test(usgNav),
+  "a budget nav item was added before its page landed",
+);
+
+check(
+  "the budget nav items never cross the workspace boundary",
+  !/href:\s*"\/usg/.test(lsgNav) && !/href:\s*"\/lsg/.test(usgNav),
+  "a nav module links into the other side's tree",
+);
+
+check(
+  "every budget reason has a message a person can read",
+  [
+    "invalid_title",
+    "invalid_items",
+    "proposal_not_open",
+    "already_decided",
+    "invalid_amount",
+    "remark_required",
+  ].every((r) => new RegExp(`${r}:`).test(messagesText)),
+  "a reason can still reach the UI untranslated, where messageFor falls back to generic text",
+);
+
+check(
+  "no budget source can read the service key",
+  ![budgetsRoute, budgetReviewRoute, budgetsLib, lsgBudgetPage, usgBudgetPage].some((src) =>
+    /SERVICE_ROLE/.test(src),
+  ),
+  "a budget module reads the service key, which must stay server-only",
+);
+
+check(
+  "023000 adds no email or notification machinery (YAGNI gate)",
+  !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m23),
 );
 
 console.log(

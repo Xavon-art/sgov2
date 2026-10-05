@@ -1,0 +1,160 @@
+import { NextResponse } from "next/server";
+import { callRpc, type RpcResult } from "@/lib/auth/rpc";
+import { messageFor } from "@/lib/auth/messages";
+import { readSessionToken } from "@/lib/auth/session";
+import type { BudgetRow, BudgetSummary } from "@/lib/budgets";
+
+export const runtime = "nodejs";
+
+type ListResult = RpcResult & { scope?: string; budgets?: BudgetRow[] };
+type SummaryResult = RpcResult & BudgetSummary;
+
+function statusForReason(reason?: string): number {
+  if (reason === "unauthenticated") return 401;
+  if (reason === "rate_limited") return 429;
+  if (reason === "forbidden") return 403;
+  return 400;
+}
+
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Every budget the caller is allowed to see, plus the money summary when they are
+ * the ones who decide.
+ *
+ * Both answers come back in one response on purpose. The USG screen shows a
+ * per-unit table above the list, and splitting it into two fetches would let the
+ * table and the list disagree for a moment after a decision.
+ *
+ * The summary is requested only once `list_budgets` has confirmed the caller is
+ * on the USG side, so the RPC is never asked to answer a question the LSG caller
+ * should not hear.
+ */
+export async function GET() {
+  const token = await readSessionToken();
+  if (!token) {
+    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+  }
+
+  try {
+    const res = await callRpc<ListResult>("list_budgets", { p_session_token: token });
+    if (!res.ok) {
+      return NextResponse.json(
+        { ok: false, message: messageFor(res.reason), reason: res.reason },
+        { status: statusForReason(res.reason) },
+      );
+    }
+
+    const scope = res.scope ?? "unit";
+    let summary: BudgetSummary | null = null;
+
+    if (scope === "organization") {
+      const sum = await callRpc<SummaryResult>("budget_summary", { p_session_token: token });
+      if (sum.ok) {
+        summary = { units: sum.units ?? [], totals: sum.totals ?? null } as BudgetSummary;
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      scope,
+      budgets: res.budgets ?? [],
+      summary,
+    });
+  } catch (error) {
+    console.error("[budgets:list]", error);
+    return NextResponse.json(
+      { ok: false, message: "We could not load the budget requests." },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * A new budget request.
+ *
+ * `proposalId` is optional on purpose: a request may stand on its own, or hang off
+ * an open proposal the unit already submitted. Attaching is checked in SQL --
+ * the unit has to own that proposal and it has to still be open -- so this route
+ * only has to decide whether the shape of the request is usable at all.
+ */
+export async function POST(req: Request) {
+  const token = await readSessionToken();
+  if (!token) {
+    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+  }
+
+  let body: {
+    title?: unknown;
+    justification?: unknown;
+    proposalId?: unknown;
+    items?: unknown;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { ok: false, message: "Send the request as JSON." },
+      { status: 400 },
+    );
+  }
+
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (title.length < 4 || title.length > 140) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("invalid_title"), reason: "invalid_title" },
+      { status: 400 },
+    );
+  }
+
+  let proposalId: string | null = null;
+  if (typeof body.proposalId === "string" && body.proposalId.trim()) {
+    proposalId = body.proposalId.trim();
+    if (!UUID.test(proposalId)) {
+      return NextResponse.json(
+        { ok: false, message: "That proposal reference is not valid." },
+        { status: 400 },
+      );
+    }
+  }
+
+  if (!Array.isArray(body.items)) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("invalid_items"), reason: "invalid_items" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const res = await callRpc<RpcResult & { budgetId?: string; requestedTotal?: number }>(
+      "submit_budget",
+      {
+        p_session_token: token,
+        p_proposal_id: proposalId,
+        p_title: title,
+        p_justification: typeof body.justification === "string" ? body.justification.trim() : "",
+        p_items: body.items,
+      },
+    );
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { ok: false, message: messageFor(res.reason), reason: res.reason },
+        { status: statusForReason(res.reason) },
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      budgetId: res.budgetId,
+      requestedTotal: res.requestedTotal,
+    });
+  } catch (error) {
+    console.error("[budgets:submit]", error);
+    return NextResponse.json(
+      { ok: false, message: "We could not send that request." },
+      { status: 500 },
+    );
+  }
+}

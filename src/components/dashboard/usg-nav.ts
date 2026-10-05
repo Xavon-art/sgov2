@@ -27,9 +27,16 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       href: "/usg/proposals",
       icon: "submission",
     },
-    // `Tasks`, `Feed` and `Budget` join this list in their own slices, when the
-    // routes exist. They are not listed ahead of their pages: a nav item that
-    // lands on a 404 teaches a user that the sidebar lies.
+    {
+      id: "budgets",
+      label: "Budgets",
+      hint: "Decide what the units ask for",
+      href: "/usg/budgets",
+      icon: "budget",
+    },
+    // `Tasks` and `Feed` join this list in their own slices, when the routes exist.
+    // They are not listed ahead of their pages: a nav item that lands on a 404
+    // teaches a user that the sidebar lies.
     // A centralized office records its units directly, so there is no campus
     // layer to build first -- offering the route would be offering a form the
     // database refuses.

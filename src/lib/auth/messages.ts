@@ -62,6 +62,17 @@ const RPC_MESSAGES: Record<string, string> = {
     "Only a submission that was returned can be resubmitted with changes.",
   already_reviewed:
     "That submission has already been acted on, so it can no longer be reviewed.",
+  invalid_title: "Give the request a name of at least 4 characters.",
+  invalid_items:
+    "Each line needs a name, a quantity above zero, and a unit cost of zero or more.",
+  proposal_not_open:
+    "That proposal has already been decided, so it cannot take a budget any more.",
+  already_decided:
+    "This request has already been decided. An approved or rejected request is final.",
+  invalid_amount:
+    "The approved amount has to be between zero and the amount that was requested.",
+  remark_required:
+    "Write a short note so the officer knows what to change.",
 };
 
 export function messageFor(reason?: string): string {
