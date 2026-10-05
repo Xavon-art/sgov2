@@ -41,9 +41,13 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       href: "/usg/tasks",
       icon: "clock",
     },
-    // `Feed` joins this list in its own slice, when the route exists. It is not
-    // listed ahead of its page: a nav item that lands on a 404 teaches a user
-    // that the sidebar lies.
+    {
+      id: "feed",
+      label: "Feed",
+      hint: "What the university has announced",
+      href: "/usg/feed",
+      icon: "compass",
+    },
     // A centralized office records its units directly, so there is no campus
     // layer to build first -- offering the route would be offering a form the
     // database refuses.

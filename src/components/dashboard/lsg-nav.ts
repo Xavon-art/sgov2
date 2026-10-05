@@ -19,8 +19,8 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  * approved figures. The university-wide totals and every other unit's numbers live
  * behind `/usg`, and this file holds no route that could show them.
  *
- * `Tasks` and `Feed` appear in a later slice, when those routes exist. They are
- * not listed before then: a nav item pointing at a 404 is worse than a short nav.
+ * `Feed` sits after Budgets rather than at the top: an officer opens this list to
+ * act, and announcements are context for the work, not the work itself.
  */
 export function buildLsgNav(role: WorkspaceRole): NavItem[] {
   return [
@@ -54,9 +54,13 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       href: "/lsg/budgets",
       icon: "budget",
     },
-    // `Feed and calendar` joins this list in its own slice, when the route
-    // exists. Not before: a nav item that lands on a 404 teaches a user that the
-    // sidebar lies, and this side is used on a phone.
+    {
+      id: "feed",
+      label: "Feed",
+      hint: "Announcements and the calendar",
+      href: "/lsg/feed",
+      icon: "compass",
+    },
     {
       id: "help",
       label: "Help",

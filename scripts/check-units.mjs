@@ -142,6 +142,7 @@ const m170 = readPendingMigration("20260101002170_jsonb_text_array_proposal_vali
 const m180 = readPendingMigration("20260101002180_rowtype_read_repair.sql");
 const m23 = readPendingMigration("20260101002300_budget_requests.sql");
 const m24 = readPendingMigration("20260101002400_task_assignments.sql");
+const m25 = readPendingMigration("20260101002500_feed_and_calendar.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -1372,6 +1373,9 @@ const lsgTasksPage = readPendingSource("src/app/lsg/tasks/page.tsx");
 const usgTasksPage = readPendingSource("src/app/usg/tasks/page.tsx");
 const tasksRoute = readPendingSource("src/app/api/tasks/route.ts");
 const taskCard = readPendingSource("src/components/dashboard/tasks/TaskCard.tsx");
+const feedRoute = readPendingSource("src/app/api/feed/route.ts");
+const feedView = readPendingSource("src/components/dashboard/feed/FeedView.tsx");
+const feedLib = readPendingSource("src/lib/feed.ts");
 
 check(
   "024000 creates both task tables",
@@ -1522,6 +1526,110 @@ check(
 check(
   "024000 adds no email or notification machinery (YAGNI gate)",
   !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m24),
+);
+
+check(
+  "the feed reads proposals instead of duplicating them into a posts table",
+  !/create table/.test(m25),
+  "025000 created a table to hold announcements, which will drift from proposals",
+);
+
+check(
+  "an officer's feed is cut to published work in SQL",
+  m25.match(/v_is_usg or p\.status = 'published'/g)?.length >= 2,
+  "list_feed or list_calendar has no published-only branch for a non-USG caller",
+);
+
+check(
+  "the feed never trusts the caller for a scope or a status",
+  !/p_scope|p_status|p_include_draft/.test(m25),
+  "a read function takes the viewer's scope as a parameter instead of deriving it",
+);
+
+check(
+  "the calendar is grouped by day in SQL",
+  /jsonb_object_agg\(d\.day, d\.events/.test(m25) && /group by p\.event_date/.test(m25),
+  "days are assembled in the browser, which would ship every empty date",
+);
+
+check(
+  "the feed window is clamped rather than trusted",
+  /least\(coalesce\(p_limit, 50\), 200\)/.test(m25),
+  "p_limit is used as sent, so a caller could ask for the whole table",
+);
+
+check(
+  "publish timestamps are withheld from an officer",
+  /case when v_is_usg then p\.created_at end/.test(m25),
+  "publishedAt is sent to every caller",
+);
+
+check(
+  "both read functions resolve the caller from the session token",
+  (m25.match(/smartgov\.authenticate\(p_session_token\)/g) || []).length === 2
+    && /reason', 'unauthenticated'/.test(m25),
+  "a read function can be called without proving who is asking",
+);
+
+check(
+  "both feed functions are pinned to a known search_path",
+  (m25.match(/set search_path = public, extensions, smartgov, pg_temp/g) || []).length === 4,
+  "a function body can name an object the caller controls",
+);
+
+check(
+  "public grants nothing beyond execute on the forwarders",
+  (m25.match(/grant execute on function public\.list_(feed|calendar)/g) || []).length === 2
+    && !/grant .* on table/.test(m25),
+  "025000 widened a table grant",
+);
+
+check(
+  "the feed API has no status or scope parameter to pass through",
+  !/searchParams\.get\("(status|scope)"\)|body\.(status|scope)/.test(feedRoute),
+  "the route can ask for a view the caller may not have",
+);
+
+check(
+  "the calendar API refuses a window it cannot use",
+  /ISO_DATE\.test/.test(feedRoute) && /n > 400/.test(feedRoute),
+  "a bad month or an oversized window is forwarded to SQL unchecked",
+);
+
+check(
+  "both feed pages exist and are the same view",
+  readPendingSource("src/app/lsg/feed/page.tsx").includes("<FeedView />")
+    && readPendingSource("src/app/usg/feed/page.tsx").includes("<FeedView />"),
+  "one workspace is missing the feed, or the two have drifted apart",
+);
+
+check(
+  "the feed nav items exist on both sides",
+  /href:\s*"\/lsg\/feed"/.test(lsgNav) && /href:\s*"\/usg\/feed"/.test(usgNav),
+  "a feed nav item was added before its page landed",
+);
+
+check(
+  "the feed nav items never cross the workspace boundary",
+  !/href:\s*"\/usg/.test(lsgNav) && !/href:\s*"\/lsg/.test(usgNav),
+  "a nav module links into the other side's tree",
+);
+
+check(
+  "the calendar grid is arithmetic, not one request per day",
+  /monthGrid/.test(feedView) && /monthGrid\(/.test(feedView) && !/fetch\(`\/api\/feed\?date=/.test(feedView),
+  "the grid asks the server for every date including the empty ones",
+);
+
+check(
+  "no feed source can read the service key",
+  ![feedRoute, feedView, feedLib].some((src) => /SERVICE_ROLE/.test(src)),
+  "a feed module reads the service key, which must stay server-only",
+);
+
+check(
+  "025000 adds no email or notification machinery (YAGNI gate)",
+  !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m25),
 );
 
 console.log(
