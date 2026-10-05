@@ -67,6 +67,9 @@ export async function submitOrganization(
         // field in the draft that nothing can set.
         accent: DEFAULT_ACCENT,
         universityName: draft.institution.universityName.trim(),
+        // Optional fields, sent as typed. Blank is a valid answer: a USG that
+        // covers the whole university has no single campus to name, and the
+        // federated units below carry their own names.
         campusName: draft.institution.campusName.trim(),
         college: draft.institution.college.trim(),
         sealName: "",
@@ -153,6 +156,8 @@ export async function registerAccount(
       accountKind: draft.model === "unitary" ? "central" : "usg",
       organizationId,
       universityName: draft.institution.universityName.trim(),
+      // Optional, and separate from the units: this names the founding account's
+      // home, while an invited officer's campus arrives with their invitation.
       campusName: draft.institution.campusName.trim(),
     }),
   });

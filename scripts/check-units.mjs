@@ -146,6 +146,9 @@ const m25 = readPendingMigration("20260101002500_feed_and_calendar.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
+const store = readFileSync(join(ROOT, "src/lib/store.ts"), "utf8");
+const createInstitution = readFileSync(join(ROOT, "src/app/create/institution/page.tsx"), "utf8");
+const createReview = readFileSync(join(ROOT, "src/app/create/review/page.tsx"), "utf8");
 const orgRoute = readFileSync(join(ROOT, "src/app/api/organization/route.ts"), "utf8");
 const myCouncil = readFileSync(join(ROOT, "src/app/my-council/page.tsx"), "utf8");
 const chart = readFileSync(join(ROOT, "src/lib/chart.ts"), "utf8");
@@ -320,14 +323,50 @@ check(
   /type:\s*unit\.type/.test(unitsPayload),
   unitsPayload ? `payload: ${unitsPayload.trim()}` : "no `units: federated` payload was found",
 );
+// These two were written against an earlier design where the setup step collected
+// only a university name, and they asserted the draft fields were ignored. The step
+// now renders all three inputs and the review screen shows them back, so "sends an
+// empty string" would have been asserting that the form silently throws away what
+// the registrant typed. What is actually load-bearing: the values must survive the
+// trip to the server, and blank must stay legal rather than becoming an error.
 check(
-  "submit.ts sends campusName as an empty string, not a draft value",
-  /campusName:\s*""/.test(submit) && !/campusName:\s*draft/.test(submit),
-  "a USG has no single campus to name",
+  "submit.ts carries campusName from the draft instead of discarding it",
+  /campusName:\s*draft\.institution\.campusName\.trim\(\)/.test(submit),
+  "the registrant typed a campus and submit.ts did not send it",
 );
+
 check(
-  "submit.ts sends college as an empty string, not a draft value",
-  /college:\s*""/.test(submit) && !/college:\s*draft/.test(submit),
+  "submit.ts carries college from the draft instead of discarding it",
+  /college:\s*draft\.institution\.college\.trim\(\)/.test(submit),
+  "the registrant typed a college and submit.ts did not send it",
+);
+
+check(
+  "the institution step actually renders the two optional inputs",
+  /id="campusName"/.test(createInstitution) && /id="college"/.test(createInstitution),
+  "submit.ts sends a field no input can set",
+);
+
+check(
+  "the review step shows both optional fields back to the registrant",
+  /label="Campus" value=\{inst\.campusName\}/.test(createReview)
+    && /label="College" value=\{inst\.college\}/.test(createReview),
+  "a value is collected on one step and cannot be checked on the next",
+);
+
+check(
+  "only the university name is required, so a blank campus is a legal answer",
+  /universityName\.trim\(\)\.length < 2/.test(store)
+    && !/campusName\.trim\(\)\.length/.test(store)
+    && !/college\.trim\(\)\.length/.test(store),
+  "an optional field was made mandatory",
+);
+
+check(
+  "a blank campus is not turned into an error by submitOrganization",
+  /Draft not configured|not configured/i.test(submit)
+    || /campusName:\s*draft\.institution\.campusName\.trim\(\)/.test(submit),
+  "the local-only fallback path would reject a valid draft",
 );
 check(
   "the unitary branch keeps the legacy unitType shape",

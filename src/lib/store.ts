@@ -19,6 +19,16 @@ export type AccountDraft = {
   role: MemberRole | "";
 };
 
+/**
+ * `campusName` and `college` are optional on purpose, not vestigial.
+ *
+ * The setup flow renders all three inputs and the review step shows them back, so
+ * this is a real three-field step. What is optional is each value: a USG that
+ * covers the whole university has no single campus to name, and one that is
+ * attached to a college or office may name it. Both are collected because a USG
+ * that does have one should not have to fix it after the fact, and blank is a
+ * legitimate answer rather than a missing one.
+ */
 export type InstitutionDraft = {
   universityName: string;
   campusName: string;
