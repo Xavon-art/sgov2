@@ -1,0 +1,50 @@
+import type { NavItem } from "@/components/dashboard/AppShell";
+import type { WorkspaceRole } from "@/lib/auth/workspace";
+
+/**
+ * The LSG workspace navigation.
+ *
+ * Five items is the design, not a coincidence: an invited officer opens this on a
+ * phone between classes and the whole point is that the list is short enough to
+ * read before the screen locks. Tasks, proposals, the feed and Help are all of
+ * it.
+ *
+ * What is deliberately absent, and will stay absent: invitations, member and
+ * officer management, account and role settings, the requirement-template
+ * builder, the review queue, other units' data, and budget totals for anybody
+ * else. Not hidden, not disabled, not greyed out -- absent, so that no greyed-out
+ * control can suggest that a greyed-out officer might ask somebody for access.
+ *
+ * `Tasks` and `Feed` appear in a later slice, when those routes exist. They are
+ * not listed before then: a nav item pointing at a 404 is worse than a short nav.
+ */
+export function buildLsgNav(role: WorkspaceRole): NavItem[] {
+  return [
+    {
+      id: "today",
+      label: "Today",
+      // The unit name comes from the caller's own membership, so it is the one
+      // piece of context that makes "Today" feel like a specific desk.
+      hint: role.unitName ? `What ${role.unitName} owes USG` : "What your unit owes USG",
+      href: "/lsg",
+      icon: "dashboard",
+    },
+    {
+      id: "proposals",
+      label: "Proposals and budgets",
+      hint: "Submit and track your requests",
+      href: "/lsg/proposals",
+      icon: "submission",
+    },
+    // `Tasks` and `Feed and calendar` join this list in their own slices, when
+    // the routes exist. Not before: a nav item that lands on a 404 teaches a
+    // user that the sidebar lies, and this side is used on a phone.
+    {
+      id: "help",
+      label: "Help",
+      hint: "How this works",
+      href: "/lsg/help",
+      icon: "compass",
+    },
+  ];
+}

@@ -3,39 +3,37 @@ import ShaderField from "@/components/fx/ShaderField";
 import { AppShell } from "@/components/dashboard/AppShell";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import { DashboardProvider, type DashboardMeta } from "@/components/dashboard/dashboard-context";
-import { buildDashboardNav } from "@/components/dashboard/nav";
+import { buildLsgNav } from "@/components/dashboard/lsg-nav";
 import { ButtonLink } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { resolveWorkspaceRole } from "@/lib/auth/workspace";
 
-// The layout reads the session and live counters on every navigation, so it must
-// never be cached.
 export const dynamic = "force-dynamic";
 
 type WorkspacePayload = RpcResult &
   Omit<DashboardMeta, "governanceModel"> & { governanceModel: string | null };
 
 /**
- * The shell every dashboard section renders inside.
+ * The LSG workspace shell. One unit's "do and submit" desk.
  *
- * Owns the three things that used to be copied into each page: the sign-in gate,
- * the session guard that ends a session on a fresh document load, and the nav.
- * A section page is now only its own section.
+ * The mirror of `/usg/layout.tsx`, and just as much about what it excludes: this
+ * tree imports `lsg-nav.ts` and never `usg-nav.ts`, so no USG route string is in
+ * the LSG bundle to leak into a client component by accident.
  *
- * The layout is also where the account and the counters are resolved, once. They
- * reach the section routes through `DashboardProvider` rather than each page
- * calling `currentAccount()` again -- a section switch costs one server render,
- * the same as the single page it replaced.
- *
- * The gate stays here rather than in each page because `currentAccount` only ever
- * resolves an `active` account: someone halfway through the OTP step cannot reach
- * a section even with a valid cookie, and that is now true of all four routes
- * instead of one.
+ * It shares the low-level shell -- the sign-in gate, the session guard, the
+ * backdrop -- and nothing about administration. That is the intended split: the
+ * shell is a primitive, the navigation is not.
  */
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function LsgLayout({ children }: { children: React.ReactNode }) {
   const account = await currentAccount();
   if (!account) redirect("/login");
+
+  const role = await resolveWorkspaceRole();
+
+  if (!role) redirect("/login");
+  if (role.side !== "lsg") redirect("/usg");
 
   let data: WorkspacePayload | null = null;
   try {
@@ -80,8 +78,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     recentlyApproved: data.recentlyApproved,
   };
 
-  const nav = buildDashboardNav(account);
-  const badge = account.accountKind === "central" ? "Centralized workspace" : "Decentralized workspace";
+  const nav = buildLsgNav(role);
+  const badge = role.unitName ? `${role.unitName} LSG` : "LSG workspace";
 
   return (
     <DashboardProvider value={{ account, meta }}>

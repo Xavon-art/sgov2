@@ -1138,12 +1138,64 @@ check(
   // legitimately mentions `isOwner` in its `hint` ternary. What matters is that it
   // is a bare sibling object in the returned array -- `, {` straight into the id --
   // and not an element of a `...(isOwner ? [` spread like the two beside it.
-  const navText = readPendingSource("src/components/dashboard/nav.ts");
+  // The one-tree dashboard is gone, replaced by `/usg` and `/lsg`. The assertions
+  // below replaced a check on `nav.ts`, which no longer exists, because the thing
+  // that actually holds the boundary now is the pair of layout guards plus the
+  // absence of USG route strings from the LSG nav.
+  const usgLayout = readPendingSource("src/app/usg/layout.tsx");
+  const lsgLayout = readPendingSource("src/app/lsg/layout.tsx");
+  const lsgNav = readPendingSource("src/components/dashboard/lsg-nav.ts");
+  const usgNav = readPendingSource("src/components/dashboard/usg-nav.ts");
+
   check(
-    "Proposals is listed for invited officers too, not owner-gated",
-    /,\s*\{\s*id: "requirements"/.test(navText) &&
-      /href: "\/dashboard\/requirements"/.test(navText),
-    "the requirements entry is inside an isOwner spread; an LSG officer cannot reach their own proposals",
+    "/usg redirects an LSG account to /lsg before rendering",
+    /role\.side\s*!==\s*"usg"\)\s*redirect\("\/lsg"\)/.test(usgLayout),
+    "the /usg layout does not bounce a non-USG side, so a bookmarked URL reaches the wrong workspace",
+  );
+
+  check(
+    "/lsg redirects a USG account to /usg before rendering",
+    /role\.side\s*!==\s*"lsg"\)\s*redirect\("\/usg"\)/.test(lsgLayout),
+    "the /lsg layout does not bounce a USG side",
+  );
+
+  // Hard rule 2, asserted on the artifact rather than on intent: no invitation,
+  // member-management, or access route string may appear in the LSG nav, and the
+  // LSG layout must not reach for the USG one.
+  check(
+    "the LSG nav names no USG route",
+    !/\/(usg|invitations|units|access)\b/.test(lsgNav),
+    "lsg-nav.ts mentions a USG route; an LSG officer would be offered a screen they must never reach",
+  );
+
+  check(
+    "the LSG layout does not import the USG nav",
+    !/usg-nav/.test(lsgLayout) && /lsg-nav/.test(lsgLayout),
+    "the /lsg tree pulls in usg-nav, so USG routes ship inside the LSG bundle",
+  );
+
+  check(
+    "each side reaches its own workspace, never the other's",
+    /href:\s*"\/usg\/proposals"/.test(usgNav) &&
+      /href:\s*"\/lsg\/proposals"/.test(lsgNav) &&
+      !/href:\s*"\/lsg/.test(usgNav) &&
+      !/href:\s*"\/usg/.test(lsgNav),
+    "a nav module links into the other side's tree",
+  );
+
+  check(
+    "the LSG side has no account or role settings",
+    !/account|invitation|member|officer/i.test(
+      lsgNav.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""),
+    ),
+    "lsg-nav.ts names administration that the LSG workspace is not allowed to have",
+  );
+
+  check(
+    "/lsg/help carries the Contact USG line and no form",
+    /Contact USG/.test(readPendingSource("src/app/lsg/help/page.tsx")) &&
+      !/<form|<Form/.test(readPendingSource("src/app/lsg/help/page.tsx")),
+    "the LSG help page is missing its Contact USG line, or grew a form",
   );
 
 check(

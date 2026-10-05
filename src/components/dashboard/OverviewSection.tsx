@@ -102,7 +102,7 @@ export function OverviewSection() {
             return (
               <Link
                 key={stat.label}
-                href="/dashboard/invitations"
+                href="/usg/invitations"
                 className="group flex items-start gap-4 rounded-2xl border border-line bg-paper/70 px-5 py-4 transition-[border-color,box-shadow] duration-300 hover:border-line-strong hover:shadow-lift"
               >
                 <span className="grid size-10 shrink-0 place-items-center rounded-full border border-brass/40 bg-brass-soft/25 text-brass-deep">
@@ -126,7 +126,7 @@ export function OverviewSection() {
       {isOwner ? (
         <Reveal delay={0.12} className="mt-6 grid gap-4 sm:grid-cols-2">
           <Link
-            href={isUsg ? "/dashboard/units" : "/dashboard/invitations"}
+            href={isUsg ? "/usg/units" : "/usg/invitations"}
             className="group flex min-h-24 items-center gap-4 rounded-2xl border border-line bg-paper/70 px-5 py-4 transition-[border-color,box-shadow] duration-300 hover:border-line-strong hover:shadow-lift"
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line-strong bg-canvas text-brass-deep">
@@ -153,7 +153,7 @@ export function OverviewSection() {
           </Link>
 
           <Link
-            href="/dashboard/invitations"
+            href="/usg/invitations"
             className="group flex min-h-24 items-center gap-4 rounded-2xl border border-line bg-paper/70 px-5 py-4 transition-[border-color,box-shadow] duration-300 hover:border-line-strong hover:shadow-lift"
           >
             <span className="grid size-10 shrink-0 place-items-center rounded-full border border-line-strong bg-canvas text-brass-deep">

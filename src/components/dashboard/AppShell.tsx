@@ -7,8 +7,13 @@ import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { Enter } from "@/components/fx/Presence";
 import {
+  IconBudget,
+  IconClock,
+  IconCompass,
   IconDashboard,
   IconClose,
+  IconEvents,
+  IconLayers,
   IconLock,
   IconMenu,
   IconPyramid,
@@ -17,7 +22,17 @@ import {
 } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 
-export type NavIcon = "dashboard" | "pyramid" | "user" | "lock" | "submission";
+export type NavIcon =
+  | "dashboard"
+  | "pyramid"
+  | "user"
+  | "lock"
+  | "submission"
+  | "clock"
+  | "events"
+  | "budget"
+  | "layers"
+  | "compass";
 
 const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
   dashboard: IconDashboard,
@@ -25,6 +40,14 @@ const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
   user: IconUser,
   lock: IconLock,
   submission: IconSubmission,
+  // Added for the /usg and /lsg split. The two navs are separate modules, so each
+  // side only ever names the icons it actually draws -- there is no shared list
+  // with USG entries an LSG could render.
+  clock: IconClock,
+  events: IconEvents,
+  budget: IconBudget,
+  layers: IconLayers,
+  compass: IconCompass,
 };
 
 export type NavItem = {

@@ -42,6 +42,10 @@ const RPC_MESSAGES: Record<string, string> = {
   invalid_name: "Give the campus or department a name before adding it.",
   invalid_type: "That unit type is not one you can add here.",
   duplicate_unit_name: "Your organization already has a campus or department by that name.",
+  account_not_found:
+    "No active account with that email is in this organization. Check the address, or invite them first.",
+  unknown_permission: "That permission does not exist.",
+  owner_is_always_admin: "The USG Admin already has every permission.",
   unitary_model:
     "Only a decentralized student government can add campuses or departments. Your organization's structure is fixed.",
   no_program:
