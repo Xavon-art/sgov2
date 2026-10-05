@@ -34,6 +34,13 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       icon: "dashboard",
     },
     {
+      id: "tasks",
+      label: "Tasks",
+      hint: "What your unit owes USG",
+      href: "/lsg/tasks",
+      icon: "clock",
+    },
+    {
       id: "proposals",
       label: "Proposals",
       hint: "Submit and track your activities",
@@ -47,9 +54,9 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       href: "/lsg/budgets",
       icon: "budget",
     },
-    // `Tasks` and `Feed and calendar` join this list in their own slices, when
-    // the routes exist. Not before: a nav item that lands on a 404 teaches a
-    // user that the sidebar lies, and this side is used on a phone.
+    // `Feed and calendar` joins this list in its own slice, when the route
+    // exists. Not before: a nav item that lands on a 404 teaches a user that the
+    // sidebar lies, and this side is used on a phone.
     {
       id: "help",
       label: "Help",

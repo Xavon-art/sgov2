@@ -73,6 +73,10 @@ const RPC_MESSAGES: Record<string, string> = {
     "The approved amount has to be between zero and the amount that was requested.",
   remark_required:
     "Write a short note so the officer knows what to change.",
+  past_deadline:
+    "Pick a deadline from today onwards. A date already past cannot be worked to.",
+  not_your_decision:
+    "Only the USG office marks a task done. You can mark it in progress.",
 };
 
 export function messageFor(reason?: string): string {

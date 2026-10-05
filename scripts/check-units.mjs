@@ -141,6 +141,7 @@ const m160 = readPendingMigration("20260101002160_jsonb_text_array_repair.sql");
 const m170 = readPendingMigration("20260101002170_jsonb_text_array_proposal_validator.sql");
 const m180 = readPendingMigration("20260101002180_rowtype_read_repair.sql");
 const m23 = readPendingMigration("20260101002300_budget_requests.sql");
+const m24 = readPendingMigration("20260101002400_task_assignments.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -1360,6 +1361,167 @@ check(
 check(
   "023000 adds no email or notification machinery (YAGNI gate)",
   !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m23),
+);
+
+// --- 16. Task assignments and deadlines.
+// The load-bearing claim is that "done" is not the officer's to claim, and that one
+// task answered by twelve units is twelve rows rather than one status. Both are
+// enforced in SQL, so a page that hid them would be decoration.
+const m24Flat = flat(m24);
+const lsgTasksPage = readPendingSource("src/app/lsg/tasks/page.tsx");
+const usgTasksPage = readPendingSource("src/app/usg/tasks/page.tsx");
+const tasksRoute = readPendingSource("src/app/api/tasks/route.ts");
+const taskCard = readPendingSource("src/components/dashboard/tasks/TaskCard.tsx");
+
+check(
+  "024000 creates both task tables",
+  /create table if not exists smartgov\.tasks/.test(m24) &&
+    /create table if not exists smartgov\.task_assignments/.test(m24),
+  "a task or its per-unit assignment row is missing its table",
+);
+
+check(
+  "one task to many units is one assignment row per unit",
+  /primary key \(task_id, unit_id\)/.test(m24Flat),
+  "the assignment table lost the key that makes a unit's answer unique to it",
+);
+
+check(
+  "a unit's answer is its own status, not a column on the task",
+  /status\s+text not null default 'assigned'\s+check \(status in \('assigned', 'in_progress', 'done'\)\)/.test(
+    m24Flat,
+  ),
+  "the assignment statuses drifted from what update_task_status accepts",
+);
+
+check(
+  "overdue is derived at read time, not stored",
+  !/overdue\s+(bool|boolean)/.test(m24) &&
+    /due_date < current_date/.test(m24Flat),
+  "overdue became a stored column, which is wrong the moment the clock moves",
+);
+
+check(
+  "a deadline already past is refused",
+  /'past_deadline'/.test(m24) && /p_due_date < current_date/.test(m24Flat),
+  "USG can create a task that was instantly overdue before it was written",
+);
+
+check(
+  "only USG creates a task",
+  /create_task[\s\S]*?is_org_reviewer[\s\S]*?'forbidden'/.test(m24),
+  "an LSG officer can assign work to a unit",
+);
+
+check(
+  "an officer may report progress but not completion",
+  /if p_status = 'done' then[\s\S]*?'not_your_decision'/.test(m24),
+  "an LSG officer can mark their own unit done, and done is what the office counts",
+);
+
+check(
+  "an officer can only move a row addressed to their own unit",
+  (m24.match(/smartgov\.lsg_unit_ids/g) || []).length >= 3,
+  "the membership-derived unit check was dropped from the task read or the status write",
+);
+
+check(
+  "an empty unit list expands to every unit",
+  /array_length\(v_wanted, 1\) is null then[\s\S]*?array_agg\(gu\.id\)[\s\S]*?gu\.organization_id = v_account\.organization_id/.test(
+    m24,
+  ),
+  "an empty selection no longer means all units",
+);
+
+check(
+  "neither task table is reachable by anon or authenticated",
+  /revoke all on smartgov\.tasks from public, anon, authenticated/.test(m24Flat) &&
+    /revoke all on smartgov\.task_assignments from public, anon, authenticated/.test(
+      m24Flat,
+    ),
+  "a task table was granted straight to a client role",
+);
+
+const m24Fns = (m24.match(/create or replace function/g) || []).length;
+check(
+  "every task function is security definer with a pinned search_path and revoked",
+  m24Fns === 6 &&
+    (m24.match(/security definer/g) || []).length === m24Fns &&
+    (m24.match(/set search_path = public, extensions, smartgov, pg_temp/g) || []).length === m24Fns &&
+    (m24.match(/revoke all on function (smartgov|public)\./g) || []).length >= m24Fns,
+  `${m24Fns} functions are declared but one is not definer, pinned, or revoked`,
+);
+
+check(
+  "PostgREST can reach all three task functions and nothing more",
+  (m24.match(/create or replace function public\./g) || []).length === 3 &&
+    /create or replace function public\.create_task/.test(m24) &&
+    /create or replace function public\.list_tasks/.test(m24) &&
+    /create or replace function public\.update_task_status/.test(m24),
+  "a fourth public wrapper exists, or one of the three went missing",
+);
+
+check(
+  "the LSG task screen offers no control it would have to refuse",
+  /canFinish=\{false\}/.test(lsgTasksPage) && !/canFinish=\{true\}/.test(lsgTasksPage),
+  "the LSG desk is offering Mark done, which only the USG office may grant",
+);
+
+check(
+  "the USG desk can finish a unit's work",
+  /canFinish\b/.test(usgTasksPage) && /Mark done/.test(taskCard),
+  "the USG desk lost the control that records completion",
+);
+
+check(
+  "both desks read one shared card, so a status cannot render two ways",
+  /components\/dashboard\/tasks\/TaskCard/.test(lsgTasksPage) &&
+    /components\/dashboard\/tasks\/TaskCard/.test(usgTasksPage),
+  "the two workspaces drifted onto separate task markup",
+);
+
+check(
+  "the task route checks the status vocabulary before the database",
+  /STATUSES = new Set\(\["assigned", "in_progress", "done"\]\)/.test(
+    tasksRoute.replace(/\s+/g, " "),
+  ),
+  "the status vocabulary widened on the client side",
+);
+
+check(
+  "the task list is scoped in SQL, not filtered in the browser",
+  !/scope === "organization"[\s\S]{0,200}filter\(/.test(usgTasksPage) &&
+    /doneUnits/.test(usgTasksPage),
+  "the USG page is filtering rows client-side instead of reading its own scope",
+);
+
+check(
+  "both task nav items point at routes that exist",
+  /href:\s*"\/lsg\/tasks"/.test(lsgNav) && /href:\s*"\/usg\/tasks"/.test(usgNav),
+  "a task nav item was added before its page landed",
+);
+
+check(
+  "the task nav items never cross the workspace boundary",
+  !/href:\s*"\/usg/.test(lsgNav) && !/href:\s*"\/lsg/.test(usgNav),
+  "a nav module links into the other side's tree",
+);
+
+check(
+  "every task reason has a message a person can read",
+  ["past_deadline", "not_your_decision"].every((r) => new RegExp(`${r}:`).test(messagesText)),
+  "a reason can still reach the UI untranslated",
+);
+
+check(
+  "no task source can read the service key",
+  ![tasksRoute, taskCard, lsgTasksPage, usgTasksPage].some((src) => /SERVICE_ROLE/.test(src)),
+  "a task module reads the service key, which must stay server-only",
+);
+
+check(
+  "024000 adds no email or notification machinery (YAGNI gate)",
+  !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m24),
 );
 
 console.log(
