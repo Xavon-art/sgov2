@@ -32,8 +32,11 @@
  *  14. LSG requirement submissions: programs, templates, versioned proposal
  *      review, storage-backed uploads, and the two dashboard shells with the
  *      skip-setup gate.
+ *  15. The government structure: the document's shape and order, the approval
+ *      gate, the author/ancestor scopes, photo write-only reads, and the fact
+ *      that a departed author nulls rather than blocks an organization.
  *
- * Run: node scripts/check-units.mjs (14 items, 127 assertions)
+ * Run: node scripts/check-units.mjs (15 items, 264 assertions)
  *
  * These assertions are only worth their green if they can go red, so the
  * load-bearing ones were mutation-tested against the exact regressions they
@@ -50,7 +53,7 @@
  * decoration.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -143,6 +146,8 @@ const m180 = readPendingMigration("20260101002180_rowtype_read_repair.sql");
 const m23 = readPendingMigration("20260101002300_budget_requests.sql");
 const m24 = readPendingMigration("20260101002400_task_assignments.sql");
 const m25 = readPendingMigration("20260101002500_feed_and_calendar.sql");
+const m26 = readPendingMigration("20260101002600_documents_and_verification.sql");
+const m27 = readPendingMigration("20260101002700_document_hardening.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -1145,17 +1150,119 @@ for (const key of [
 
 const uploadsRoute = readPendingSource("src/app/api/uploads/route.ts");
 check(
-  "uploads route caps bytes at the bucket limit and enforces allowed extensions",
-  /MAX_FILE_BYTES/.test(uploadsRoute) && /sizeBytes\s*>/.test(uploadsRoute) && /ALLOWED_EXTENSIONS/.test(uploadsRoute),
-  "the mutation to guard is deleting the cap: then a signed URL can mint for a 12 MB file the bucket later rejects at upload time",
+  "uploads route caps bytes at the product limit before anything is written",
+  /MAX_FILE_BYTES/.test(uploadsRoute) &&
+    /sizeBytes\s*>\s*MAX_FILE_BYTES/.test(uploadsRoute) &&
+    /bytes\.length\s*>\s*UPLOAD_CHUNK_BYTES/.test(uploadsRoute),
+  "the mutation to guard is deleting the cap: then a request could reserve a 12 MB document the database refuses at commit time",
 );
 
-const storageText = readPendingSource("src/lib/storage.ts");
+// The bucket era is over. Nothing in the app may hold a service-role key, because
+// nothing needs one: the bytes are in the database and the session is the only
+// credential in play. `src/lib/storage.ts` was deleted rather than left unused --
+// a module that mints signed URLs and throws at runtime is one refactor away from
+// being used again, and it cannot throw at runtime if it is gone.
+const appSourceFiles = [];
+(function walkSource(dir) {
+  for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
+    const full = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) walkSource(full);
+    else if (/\.(ts|tsx)$/.test(entry.name)) appSourceFiles.push(full);
+  }
+})("src");
+
 const exampleEnv = readPendingSource(".env.local.example");
 check(
-  "service key is server-only: only storage.ts reads it, never the example env",
-  /SUPABASE_SERVICE_ROLE_KEY/.test(storageText) && !/SUPABASE_SERVICE_ROLE_KEY/.test(exampleEnv),
-  "the whole storage story stands on that key never reaching the browser; the moment it lands in .env.local.example the client bundle can see it",
+  "no source file reads a service-role key",
+  !appSourceFiles.some((f) => /SUPABASE_SERVICE_ROLE_KEY/.test(readPendingSource(f))) &&
+    !/SUPABASE_SERVICE_ROLE_KEY/.test(exampleEnv),
+  "the whole document story stands on nobody holding an admin key; the moment one is read in app code, a route can bypass every function in smartgov",
+);
+
+check(
+  "the signed-URL storage module is gone rather than merely unused",
+  !appSourceFiles.includes("src/lib/storage.ts"),
+  "storage.ts can mint signed bucket URLs again the moment somebody imports it",
+);
+
+check(
+  "reading document bytes happens in one server-only module",
+  /server-only/.test(readPendingSource("src/lib/large-objects.ts")) &&
+    /POSTGRES_URL/.test(readPendingSource("src/lib/large-objects.ts")),
+  "anything that can turn a large-object id into bytes is the most sensitive module in the app; it has to be server-only",
+);
+
+// The claim branch builds the path locally and then hands that local to the RPC, so
+// a browser that sends its own path has nothing to influence. `abort` and `commit`
+// legitimately quote a path back -- both re-check the caller on the way in.
+const claimBranch = uploadsRoute.split('action === "claim"')[1]?.split('action === "commit"')[0] ?? "";
+const builtAt = claimBranch.indexOf("const storagePath = buildStoragePath(");
+const sentAt = claimBranch.indexOf("p_storage_path: storagePath");
+check(
+  "the upload route builds the storage path instead of trusting the browser's",
+  /buildStoragePath/.test(uploadsRoute) &&
+    /account\.organizationId/.test(uploadsRoute) &&
+    builtAt !== -1 &&
+    sentAt > builtAt,
+  "letting the caller send the whole path means letting the caller choose the organization segment",
+);
+
+check(
+  "the client walks the file in chunks and starts where the server says",
+  /while \(sent < file\.size\)/.test(readPendingSource("src/components/dashboard/requirement/ProposalForm.tsx")) &&
+    /claimed\.writtenBytes/.test(readPendingSource("src/components/dashboard/requirement/ProposalForm.tsx")),
+  "without this a dropped connection restarts a 10 MB upload from zero",
+);
+
+// Every forwarder the app calls has to name its parameters. PostgREST matches an
+// /rpc request against parameter *names* in its cached schema, so a forwarder
+// declared as `function public.f(text, uuid)` is unreachable from the browser: the
+// call comes back as "could not find the function ... in the schema cache" while
+// psql and the SQL probes call it happily. Nothing in tsc, lint, or a SQL probe can
+// see it, so it is checked here.
+//
+// Only the last declaration of a name counts. 02700 rewrites forwarders that 02600
+// had written without names, and the older text is still in the file on purpose --
+// the migration history is a record of what was true when. What matters is the
+// signature the database is left holding.
+const finalForwarder = new Map();
+for (const [, name, args] of (m26 + m27).matchAll(
+  /create (?:or replace )?function public\.(\w+)\s*\(([^)]*)\)/g,
+)) {
+  finalForwarder.set(name, args);
+}
+const unnamed = [...finalForwarder]
+  .filter(([, args]) => args.trim() && !/\bp_/.test(args))
+  .map(([name]) => name);
+check(
+  "every public forwarder ends up naming its parameters so PostgREST can resolve it",
+  finalForwarder.size > 0 && unnamed.length === 0,
+  unnamed.length > 0 ? `these are unreachable from the app: ${unnamed.join(", ")}` : "",
+);
+
+check(
+  "the document forwarders are granted to the roles the app signs in as",
+  [
+    "claim_document_upload", "write_document_chunk", "confirm_document_upload",
+    "discard_document_upload", "get_document", "verify_submission", "list_verifications",
+  ].every((fn) =>
+    new RegExp(
+      `grant execute on function public\\.${fn}\\([^)]*\\) to anon, authenticated;`,
+    ).test(m27),
+  ),
+  "a forwarder that exists but is not granted answers 'permission denied' instead of running",
+);
+
+check(
+  "a migrated function tells PostgREST to rebuild its schema cache",
+  /notify pgrst, 'reload schema'/.test(readPendingSource("scripts/apply-migration.mjs")),
+  "without this, every new function is invisible to the app until PostgREST restarts on its own",
+);
+
+check(
+  "document bytes are read through an oid cast, not a bare parameter",
+  /lo_get\(\$1::oid\)/.test(readPendingSource("src/lib/large-objects.ts")),
+  "`lo_get` is overloaded on bytea and oid; an uncast $1 is a syntax error the type checker cannot see",
 );
 
   // Design decision 7 put a "proceed to dashboard anyway" gate in front of the
@@ -1669,6 +1776,577 @@ check(
 check(
   "025000 adds no email or notification machinery (YAGNI gate)",
   !/nodemailer|smtp|mailer|sendEmail|welcomeEmail/.test(m25),
+);
+
+// ------------------------------------------------- 02600 / 02700 documents + verification
+//
+// The uploads were moved out of Supabase Storage and into Postgres large objects
+// because this environment has no service-role key to sign a bucket upload with.
+// That move is only safe if the database is the thing making every decision, so the
+// guards below are about who is allowed to say what, not about the happy path.
+
+const documentFns = [
+  "claim_document_upload",
+  "confirm_document_upload",
+  "discard_document_upload",
+  "get_document",
+  "verify_submission",
+  "list_verifications",
+  "write_document_chunk",
+];
+
+check(
+  "026000 creates the document table and turns RLS on with no policies",
+  /create table if not exists smartgov\.document_uploads/.test(m26) &&
+    /alter table smartgov\.document_uploads enable row level security/.test(m26) &&
+    !/create policy/i.test(m26),
+  "the document table is reachable by a policy, or reachable without any at all",
+);
+
+check(
+  "the document table is not handed to the API roles directly",
+  /revoke all on (?:table )?smartgov\.document_uploads from anon, authenticated;/.test(m26) &&
+    !/grant\s+(select|insert|update|delete|all)\b[^;]*on (?:table )?smartgov\.document_uploads/i.test(m26),
+  "the API roles can read or write document rows without going through a function",
+);
+
+// `write_document_chunk` arrived with 02700, so the entry-point guards read both
+// files as one surface rather than assuming 026000 defined everything.
+const docSql = m26 + m27;
+
+check(
+  "every document entry point is a security definer with a pinned search path",
+  documentFns.every((fn) =>
+    new RegExp(
+      `function smartgov\\.${fn}\\([\\s\\S]*?security definer\\s*set search_path = public, extensions, smartgov, pg_temp`,
+    ).test(docSql),
+  ),
+  "a document function can be called without a pinned search_path",
+);
+
+check(
+  "no document function is executable by the API roles directly",
+  documentFns.every((fn) =>
+    new RegExp(`revoke all on function smartgov\\.${fn}\\(`).test(docSql),
+  ),
+  "smartgov.document_* is callable straight from the client",
+);
+
+check(
+  "the public forwarders are the only way in, and only for anon and authenticated",
+  documentFns.every((fn) => {
+    const forwarder = new RegExp(
+      `function public\\.${fn}\\([\\s\\S]*?grant execute on function public\\.${fn}\\([^)]*\\) to anon, authenticated;`,
+    );
+    return forwarder.test(docSql);
+  }),
+  "a document forwarder is missing, or granted to a role that is not a caller",
+);
+
+check(
+  "the upload size cap is the same 10MiB in the claim, the confirm, and the validator",
+  (m26.match(/10485760/g) || []).length >= 3,
+  "the cap is stated differently in the reserve, the attach, and the submit path",
+);
+
+check(
+  "a submission cannot claim a document it never stored",
+  /d\.large_object_oid is not null/.test(m26) &&
+    /reason', 'missing_document'/.test(m26),
+  "a file submission is accepted on the strength of a path string alone",
+);
+
+check(
+  "02700 refuses a submission whose upload only partly landed",
+  /d\.confirmed_at is not null/.test(m27) &&
+    /d\.written_bytes = d\.size_bytes/.test(m27) &&
+    /reason', 'incomplete_upload'/.test(m27),
+  "a half-written upload can be submitted as a whole document",
+);
+
+check(
+  "a chunk has to arrive at the offset the row is waiting for",
+  /coalesce\(v_written, 0\) <> coalesce\(p_offset, -1\)/.test(m27) &&
+    /reason', 'offset_mismatch'/.test(m27),
+  "chunks can be replayed out of order and interleave two files' bytes",
+);
+
+check(
+  "chunk writes go through the offset-taking large-object call",
+  /lo_put\(v_oid, coalesce\(v_written, 0\), p_chunk\)/.test(m27) &&
+    !/lowrite\(/.test(m27),
+  "the append uses the legacy cursor interface, which takes no bigint offset",
+);
+
+check(
+  "02700 ties the stored document to the requirement, the name, and the size",
+  /d\.requirement_item = v_tid/.test(m27) &&
+    /d\.original_name = v_name/.test(m27) &&
+    /d\.size_bytes = v_size/.test(m27),
+  "the document row is checked for existence but not for identity",
+);
+
+check(
+  "02700 makes the author's checklist show the ruling that was actually made",
+  /'myVerdict', mine\.verdict/.test(m27) && /'verdict', sv\.verdict/.test(m27),
+  "the checklist still shows the reader's own opinion as if it were the verdict",
+);
+
+check(
+  "02700 binds a document to its proposal from the submission row, not the path",
+  /add column if not exists proposal_id uuid/.test(m27) &&
+    /references smartgov\.proposals\(id\) on delete cascade/.test(m27) &&
+    /after insert on smartgov\.item_submissions/.test(m27),
+  "the proposal link is taken from a path the client chose",
+);
+
+check(
+  "02700 drops the prefix-matching proposal trigger it replaced",
+  /drop trigger if exists proposals_release_documents on smartgov\.proposals/.test(m27) &&
+    /drop function if exists smartgov\.release_proposal_documents\(\)/.test(m27),
+  "both the foreign key and the string-matching trigger are live at once",
+);
+
+check(
+  "deleting a document row releases its large object",
+  /after delete on smartgov\.document_uploads/.test(m27) &&
+    /perform lo_unlink\(old\.large_object_oid\)/.test(m27),
+  "removing a document row leaves the bytes in pg_largeobject forever",
+);
+
+check(
+  "02700 adds no storage-bucket or service-key machinery",
+  !/storage\.objects|create bucket|SERVICE_ROLE/.test(m26 + m27),
+  "the large-object path pulled in a bucket or a service key",
+);
+
+check(
+  "02700 lets an interrupted upload resume instead of restarting",
+  /'writtenBytes', coalesce\(v_open\.written_bytes, 0\)/.test(m27) &&
+    /'resumed', true/.test(m27),
+  "a dropped connection forces the browser to send the whole file again",
+);
+
+check(
+  "resuming does not reopen a document that is already closed",
+  /if v_open\.confirmed_at is not null or v_open\.uploaded_by <> v_account\.id then/.test(m27),
+  "a claim can overwrite or adopt a finished document",
+);
+
+// --- the reviewer's side of the same feature.
+//
+// The upload path was guarded above for the reason that a document must reach the
+// database whole before anyone is asked to rule on it. A verdict is the other half:
+// it is a reviewer's opinion about a file they were entitled to open, so the guard is
+// that the app cannot widen that -- no verdict list of its own that the database does
+// not hold, no remark-length ceiling above the column's, and no path where the
+// checklist is readable by someone who could not open the documents in it.
+
+const verificationRoute = readPendingSource("src/app/api/verifications/route.ts");
+const checklist = readPendingSource(
+  "src/components/dashboard/requirement/VerificationChecklist.tsx",
+);
+
+check(
+  "the verification route sends a session token to both functions",
+  /callRpc<[^>]*>\("list_verifications"/.test(verificationRoute) &&
+    /p_session_token: token/.test(verificationRoute) &&
+    /callRpc<[^>]*>\("verify_submission"/.test(verificationRoute),
+  "the route reaches a document function without carrying the caller's session",
+);
+
+check(
+  "the verification route reads no storage path or large-object id of its own",
+  !/large_object_oid|storage_path|x-smartgov-path/.test(verificationRoute),
+  "the verdict route started addressing bytes directly instead of a submission id",
+);
+
+const routeVerdicts = verificationRoute.match(/VERDICTS = new Set\(\[([^\]]*)\]/)?.[1] ?? "";
+check(
+  "a verdict is only the three the database knows, not the three the UI feels like",
+  ["verified", "queried", "rejected"].every((v) => routeVerdicts.includes(`"${v}"`)) &&
+    !/\b(approved|returned)\b/.test(routeVerdicts),
+  "the route accepts a verdict outside the database's set, or smuggles in the proposal-level words",
+);
+
+check(
+  "the route's remark ceiling is the column's, not a larger one of its own",
+  /remark\.length > 1000/.test(verificationRoute) &&
+    /length\(v_remark\) > 1000/.test(m26),
+  "the route allows a longer note than the function will store, so the error surfaces as a server failure",
+);
+
+check(
+  "a query is refused at the route as well as in the database",
+  /verdict === "queried" && remark\.length === 0/.test(verificationRoute) &&
+    /reason', 'remark_required'/.test(m26),
+  "a `queried` verdict can be filed as a blank question",
+);
+
+check(
+  "the checklist shows an unchecked document instead of dropping it",
+  /it\.verdict/.test(checklist) && /items\.length === 0/.test(checklist),
+  "an unverified document is invisible rather than marked not checked",
+);
+
+check(
+  "the checklist reads the organisation's ruling and the reader's own separately",
+  /it\.myVerdict/.test(checklist) && /VERDICT_COPY\[verdict\]/.test(checklist),
+  "the UI shows myVerdict as though it were the office's verdict",
+);
+
+// ---------------------------------------------------------- 02800 the unified dashboard
+//
+// One read replaced four list screens on the way in, so the thing to guard is that it
+// did not quietly become a fifth: a dashboard that widens scope is the easiest way to
+// leak a unit's budget into the office's desk, because the office desk is the view
+// with the most numbers on it. Three rules, in the order they matter:
+//
+//   1. its scope is the union of the scopes it replaced, not a new one;
+//   2. it decides the scope from the session and accepts no parameter that could
+//      contradict it;
+//   3. it returns ids and states, never routes -- because the component that reads it
+//      is shared by both workspaces, and a `/lsg` string in there would put an LSG
+//      route into the officer's bundle.
+
+const m28 = readPendingMigration("20260101002800_unified_dashboard.sql");
+const dashboardRoute = readPendingSource("src/app/api/dashboard/route.ts");
+const dashboardView = readPendingSource("src/components/dashboard/DashboardView.tsx");
+const lsgPage = readPendingSource("src/app/lsg/page.tsx");
+const usgPage = readPendingSource("src/app/usg/page.tsx");
+
+check(
+  "02800: the dashboard is a security definer with a pinned search path",
+  /function smartgov\.list_dashboard\([\s\S]*?security definer\s*set search_path = public, extensions, smartgov, pg_temp/.test(m28),
+  "the dashboard can be called without a pinned search_path",
+);
+
+check(
+  "02800: smartgov.list_dashboard is not executable by the API roles directly",
+  /revoke all on function smartgov\.list_dashboard\(text\) from public;/.test(m28) &&
+    /grant execute on function public\.list_dashboard\(text\) to anon, authenticated;/.test(m28),
+  "the dashboard is callable straight from the client, bypassing the wrapper",
+);
+
+check(
+  "02800: the forwarder names its parameter so PostgREST can resolve it",
+  /function public\.list_dashboard\(p_session_token text\)/.test(m28),
+  "the dashboard forwarder is declared with a bare text and is unreachable from a browser",
+);
+
+check(
+  "02800: the scope is decided from the session, with no parameter to contradict it",
+  /smartgov\.authenticate\(p_session_token\)/.test(m28) &&
+    /reason', 'unauthenticated'/.test(m28) &&
+    !/p_scope|p_status|p_unit|p_limit|p_since/.test(m28),
+  "the dashboard takes a scope or a filter from the caller",
+);
+
+// The one that would actually hurt. Each of the four modules already scopes itself,
+// and the dashboard's copy of those rules has to be the same rules -- same reviewer
+// predicate, same unit resolution, same author allowance -- or the dashboard shows a
+// row that its own module screen would refuse to open.
+check(
+  "02800: the dashboard reuses the reviewer and unit rules rather than inventing them",
+  /smartgov\.is_org_reviewer\(v_account\.id, v_account\.organization_id\)/.test(m28) &&
+    /smartgov\.lsg_unit_ids\(v_account\.id, v_account\.organization_id\)/.test(m28) &&
+    /v_account\.account_scope = 'owner'/.test(m28),
+  "the dashboard scopes proposals without the reviewer predicate or the unit set",
+);
+
+check(
+  "02800: every section is cut to the materialised proposal set, not the whole table",
+  (m28.match(/any \(v_proposals\)|any\(v_proposals\)/g) || []).length >= 8,
+  "a section of the dashboard reads a table without the scope array",
+);
+
+check(
+  "02800: the budget and task sections keep their own module scopes",
+  /b\.requested_by = v_account\.id/.test(m28) &&
+    /b\.unit_id = any \(v_units\)/.test(m28) &&
+    /ta\.unit_id = any \(v_units\)/.test(m28),
+  "budgets or tasks are shown organization-wide to anybody who can read the dashboard",
+);
+
+// The rule that keeps the two bundles apart. `usg-nav.ts` and `lsg-nav.ts` are
+// separate files for this reason, and a shared view that grew a hard-coded route would
+// quietly undo all of it.
+check(
+  "the shared dashboard view hard-codes no route at all",
+  !/\/(lsg|usg)\//.test(dashboardView) && !/useRouter/.test(dashboardView),
+  "a shared component now holds a path, so one workspace's route can reach the other's bundle",
+);
+
+check(
+  "each side supplies its own links rather than the view choosing",
+  /proposals: "\/lsg\/proposals"/.test(lsgPage) &&
+    /budgets: "\/lsg\/budgets"/.test(lsgPage) &&
+    /tasks: "\/lsg\/tasks"/.test(lsgPage) &&
+    /proposals: "\/usg\/proposals"/.test(usgPage) &&
+    /budgets: "\/usg\/budgets"/.test(usgPage) &&
+    /tasks: "\/usg\/tasks"/.test(usgPage),
+  "one side's links are missing, or a side is borrowing the other's",
+);
+
+check(
+  "the LSG page names no USG route, and the USG page no LSG one",
+  !/\/usg\//.test(lsgPage) && !/\/lsg\//.test(usgPage),
+  "a page grew a link into the other workspace",
+);
+
+check(
+  "the dashboard route takes no query parameters to widen its own scope",
+  /export async function GET\(\)/.test(dashboardRoute) &&
+    !/searchParams/.test(dashboardRoute) &&
+    !/req: Request/.test(dashboardRoute),
+  "the dashboard route can be asked a question about scope or status",
+);
+
+check(
+  "both workspaces render the same component",
+  /DashboardView/.test(lsgPage) && /DashboardView/.test(usgPage),
+  "the two desks have drifted back into being two screens",
+);
+
+check(
+  "02800 adds no table, no policy, and no service key",
+  !/create table/i.test(m28) && !/create policy/i.test(m28) && !/SERVICE_ROLE/.test(m28),
+  "the dashboard needed storage or a key that the rest of the app has none of",
+);
+
+// ------------------------------------------------------------------------------
+// item 15 -- the government-structure feature
+//
+// The bug this exists to catch: a structure builder is mostly a shape editor, and
+// every failure worth preventing here is a failure of shape or of who is refused.
+// Ten of them got through a green build and were only found by talking to the
+// database, which is why half this item guards the migrations by reading them and
+// why `scripts/probe-structure.mjs` exists for the half that cannot be read:
+//
+//   1. the `{committees: [...]}` wrapper is the document. Returning a bare array
+//      loses it, and every later read of a saved draft then fails.
+//   2. committee and position order is the render order of a government chart.
+//      A jsonb object key sort turns "Audit Committee" ahead of "Ceremonials".
+//   3. `isUnit` belongs to one committee and it must be the first. A misplaced flag
+//      files a council's own officers into a committee.
+//   4. approval rewrites seats, so author retention is load-bearing, and so is the
+//      chart honouring authorship (03020) -- otherwise approving your own structure
+//      takes the chart away from the person who wrote it.
+//   5. roster and photo reads are scoped by `gov_people_unit_ids`, so an LSG officer
+//      cannot learn of a sibling council's personnel by paging the picker.
+//   6. photos are write-only in the document: the payload carries bytes, the read
+//      carries `hasPhoto`, and `encode(..., 'base64')` wraps at 76 columns, which
+//      is not base64 as far as `atob` is concerned.
+//   7. the author foreign keys tolerate a deleted account, or an organization
+//      cannot be removed once somebody has written a structure.
+//   8. the lifecycle probe registers its crash handler before its first insert.
+//
+// These are mutation-tested the way the rest of this file is: deleting
+// `order by p.ord` from 03000, putting `on delete cascade` back on the author
+// foreign key, moving the probe's crash handler below its first insert, deleting
+// the `committees` key from `gov_strip_photos`, replacing
+// `gov_authored_unit_ids` with a literal in `unit_chart`, dropping
+// `gov_people_unit_ids` from either forwarder, un-wrapping the base64, and moving
+// the isUnit check after the name check each turn the matching assertion red. A
+// check that cannot fail is decoration.
+
+const m29 = readPendingMigration("20260101002960_government_structure_functions.sql");
+const m298 = readPendingMigration("20260101002980_structure_document_integrity.sql");
+const m299 = readPendingMigration("20260101002990_structure_people_scope.sql");
+const m300 = readPendingMigration("20260101003000_structure_holder_marking.sql");
+const m3010 = readPendingMigration("20260101003010_structure_author_fkeys.sql");
+const m3020 = readPendingMigration("20260101003020_structure_chart_authorship.sql");
+const m3030 = readPendingMigration("20260101003030_structure_template_documents.sql");
+const structureProbe = readPendingSource("scripts/probe-structure.mjs");
+const structureWorkspace = flat(readPendingSource("src/components/structure/StructureWorkspace.tsx"));
+const structureLib = readPendingSource("src/lib/structure.ts");
+const councilStructurePage = flat(readPendingSource("src/app/my-council/structure/page.tsx"));
+
+const flat298 = flat(m298);
+
+check(
+  "the document is an object of committees, and stripping photos keeps the wrapper",
+  /jsonb_build_object\(\s*'committees'/.test(m298) &&
+    /p_document \|\| jsonb_build_object\(\s*'committees'/.test(m298),
+  "gov_strip_photos returns a bare array, so a saved draft loses its wrapper",
+);
+
+check(
+  "committees and positions keep the order the builder chose",
+  (flat298.match(/with ordinality as [cp]\(value, ord\)/g) ?? []).length >= 2 &&
+    (flat298.match(/order by [cp]\.ord/g) ?? []).length >= 2,
+  "committee or position ordering is left to jsonb's key sort",
+);
+
+// Ordering is the assertion: the flag is read inside the per-committee loop, so a
+// misplaced one has to be caught there and before the committee's own shape is
+// trusted. `v_ci > 0` is the refusal, and it has to precede the name check.
+const isUnitAt = flat298.indexOf("coalesce((v_c->>'isUnit')::boolean, false)");
+const firstOnlyAt = flat298.indexOf("Only the first committee can be the council itself");
+const nameAt = flat298.indexOf("not between 1 and 120");
+
+check(
+  "isUnit is refused in the committee loop, before the committee body is trusted",
+  isUnitAt !== -1 && firstOnlyAt !== -1 && nameAt !== -1 &&
+    isUnitAt < firstOnlyAt && firstOnlyAt < nameAt &&
+    /if v_ci > 0 then/.test(flat298),
+  "the isUnit check does not come first, or only reports the first one it finds",
+);
+
+check(
+  "03020 gives the org chart the same authored units the structure gate uses",
+  /create or replace function smartgov\.gov_authored_unit_ids/.test(m3020) &&
+    /authored as \([\s\S]*?from smartgov\.gov_structures s/.test(m3020) &&
+    /select id, parent_id from authored/.test(m3020) &&
+    /v_authored := p_unit_id = any \(smartgov\.gov_authored_unit_ids\(p_account\)\)/.test(m3020),
+  "the chart and gov_unit_access answer 'did they write this?' separately, and will drift",
+);
+
+check(
+  "03020 keeps 00800's guards rather than trading them for the new clause",
+  /not v_is_owner and coalesce\(array_length\(v_unit_ids, 1\), 0\) = 0 then/.test(m3020) &&
+    /reason', 'no_unit'\)/.test(m3020) &&
+    /where gu\.id = any\(v_unit_ids\)/.test(m3020) &&
+    /and gu\.organization_id = v_account\.organization_id/.test(m3020),
+  "the widened chart lost its empty-scope refusal or its organization filter",
+);
+
+check(
+  "roster and photo reads go through the people scope, not the caller's unit",
+  /function smartgov\.gov_people_unit_ids/.test(m299) &&
+    /function smartgov\.list_structure_roster[\s\S]{0,3000}?gov_people_unit_ids\(v_account\)/.test(m299) &&
+    /function smartgov\.get_member_photo[\s\S]{0,3000}?gov_people_unit_ids\(v_account\)/.test(m299),
+  "an LSG officer can page somebody else's roster or photo",
+);
+
+check(
+  "the people scope is itself bounded by the caller's organization",
+  /function smartgov\.gov_people_unit_ids[\s\S]*?organization_id = p_account\.organization_id/.test(m299) &&
+    /descendant|recursive/i.test(m299),
+  "the people scope is not organization-bounded, or no longer walks downward",
+);
+
+check(
+  "a photo is written as bytes and read as a flag",
+  /function smartgov\.gov_strip_photos/.test(m298) &&
+    /lo_unlink/.test(m298) &&
+    /hasPhoto/.test(m300) &&
+    /function smartgov\.roster_photo_purge/.test(m29),
+  "a replaced photo's large object is never unlinked, or reads leak the bytes",
+);
+
+check(
+  "photo bytes come back without the newlines encode() wraps them in",
+  /replace\(\s*encode\([\s\S]*?E?'\\\\?n'/.test(m299) &&
+    /get_member_photo/.test(m299) &&
+    /(decode|lo_get)/.test(m299),
+  "base64 is returned as encode() produced it, which atob rejects",
+);
+
+// The regression was `p.value->'holder' || jsonb_build_object('hasPhoto', ...)` used
+// as the position, which drops the seat's own keys. The fix is a nested jsonb_set, so
+// the guard is that the flag is written *into* the holder rather than merged over it.
+check(
+  "03000 marks hasPhoto on the holder it belongs to, keeping the seat around it",
+  /jsonb_set\(\s*p\.value, '\{holder\}',\s*p\.value->'holder' \|\| jsonb_build_object\(\s*'hasPhoto'/.test(flat(m300)) &&
+    /order by p\.ord/.test(flat(m300)) &&
+    // the flattening form must be gone, not merely unused
+    !/jsonb_agg\(\s*p\.value->'holder' \|\|/.test(flat(m300)),
+  "the photo flag is flattened onto the position and the seat loses its key and title",
+);
+
+check(
+  "03010 lets an author account be deleted instead of blocking organization removal",
+  /created_by[\s\S]{0,80}?references smartgov\.accounts[\s\S]{0,40}?on delete set null/.test(m3010) &&
+    /decided_by[\s\S]{0,80}?references smartgov\.accounts[\s\S]{0,40}?on delete set null/.test(m3010),
+  "one authored structure makes its organization undeletable",
+);
+
+// `created_by <> v_account.id` alone reads as null for a departed author, so the
+// null has to be spelled out rather than left to three-valued logic.
+check(
+  "a structure whose author is gone stays hidden from reviewers",
+  /v_open\.created_by is null or v_open\.created_by <> v_account\.id/.test(flat(m3010)) &&
+    !/and v_open\.created_by <> v_account\.id/.test(flat(m3010)),
+  "a null author leaks a draft to anyone reviewing",
+);
+
+check(
+  "the structure functions are reachable only through the session forwarders",
+  (flat(m299).match(/revoke all on function smartgov\.[a-z_]+\(/g) ?? []).length >= 4 &&
+    /grant execute on function public\.get_member_photo\(text, uuid\) to anon, authenticated;/.test(m299) &&
+    !/grant execute on function smartgov\./.test(m299 + m298 + m299),
+  "a smartgov structure function is executable straight from the client",
+);
+
+// 03030 exists because the gallery could name a template but not return one:
+// `import_structure_template` is an upsert *into* the gallery, so nothing could
+// apply what was listed. The guard is that the list hands the document back.
+check(
+  "the template list hands the document back, so a gallery can apply one",
+  /'document', t\.document/.test(m3030) &&
+    /create or replace function smartgov\.list_structure_templates\(p_session_token text\)/.test(m3030) &&
+    /revoke all on function smartgov\.list_structure_templates\(text\) from public/.test(m3030),
+  "the gallery lists templates it cannot apply",
+);
+
+// The document is only safe to return because a template provably holds no
+// people. Assert that both writers validate with holders refused, so widening
+// the list response cannot become a way to read another council's personnel.
+check(
+  "a template cannot carry a person, which is what makes its document safe to return",
+  /gov_document_valid\(p_document, false\)/.test(flat(m29)) &&
+    /A template cannot name people/.test(flat(m29)) &&
+    /t\.is_builtin\n?\s*or t\.organization_id = v_account\.organization_id/.test(m3030),
+  "a template could carry holders, or the list answers across organizations",
+);
+
+// The builder must not put a roster id in the document: the document is stored
+// verbatim, so a session-only id would be persisted with the structure.
+// `readPendingSource` strips comments, so the assertions below are made against
+// the code only -- a comment explaining a rule cannot be what satisfies a guard
+// for it, or deleting the code would leave the check green.
+const photoLookupAt = structureWorkspace.indexOf("rosterByEmail(email)");
+const holderType = /export type StructureHolder = \{[\s\S]*?\n\};/.exec(structureLib);
+
+check(
+  "the builder looks the roster id up instead of storing it in the document",
+  photoLookupAt !== -1 &&
+    // The holder type is what actually reaches the database, so it is where a
+    // persisted `rosterId` would have to be smuggled in. Asserting the type
+    // exists matters as much as the absence: a guard that passes when the
+    // declaration has moved or been renamed is a guard that cannot fail.
+    holderType !== null &&
+    !/rosterId/.test(holderType[0]),
+  "a roster id is persisted into the structure document",
+);
+
+// Two structures may legitimately use the same template keys: uniqueness is per
+// document, so applying a template keeps its keys rather than regenerating them.
+const templateApplyAt = structureWorkspace.indexOf("edit(t.document)");
+const templateKeyAt = structureWorkspace.indexOf("setTemplateKey(t.key)");
+
+check(
+  "applying a template installs its document and remembers which one it was",
+  templateApplyAt !== -1 && templateKeyAt !== -1 && templateKeyAt < templateApplyAt,
+  "applying a template rewrites the stable keys the rest of the feature relies on",
+);
+
+check(
+  "the editor is not rendered on an assumption, but on the database's capability",
+  /fetchStructureForSession\(token, own\.id\)/.test(councilStructurePage) &&
+    /capability=\{structure\.capability\}/.test(councilStructurePage) &&
+    /!structure\.capability\?\.canRead/.test(councilStructurePage),
+  "the builder assumes it may edit instead of asking who may",
+);
+
+check(
+  "the lifecycle probe cannot leave an organization behind if it throws",
+  /uncaughtException/.test(structureProbe) &&
+    structureProbe.indexOf("process.on(\"uncaughtException\"") <
+      structureProbe.indexOf("Gov Probe ${stamp}") &&
+    /delete from public\.organizations where id = any/.test(structureProbe),
+  "the probe registers its cleanup after its first insert, or does not clean up at all",
 );
 
 console.log(

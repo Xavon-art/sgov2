@@ -104,6 +104,23 @@ try {
       console.error(error.message);
       process.exit(1);
     }
+
+    // PostgREST answers /rpc from a cache of the schema it built at start. A
+    // migration that adds or changes a public function is invisible to the app
+    // until that cache is rebuilt, and the app then fails with "Could not find the
+    // function ... in the schema cache" for a function that plainly exists. Ask it
+    // to reload. This sits outside the transaction on purpose: it is a notice to
+    // another process, not part of the migration, and it must not be rolled back
+    // with it.
+    try {
+      await client.query("notify pgrst, 'reload schema'");
+      console.log(`         reloaded the PostgREST schema cache`);
+    } catch (error) {
+      // Supabase's channel can be renamed on a self-hosted instance. A stale cache
+      // is an annoyance to clear by hand, not a reason to report a good migration
+      // as failed.
+      console.warn(`         could not reload the PostgREST schema cache: ${error.message}`);
+    }
   }
 } finally {
   await client.end();

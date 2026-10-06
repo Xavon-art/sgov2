@@ -6,6 +6,7 @@ import { formatDate, formatSize, statusLabel } from "./helpers";
 import { ActivityIcon } from "./ActivityIcon";
 import { Timeline } from "./Timeline";
 import { ProposalForm } from "./ProposalForm";
+import { VerificationChecklist } from "./VerificationChecklist";
 import { Button } from "@/components/ui/Button";
 import { TextArea } from "@/components/ui/Field";
 
@@ -238,6 +239,26 @@ export function ProposalDetailFlow({
                 {d === "approved" ? "Approve" : d === "returned" ? "Return" : "Reject"}
               </Button>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      {latest?.items.some((it) => it.submissionKind === "file") ? (
+        <div className="mt-6 border-t border-line/70 pt-5">
+          <p className="text-[0.8125rem] font-semibold tracking-[0.08em] text-ink-soft uppercase">
+            Document checklist
+          </p>
+          <p className="mt-1 text-[0.8125rem] text-muted">
+            {reviewer
+              ? "Open each file, then rule on it. A question needs a reason."
+              : "What the office has checked on your files so far."}
+          </p>
+          <div className="mt-4">
+            <VerificationChecklist
+              proposalId={detail.id}
+              reviewer={reviewer}
+              onChanged={onChanged}
+            />
           </div>
         </div>
       ) : null}

@@ -203,6 +203,32 @@ Every owner-facing function takes the session token and resolves the caller's ow
 
 An LSG officer's view must contain only their own units and the parent USG. `unit_chart` builds the officer's id list from their **memberships** in the `where` clause, so every other unit is absent from the result set — a client-side filter would still ship every unit to the browser, where devtools can read it, making scoping decorative. The same founding-member check gates every owner-only write (`add_position`, `toggle_unit_position`, `assign_officer`, `release_officer`, `list_roster`), so an LSG officer can read their chart but cannot mutate anything.
 
+### The document shape, and why the order matters
+
+A government structure is `{ committees: [{ key, name, positions: [...] }] }` — an object with a `committees` array, never a bare array. Committee and position order is the render order of a published chart, and `jsonb` does not promise array order survives a key sort, so every read that assembles one walks the array with `with ordinality as c(value, ord)` and emits `order by c.ord`. An earlier version let Postgres sort the keys, which put "Audit Committee" ahead of "Ceremonials" in a published structure.
+
+`key` is a stable slug, client-generated, that survives a rename and a reorder. That is what lands in `governance_units.structure_key`: without it, re-approving a renamed committee would have to guess whether "Welfare Committee" and "Welfare and Outreach Committee" are the same row, and a rename would orphan every seat inside it. Removing a position frees its row but never recycles its key, so nothing later inherits an identity a history already used.
+
+`isUnit: true` marks the one committee whose seats belong to the unit the structure is *for* rather than to a child of it. At most one committee may carry it and it must be the first — a council's own board is the council, not a committee inside it — and `gov_document_valid` checks the flag inside the per-committee loop, before the committee's body is trusted, so a misplaced one is refused rather than silently filing a council's own officers into a committee.
+
+### Approval rewrites seats, so authorship is load-bearing
+
+`review_structure` with `approved` materialises the document into `governance_units`, enabled positions and live seats. Approving can therefore move the reviewer off their own seat and out of the chart entirely, which is what makes the 03010 rules load-bearing rather than defensive tidying:
+
+- `created_by` and `decided_by` are `on delete set null`. Under `restrict`, one authored structure makes its organization permanently undeletable.
+- A structure whose author is `null` stays hidden from reviewers. `created_by <> v_account.id` alone reads as *unknown* for a departed author, and three-valued logic would hand that draft to everyone reviewing.
+- 03020 widens `unit_chart` to union `gov_authored_unit_ids` over an authored structure's unit and its immediate parents. Before it, approving your own structure took the chart away from the person who wrote it — they no longer held a seat, and the chart only ever knew about seats.
+
+### Photos are write-only in the document, and the base64 is unwrapped
+
+A holder's `photo` goes up in a draft as bytes and comes back as `hasPhoto: true`. Reads carry the flag only, because embedding base64 would put every officer's face into the JSON of every structure read; the picture is fetched separately from `/api/structures/photos/[rosterId]`, itself scoped by `gov_people_unit_ids` so an officer cannot page a sibling council's personnel.
+
+Two encoding details that were real bugs rather than style. `encode(..., 'base64')` wraps at 76 columns, which is not base64 as far as `atob` is concerned, so the newline is stripped on the way out. And the photo flag has to be written with a nested `jsonb_set(p.value, '{holder}', p.value->'holder' || ...)` — the earlier `p.value->'holder' || jsonb_build_object('hasPhoto', ...)` replaced the whole position and lost the seat's own key and title.
+
+### Templates can be listed because they cannot carry a person
+
+`list_structure_templates` (03030) returns each template's `document`, which is what lets a gallery's "Use this" button do anything at all — `import_structure_template` is an upsert *into* the gallery and never returns one. Returning documents in a shared response is safe here for one reason: every writer of a template (`import_structure_template` and the built-in seeding) validates with `gov_document_valid(doc, p_allow_holders => false)`, which refuses any holder with the detail "A template cannot name people". So the change adds committee and position keys to a response that already named the template, and never an officer's name, email or photo.
+
 ### The setup flow, end to end
 
 `/create/success` calls `POST /api/organization`, which calls `create_organization`: it validates the payload, resolves `slug` and `charter_number` collisions server-side (so two identically named councils both succeed and the client renders the values the database actually stored), then writes the organization, its founding officer, and its governance units in **one transaction**. The earlier three-request client flow could leave an organization row behind when a later insert failed.
@@ -256,10 +282,14 @@ src/
       org-chart/                 position, unit-position, invite, assign, release
     org-chart/                   owner chart (server-gated)
     my-council/                  LSG officer's scoped chart (server-gated)
+      structure/                 LSG officer's structure builder (server-gated)
+    usg/
+      structure/                 USG structure queue (server-gated)
   components/
     auth/                        AuthShell, InviteSetupForm, OtpVerify
     create/                      FlowShell, StepShell, WelcomeStart
     dashboard/                   Workspace, SignOutButton
+    structure/                   StructureWorkspace, ReviewQueue, document (editor + validator)
     fx/                          ShaderField (WebGL), Reveal, FloatingField
     landing/  ui/
   lib/

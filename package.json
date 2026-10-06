@@ -9,7 +9,10 @@
     "lint": "eslint",
     "check:reveal": "node scripts/check-reveal.mjs",
     "check:federated": "node scripts/check-federated.mjs",
-    "check:units": "node scripts/check-units.mjs"
+    "check:units": "node scripts/check-units.mjs",
+    "probe:structure": "node scripts/probe-structure.mjs",
+    "probe:structure:http": "node scripts/probe-structure-http.mjs",
+    "probe:structure:browser": "node scripts/probe-structure-browser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -17,18 +20,22 @@
     "motion": "^13.4.4",
     "next": "16.3.6",
     "nodemailer": "^10.0.11",
+    "pg": "^8.16.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "playwright": "^1.63.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

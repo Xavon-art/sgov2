@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import { objectSize } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -62,12 +61,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 }
 
 /**
- * Submit a revision. Every `file` entry must have already been uploaded to the
- * path it names: the presign route mints the slot, the browser PUTs the bytes,
- * and only then does this route let the write go through. Verifying against
- * Storage (not just the body) is what stops a client from naming a path it
- * never uploaded to -- the DB trusts the path and later binds the document to
- * it, so the object has to exist here, now, at the declared size.
+ * Submit a revision.
+ *
+ * The route does not inspect the files. It could not check them honestly anyway:
+ * the bytes are in a large object, and the only connection in the app that could
+ * read one belongs to the route that serves downloads. Instead `proposal_items_valid`
+ * re-reads each stored document inside the transaction that writes the submission,
+ * which is strictly better than a pre-read -- the document and the row claiming it
+ * are checked against each other at the same instant.
  */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const token = await readSessionToken();
@@ -89,23 +90,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const items = Array.isArray(body.items) ? body.items : [];
   try {
-    for (const entry of items) {
-      if (entry.kind !== "file") continue;
-      if (!entry.storagePath) {
-        return NextResponse.json(
-          { ok: false, message: "That file has not uploaded yet." },
-          { status: 400 },
-        );
-      }
-      const size = await objectSize(entry.storagePath);
-      if (size === null || size !== entry.sizeBytes) {
-        return NextResponse.json(
-          { ok: false, message: "That file has not uploaded yet." },
-          { status: 400 },
-        );
-      }
-    }
-
+    // No pre-flight size check here. `proposal_items_valid` re-reads each stored
+    // document inside the same transaction that writes the submission, so the bytes
+    // and the row that claims them are checked against each other atomically. A
+    // pre-read would only be able to agree with them at some earlier moment.
     const res = await callRpc<SubmitResult>("submit_revision", {
       p_session_token: token,
       p_proposal_id: id,

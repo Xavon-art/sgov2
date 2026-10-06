@@ -58,6 +58,14 @@ const RPC_MESSAGES: Record<string, string> = {
   unsupported_file_type:
     "That file type is not accepted here. Choose one of the allowed types for this item.",
   file_too_large: "That file is larger than the 10 MB limit for one item.",
+  already_uploaded:
+    "A file is already attached to this item. Replace it to upload a different one.",
+  missing_document:
+    "That file has not finished uploading. Upload it again before submitting.",
+  incomplete_upload: "That file has not finished uploading. Try uploading it again.",
+  offset_mismatch:
+    "The upload was out of step with the server. Wait a moment and upload it again.",
+  size_mismatch: "That file did not finish uploading intact. Try it again.",
   not_returned:
     "Only a submission that was returned can be resubmitted with changes.",
   already_reviewed:
@@ -77,6 +85,26 @@ const RPC_MESSAGES: Record<string, string> = {
     "Pick a deadline from today onwards. A date already past cannot be worked to.",
   not_your_decision:
     "Only the USG office marks a task done. You can mark it in progress.",
+
+  // ---- government structure (02960, 02980, 02990)
+  //
+  // Three of these are not failures but refusals of a specific edit, so the wording
+  // has to say what to change rather than that something went wrong: a document with
+  // two councils marked as the council is wrong in a way the officer can fix.
+  duplicate_committee_key:
+    "Two committees have the same key. Give each one a distinct key.",
+  duplicate_position_key:
+    "Two seats in the same committee have the same key. Give each one a distinct key.",
+  duplicate_holder:
+    "The same person is listed in more than one seat. Each officer may hold only one seat.",
+  self_review:
+    "You cannot review your own structure. Ask the USG office to decide it.",
+  awaiting_review:
+    "This structure is already with the USG office for review.",
+  already_in_progress:
+    "There is already an open revision of this structure. Finish that one first.",
+  no_approved_structure:
+    "There is no approved structure to renew yet.",
 };
 
 export function messageFor(reason?: string): string {

@@ -244,6 +244,20 @@ export default async function MyCouncilPage() {
           ))}
         </div>
       </div>
+
+      {/* This page is reached from the structure builder's "Back to council" and
+          has no app nav of its own, so without a way out it is a dead end: the
+          officer would have to edit the URL to reach the page they came from. */}
+      <Reveal delay={0.1} className="mt-10">
+        <div className="flex flex-wrap justify-center gap-3">
+          <ButtonLink href="/dashboard" variant="outline" size="md">
+            Back to dashboard
+          </ButtonLink>
+          <ButtonLink href="/my-council/structure" variant="paper" size="md">
+            Council structure
+          </ButtonLink>
+        </div>
+      </Reveal>
     </PageShell>
     </SessionGuard>
   );

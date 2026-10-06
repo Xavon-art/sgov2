@@ -1,145 +1,30 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { ButtonLink } from "@/components/ui/Button";
-import { callRpc, type RpcResult } from "@/lib/auth/rpc";
-import { currentAccount, readSessionToken } from "@/lib/auth/session";
-import { resolveWorkspaceRole } from "@/lib/auth/workspace";
-
-export const dynamic = "force-dynamic";
-
-type ProposalRow = {
-  id: string;
-  title: string;
-  status: string;
-  eventDate: string | null;
-  latestRemark: string | null;
-};
-
-type ProposalsPayload = RpcResult & { proposals?: ProposalRow[] };
+import { DashboardView } from "@/components/dashboard/DashboardView";
 
 /**
- * What the statuses mean for the person holding the phone.
+ * What an LSG officer opens on.
  *
- * These are the five values `smartgov.proposals.status` actually allows:
- * `submitted`, `returned`, `approved`, `rejected`, `published`. An earlier
- * version of this file used `draft` and `needs_revision`, which do not exist, so
- * the action list below was silently empty for the one case that matters most:
- * a proposal USG had sent back.
+ * This used to be its own server page: it called `list_proposals` and rendered a
+ * status strip plus a hand-written list of the two statuses an officer can act on.
+ * That answer was right in spirit and wrong in coverage -- it counted proposals and
+ * nothing else, so a document USG had queried about or a task that had gone overdue
+ * did not appear anywhere on the screen an officer calls "Today".
  *
- * Only two statuses are things an LSG officer can act on. `submitted` is USG's
- * turn, and listing it as "needs action" would be the single most demoralizing
- * thing this dashboard could do.
+ * It is now the same component the USG desk uses, with the LSG links. The session
+ * and the workspace side are still decided in the layout above this page; this file
+ * deliberately makes no server call of its own, because the only thing it needs to
+ * know is which links exist on this side.
  */
-const ACTION: Record<string, { verb: string; detail: string } | undefined> = {
-  returned: { verb: "Revise and resubmit", detail: "USG sent this back" },
-  approved: { verb: "Publish to feed", detail: "Approved, not announced yet" },
-};
-
-const COUNTED: Record<string, string> = {
-  submitted: "With USG",
-  returned: "Sent back",
-  approved: "Approved",
-  rejected: "Rejected",
-  published: "Published",
-};
-
-export default async function LsgTodayPage() {
-  const account = await currentAccount();
-  if (!account) redirect("/login");
-
-  const role = await resolveWorkspaceRole();
-  if (!role) redirect("/login");
-  if (role.side !== "lsg") redirect("/usg");
-
-  let proposals: ProposalRow[] = [];
-  try {
-    const token = await readSessionToken();
-    const data = await callRpc<ProposalsPayload>("list_proposals", {
-      p_session_token: token,
-    });
-    if (data.ok && Array.isArray(data.proposals)) proposals = data.proposals;
-  } catch {
-    proposals = [];
-  }
-
-  const actionable = proposals
-    .filter((p) => ACTION[p.status])
-    .sort((a, b) => (a.eventDate ?? "9999").localeCompare(b.eventDate ?? "9999"));
-
-  const counts = new Map<string, number>();
-  for (const p of proposals) {
-    const label = COUNTED[p.status];
-    if (!label) continue;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-
-  const strip = [...counts.entries()];
-
+export default function LsgTodayPage() {
   return (
-    <section className="mx-auto w-full max-w-2xl">
-      <header className="border-b border-line/80 pb-4">
-        <p className="eyebrow">{role.unitName ? `${role.unitName} LSG` : "Your LSG"}</p>
-        <h1 className="mt-1 text-[1.5rem] leading-tight sm:text-[1.75rem]">Today</h1>
-        <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
-          What your unit owes USG, and by when.
-        </p>
-      </header>
-
-      {strip.length > 0 ? (
-        <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {strip.map(([label, count]) => (
-            <div key={label} className="rounded-card border border-line bg-paper px-4 py-3">
-              <dt className="text-[0.8125rem] text-muted">{label}</dt>
-              <dd className="mt-0.5 font-display text-[1.5rem] leading-none">{count}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-
-      <h2 className="mt-8 text-[1.125rem] leading-tight">Needs your action</h2>
-
-      {actionable.length === 0 ? (
-        <div className="mt-3 rounded-card border border-line bg-paper px-4 py-6">
-          <p className="text-[0.9375rem] leading-relaxed text-body">
-            Nothing is waiting on you right now. When USG assigns a task, sends a proposal back, or
-            approves one, it will appear here.
-          </p>
-          <div className="mt-4">
-            <ButtonLink href="/lsg/proposals" variant="outline" size="md">
-              Start a proposal
-            </ButtonLink>
-          </div>
-        </div>
-      ) : (
-        <ul className="mt-3 flex flex-col gap-3">
-          {actionable.map((p) => {
-            const action = ACTION[p.status]!;
-            return (
-              <li key={p.id} className="rounded-card border border-line bg-paper p-4">
-                <p className="text-[0.8125rem] text-muted">{action.detail}</p>
-                <h3 className="mt-0.5 text-[1.0625rem] leading-snug">{p.title}</h3>
-                {p.latestRemark ? (
-                  <p className="mt-2 border-l-2 border-brass/60 pl-3 text-[0.9375rem] leading-relaxed text-body">
-                    {p.latestRemark}
-                  </p>
-                ) : null}
-                <div className="mt-4">
-                  <Link
-                    href="/lsg/proposals"
-                    className="inline-flex min-h-11 items-center rounded-lg bg-ink px-4 text-[0.9375rem] text-paper transition-colors hover:bg-ink-deep"
-                  >
-                    {action.verb}
-                  </Link>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {/* Feed, tasks and calendar arrive in later slices. They are listed as what
-          is coming rather than rendered empty, so the shape of this page is
-          visible to whoever reviews it. */}
-    </section>
+    <DashboardView
+      links={{
+        proposals: "/lsg/proposals",
+        budgets: "/lsg/budgets",
+        tasks: "/lsg/tasks",
+        // The council's own builder. Which council that is comes from the
+        // database's scoped chart, so there is no unit id to name here.
+        structure: "/my-council/structure",
+      }}
+    />
   );
 }

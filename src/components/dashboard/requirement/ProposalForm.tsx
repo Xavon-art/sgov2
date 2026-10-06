@@ -5,43 +5,81 @@ import type { ItemKind } from "./types";
 import { ACTIVITY_OPTIONS } from "./helpers";
 import { Button } from "@/components/ui/Button";
 import { TextField, TextArea } from "@/components/ui/Field";
+import { MAX_FILE_BYTES, UPLOAD_CHUNK_BYTES } from "@/lib/documents";
 
 type TemplateItem = { itemId: string; label: string; itemKind: ItemKind };
-
-const FILE_LIMIT_BYTES = 10 * 1024 * 1024;
 
 const selectClass =
   "h-12 w-full appearance-none rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none transition-[border-color,box-shadow,background-color] duration-300 hover:border-line-strong focus:border-ink/25 focus:bg-paper";
 
-async function presignAndPut(
-  uuid: string,
-  item: TemplateItem,
-  file: File,
-  version: number,
-): Promise<{ storagePath: string }> {
+async function postJson(action: string, body: Record<string, unknown>) {
   const res = await fetch("/api/uploads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      uuid,
-      itemId: item.itemId,
-      fileName: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
-      version,
-    }),
+    body: JSON.stringify({ action, ...body }),
   });
-  const data = await res.json();
-  if (!res.ok || !data.ok || !data.signedUrl) {
-    throw new Error(data.message ?? "Could not prepare that file.");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.message ?? "That file could not be uploaded.");
+  return data as Record<string, number | string | boolean>;
+}
+
+/**
+ * Sends one file to the database in pieces.
+ *
+ * The route owns the storage path, so this sends only what the browser actually
+ * knows: which requirement item, which file, how big it is, and the draft nonce it
+ * wants the slot named under. It then walks the file a chunk at a time, starting at
+ * whatever the server says is already there, so a dropped connection costs the
+ * bytes of the chunk in flight rather than the whole file.
+ */
+async function claimAndSend(
+  nonce: string,
+  item: TemplateItem,
+  file: File,
+  version: number,
+  onProgress: (sent: number) => void,
+): Promise<{ storagePath: string }> {
+  const claimed = await postJson("claim", {
+    nonce,
+    itemId: item.itemId,
+    fileName: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    version,
+  });
+
+  const storagePath = String(claimed.storagePath);
+  let sent = Number(claimed.writtenBytes ?? 0);
+  onProgress(sent);
+
+  while (sent < file.size) {
+    const end = Math.min(sent + UPLOAD_CHUNK_BYTES, file.size);
+
+    // Raw bytes rather than JSON: base64 would inflate the body by a third, and the
+    // body is exactly what the hosting edge caps. The offset rides in a header.
+    const res = await fetch("/api/uploads", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "x-smartgov-path": storagePath,
+        "x-smartgov-offset": String(sent),
+        "x-smartgov-total": String(file.size),
+      },
+      body: file.slice(sent, end),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.message ?? "The file upload failed. Try again.");
+    }
+
+    sent = Number(data.writtenBytes ?? end);
+    onProgress(sent);
   }
-  const put = await fetch(data.signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type, "Content-Length": String(file.size) },
-    body: file,
-  });
-  if (!put.ok) throw new Error("The file upload failed. Try again.");
-  return { storagePath: data.storagePath };
+
+  await postJson("commit", { storagePath, actualBytes: file.size });
+
+  return { storagePath };
 }
 
 type FileEntry = {
@@ -49,14 +87,21 @@ type FileEntry = {
   fileName: string;
   storagePath: string;
   sizeBytes: number;
+  sentBytes: number;
 };
 
-const emptyFile: FileEntry = { status: "empty", fileName: "", storagePath: "", sizeBytes: 0 };
+const emptyFile: FileEntry = {
+  status: "empty",
+  fileName: "",
+  storagePath: "",
+  sizeBytes: 0,
+  sentBytes: 0,
+};
 
 /**
  * Both shells share this. New drafts and returned revisions walk the same
- * presign → PUT → submit flow; the only difference is the target route and the
- * version number used to mint storage slots.
+ * claim → chunk → commit → submit flow; the only difference is the target route and
+ * the version number used to mint storage slots.
  */
 export function ProposalForm({
   template,
@@ -90,16 +135,41 @@ export function ProposalForm({
   const onFile = async (item: TemplateItem, file: File | null) => {
     setError("");
     if (!file) return;
-    if (file.size > FILE_LIMIT_BYTES) {
+    if (file.size > MAX_FILE_BYTES) {
       setError("That file is larger than the 10 MB limit.");
       return;
     }
-    setFiles((m) => ({ ...m, [item.itemId]: { status: "uploading", fileName: file.name, storagePath: "", sizeBytes: file.size } }));
+    setFiles((m) => ({
+      ...m,
+      [item.itemId]: {
+        status: "uploading",
+        fileName: file.name,
+        storagePath: "",
+        sizeBytes: file.size,
+        sentBytes: 0,
+      },
+    }));
     try {
-      const { storagePath } = await presignAndPut(draftUuid.current, item, file, initialVersion);
+      const { storagePath } = await claimAndSend(
+        draftUuid.current,
+        item,
+        file,
+        initialVersion,
+        (sent) =>
+          setFiles((m) => ({
+            ...m,
+            [item.itemId]: { ...m[item.itemId], sentBytes: sent },
+          })),
+      );
       setFiles((m) => ({
         ...m,
-        [item.itemId]: { status: "ready", fileName: file.name, storagePath, sizeBytes: file.size },
+        [item.itemId]: {
+          status: "ready",
+          fileName: file.name,
+          storagePath,
+          sizeBytes: file.size,
+          sentBytes: file.size,
+        },
       }));
     } catch (err) {
       setFiles((m) => ({ ...m, [item.itemId]: emptyFile }));
@@ -172,7 +242,7 @@ export function ProposalForm({
     <section className="rounded-2xl border border-line bg-paper/70 p-6">
       <p className="font-semibold text-ink">{heading}</p>
       <p className="mt-1 text-[0.8125rem] leading-relaxed text-body">
-        Each file is uploaded straight to secure storage before the proposal goes
+        Each file is uploaded to secure storage and sealed before the proposal goes
         to the USG board.
       </p>
 
@@ -244,7 +314,9 @@ export function ProposalForm({
                     {files[t.itemId]?.status === "ready"
                       ? files[t.itemId].fileName
                       : files[t.itemId]?.status === "uploading"
-                        ? "Uploading…"
+                        ? `Uploading… ${Math.round(
+                            ((files[t.itemId]?.sentBytes ?? 0) / (files[t.itemId]?.sizeBytes || 1)) * 100,
+                          )}%`
                         : "Choose a file"}
                   </span>
                   <input

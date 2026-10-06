@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import { createSignedDownloadUrl } from "@/lib/storage";
+import { contentDispositionFor, readLargeObject } from "@/lib/large-objects";
 
 export const runtime = "nodejs";
 
-type FileResult = RpcResult & {
-  storagePath?: string;
+type DocumentResult = RpcResult & {
+  oid?: string | number;
+  originalName?: string;
+  mimeType?: string;
+  sizeBytes?: number;
 };
 
 function statusForReason(reason?: string): number {
@@ -18,11 +21,15 @@ function statusForReason(reason?: string): number {
 }
 
 /**
- * Download gate for a single submitted document. `get_item_file` re-scopes the
- * caller inside Postgres and only returns a storage path the caller may read;
- * this route turns that allowed path into a short-lived signed URL and redirects
- * the browser to it. A caller who is neither the author, a reviewer, nor in the
- * submitting unit gets the same answer as a missing row.
+ * Download gate for a single submitted document.
+ *
+ * `get_document` re-scopes the caller inside Postgres and answers only for a
+ * submission whose document is actually complete -- reserved, fully written, and
+ * sealed. Anything else reads as missing, so a caller who is neither the author, a
+ * reviewer, nor in the submitting unit cannot tell those cases apart.
+ *
+ * There is no signed redirect here: the bytes are in the database, and the only key
+ * this deployment has is the session. So the route streams them itself.
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ submissionId: string }> }) {
   const token = await readSessionToken();
@@ -31,25 +38,38 @@ export async function GET(_req: Request, ctx: { params: Promise<{ submissionId: 
   }
 
   const { submissionId } = await ctx.params;
+
   try {
-    const res = await callRpc<FileResult>("get_item_file", {
+    const res = await callRpc<DocumentResult>("get_document", {
       p_session_token: token,
       p_submission_id: submissionId,
     });
+
     if (!res.ok) {
       return NextResponse.json(
         { ok: false, message: messageFor(res.reason) },
         { status: statusForReason(res.reason) },
       );
     }
-    if (!res.storagePath) {
+
+    if (res.oid === undefined) {
       return NextResponse.json(
         { ok: false, message: messageFor("not_found") },
         { status: 404 },
       );
     }
-    const url = await createSignedDownloadUrl(res.storagePath);
-    return NextResponse.redirect(url);
+
+    const { stream, sizeBytes } = await readLargeObject(res.oid);
+
+    return new NextResponse(stream as unknown as ReadableStream, {
+      status: 200,
+      headers: {
+        "Content-Type": res.mimeType || "application/octet-stream",
+        "Content-Length": String(res.sizeBytes ?? sizeBytes),
+        "Content-Disposition": contentDispositionFor(res.originalName ?? "document"),
+        "Cache-Control": "private, no-store",
+      },
+    });
   } catch (error) {
     console.error("[files:get]", error);
     return NextResponse.json(
