@@ -7,6 +7,7 @@ import { ActivityIcon } from "./ActivityIcon";
 import { Timeline } from "./Timeline";
 import { ProposalForm } from "./ProposalForm";
 import { VerificationChecklist } from "./VerificationChecklist";
+import { RequirementCheckPanel } from "./RequirementCheckPanel";
 import { Button } from "@/components/ui/Button";
 import { TextArea } from "@/components/ui/Field";
 
@@ -240,6 +241,12 @@ export function ProposalDetailFlow({
               </Button>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {latest ? (
+        <div className="mt-6 border-t border-line/70 pt-5">
+          <RequirementCheckPanel proposalId={detail.id} versionId={latest.id} />
         </div>
       ) : null}
 

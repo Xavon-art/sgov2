@@ -10,6 +10,8 @@
     "check:reveal": "node scripts/check-reveal.mjs",
     "check:federated": "node scripts/check-federated.mjs",
     "check:units": "node scripts/check-units.mjs",
+    "fixtures:compliance": "node scripts/gen-fixtures.mjs",
+    "check:compliance": "tsx scripts/check-compliance.ts",
     "probe:structure": "node scripts/probe-structure.mjs",
     "probe:structure:http": "node scripts/probe-structure-http.mjs",
     "probe:structure:browser": "node scripts/probe-structure-browser.mjs"
@@ -17,12 +19,15 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
     "clsx": "^2.1.1",
+    "mammoth": "^1.13.0",
     "motion": "^13.4.4",
     "next": "16.3.6",
     "nodemailer": "^10.0.11",
+    "pdfjs-dist": "^6.4.299",
     "pg": "^8.16.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "read-excel-file": "^9.3.12",
     "server-only": "^0.0.1",
     "zustand": "^5.0.15"
   },
@@ -37,6 +42,7 @@
     "eslint-config-next": "16.3.6",
     "playwright": "^1.63.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

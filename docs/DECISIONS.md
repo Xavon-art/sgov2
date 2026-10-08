@@ -161,3 +161,65 @@ A `next start` server holds its build manifest in memory. Rebuilding under it le
 references to chunks that the new build renamed, and the symptom is a chunk refused for its MIME
 type — a message about static assets that has nothing to do with static assets. The process
 command line is `next" start`, with a quote, so matching it needs to account for that.
+
+---
+
+## Requirement check
+
+### A deterministic engine, not a model API
+
+Chosen: the requirement check is plain TypeScript running in-process — `pdfjs-dist`,
+`mammoth`, `read-excel-file`, regexes and a vocabulary scorer — with no LLM call anywhere.
+
+The feature has to be free forever, which rules out anything with a per-check price, and
+it has to be reproducible for a reviewer who re-runs it and expects the same answer. An
+LLM gives neither. The intelligence people expect from it here — reading a document,
+realising it is the wrong one, noticing a missing date — is classification and extraction,
+which deterministic code does at least as reliably and at a fraction of the latency.
+
+The cost: no prose summary of the document. Nothing of value was lost — the remark box
+already gives the reviewer a place to write, and a machine-written summary would have been
+the one part of the report that could quietly be wrong.
+
+### The report is a closed shape, and that is the safety property
+
+Chosen: the engine emits a fixed JSON schema — `scope: "app"`, a closed `SignalCode`
+union, recommendations from fixed templates interpolating only labels the app already
+holds. No free text ever leaves the engine.
+
+This is what makes "the AI reviewed your submission" a safe claim to put in front of a
+reviewer: the worst failure mode — confident commentary about something outside the org's
+own requirements — has no channel to occur in. A future on-device model, if ever added,
+must return through the same schema; the union is append-only and `check:compliance`
+locks it.
+
+### Authorization is inherited from `proposal_detail`, not re-decided
+
+Chosen: the route reads the proposal through the same RPC the UI uses, then pulls bytes
+through `get_document` → `readLargeObject`. No new "can this subject run a check" rule.
+
+A second authorization decision would be a second place to be wrong, and the question it
+would answer — may this reader see these files? — is already answered by the page they are
+looking at. Rate limiting (20 per 5 minutes per IP) covers the only new risk, which is
+compute spam.
+
+### A document that names its own item wins its own item
+
+Chosen: if a document's text contains its own requirement item's vocabulary as strongly
+as the best-scoring other item, the self-match wins.
+
+The alternative — trusting whichever item scores highest — misfiles exactly the documents
+written by careful authors: a short, honest "LETTER OF INTENT" scored low on absolute
+terms and lost to longer, vaguer items. Found by the fixture probe, not by reasoning about
+it in advance.
+
+### Fixtures are generated, real bytes
+
+Chosen: `scripts/gen-fixtures.mjs` builds actual PDFs (with computed xref tables), a real
+DOCX/XLSX (store-only ZIP + CRC32), and the probe parses them with the same libraries the
+route uses.
+
+Mocking the parsers would have validated the engine against inputs the engine itself
+defines, while the real bugs live at the boundary: pdfjs needing a filesystem path for
+standard fonts, `read-excel-file`'s root import not being exported, a PDF clipping one
+over-long literal at page width. Every one of those was found by running real bytes.
