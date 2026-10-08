@@ -105,6 +105,36 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
+  // Whether the drawer owns the screen, including while it slides back out.
+  //
+  // The header's sign-out has to yield to the drawer's, and gating on `open`
+  // alone does not work: `open` flips false the instant the user dismisses,
+  // which is the instant the exit animation *starts*, so the header copy would
+  // reappear behind a panel that is still travelling and there would be two
+  // on screen for the full 300ms.
+  //
+  // On a phone in portrait this never shows up -- the header copy is `sm:block`
+  // and a phone is under `sm` -- but rotate one and the header appears while the
+  // drawer is up, and the scrim is only `bg-ink/30`, so both stayed readable
+  // through it. Holding until the panel has actually left is what makes the
+  // handover real rather than approximately true.
+  //
+  // 300 matches the `duration={300}` on both `Enter` surfaces below.
+  //
+  // The two transitions are handled differently on purpose. Showing it is a
+  // pure function of `open`, so it happens during render and costs no frame --
+  // letting it wait for an effect would paint the header copy for one frame with
+  // the drawer already up. Hiding it is the one that genuinely needs to wait for
+  // an external system (the animation), so that half lives in the effect, where
+  // the cleanup clears the timer if the drawer is reopened mid-exit.
+  const [drawerPresent, setDrawerPresent] = useState(false);
+  if (open && !drawerPresent) setDrawerPresent(true);
+  useEffect(() => {
+    if (open) return;
+    const id = setTimeout(() => setDrawerPresent(false), 300);
+    return () => clearTimeout(id);
+  }, [open]);
+
   // Read from the URL rather than passed in. The server can know which section a
   // page is, but making it responsible for that meant every nav change was a
   // round trip to find out something the client already has, and it made the
@@ -310,9 +340,30 @@ export function AppShell({
               <p className="hidden truncate text-[0.8125rem] font-medium text-ink sm:block">
                 {orgName}
               </p>
-              <div className="hidden sm:block">
-                <SignOutButton />
-              </div>
+              {/* This is a range, not a floor, and that is the whole fix.
+
+                  The desktop rail is `hidden lg:flex`, so below `lg` this header
+                  is the only way to sign out on a tablet and it has to show from
+                  `sm`. At `lg` the rail appears carrying its own, and rendering
+                  this one as well put two "Sign out" on one screen -- one pinned
+                  bottom-left, one top-right. Same action, two places to look, so
+                  the pair read as two different controls.
+
+                  `lg:hidden` is what retires it there. Each breakpoint now has
+                  exactly one: drawer under `sm`, header from `sm` to `lg`, rail
+                  from `lg` up.
+
+                  The `drawerPresent` term is the other half. This range keeps
+                  the control from colliding with the *rail*; it does nothing
+                  about the *drawer*, which is a separate surface with its own
+                  copy that only appears below `lg`. Rotated phone or tablet:
+                  the drawer is open, the header still has one, and at
+                  `bg-ink/30` the scrim is not dark enough to hide the pair. */}
+              {drawerPresent ? null : (
+                <div className="hidden sm:block lg:hidden">
+                  <SignOutButton />
+                </div>
+              )}
             </div>
           </div>
         </header>
