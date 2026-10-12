@@ -65,6 +65,24 @@ export function buildStoragePath(args: {
   return `${organizationId}/proposals/${nonce}/v${version}/${itemId}/${fileName}`;
 }
 
+/**
+ * The storage path for a requirement-response document. The `reqs` segment is
+ * what tells `claim_requirement_upload` this is not an item document; the rest
+ * mirrors `buildStoragePath`, with the requirement id in place of the item id.
+ * `version` is the next proposal version the LSG is about to mint when it
+ * submits the response.
+ */
+export function buildRequirementStoragePath(args: {
+  organizationId: string;
+  nonce: string;
+  requirementId: string;
+  version: number;
+  fileName: string;
+}): string {
+  const { organizationId, nonce, requirementId, version, fileName } = args;
+  return `${organizationId}/proposals/${nonce}/reqs/v${version}/${requirementId}/${fileName}`;
+}
+
 export type UploadAction = "claim" | "chunk" | "commit" | "abort";
 
 export type ClaimResponse = {

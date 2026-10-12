@@ -6,6 +6,7 @@ import {
   MAX_FILE_BYTES,
   UPLOAD_CHUNK_BYTES,
   UUID_RE,
+  buildRequirementStoragePath,
   buildStoragePath,
   sanitizeFileName,
 } from "@/lib/documents";
@@ -116,22 +117,59 @@ async function handleJson(req: Request, token: string) {
     const fileName = typeof body.fileName === "string" ? sanitizeFileName(body.fileName) : "";
     const sizeBytes = readCount(body.sizeBytes);
     const itemId = typeof body.itemId === "string" ? body.itemId : "";
+    const requirementId = typeof body.requirementId === "string" ? body.requirementId : "";
     const nonce = typeof body.nonce === "string" ? body.nonce : "";
     const version = readCount(body.version);
+    const target = body.target === "requirement" ? "requirement" : "item";
 
     if (!fileName || sizeBytes === null) return fail("invalid_request");
     if (sizeBytes < 1) return fail("invalid_request");
     if (sizeBytes > MAX_FILE_BYTES) return fail("file_too_large");
-    if (!UUID_RE.test(itemId) || !UUID_RE.test(nonce)) return fail("invalid_request");
+    if (!UUID_RE.test(nonce)) return fail("invalid_request");
     if (version === null || version < 1 || version > 50) return fail("invalid_request");
 
     // The path is built here, not sent by the browser. The browser supplies the
-    // requirement item and the file, and nothing else -- so there is no request
-    // shape in which a caller can choose the organization segment. The nonce is
-    // there to keep two drafts from colliding; it is deliberately not a proposal id,
-    // because the proposal is created later and mints its own.
+    // requirement item or the additional requirement, and the file, and nothing
+    // else -- so there is no request shape in which a caller can choose the
+    // organization segment. The nonce is there to keep two drafts from
+    // colliding; it is deliberately not a proposal id, because the proposal is
+    // created later and mints its own.
     const account = await currentAccount();
     if (!account?.organizationId) return fail("no_organization", 403);
+
+    if (target === "requirement") {
+      if (!UUID_RE.test(requirementId)) return fail("invalid_request");
+
+      const storagePath = buildRequirementStoragePath({
+        organizationId: account.organizationId,
+        nonce,
+        requirementId,
+        version,
+        fileName,
+      });
+
+      // A response document is reserved against a proposal_requirement rather
+      // than a requirement_item; the RPC derives the org from the path prefix
+      // and refuses a requirement that is not open on the caller's own
+      // proposal. It has no resume semantics -- an in-flight claim is either
+      // reused or refused.
+      const result = await callRpc<RpcResult & { storagePath?: string }>(
+        "claim_requirement_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: 0 });
+    }
+
+    if (!UUID_RE.test(itemId)) return fail("invalid_request");
 
     const storagePath = buildStoragePath({
       organizationId: account.organizationId,

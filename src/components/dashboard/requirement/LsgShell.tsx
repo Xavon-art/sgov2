@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { ProgramRow, ProposalsListRow, RequirementItem, ItemKind } from "./types";
-import { formatDate, statusLabel } from "./helpers";
+import { formatDate, statusChipClass, statusLabel } from "./helpers";
 import { ActivityIcon } from "./ActivityIcon";
 import { ProposalForm } from "./ProposalForm";
 import { ProposalDetailFlow } from "./ProposalDetailFlow";
@@ -226,7 +226,9 @@ export function LsgShell() {
                 <span className="hidden text-[0.75rem] text-muted sm:inline">
                   {formatDate(p.createdAt)}
                 </span>
-                <span className="rounded-full bg-brass-soft/45 px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-brass-deep uppercase">
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] uppercase ${statusChipClass(p.status)}`}
+                >
                   {statusLabel(p.status)}
                 </span>
                 <Button size="sm" variant="paper" onClick={() => setOpenRow(p)}>

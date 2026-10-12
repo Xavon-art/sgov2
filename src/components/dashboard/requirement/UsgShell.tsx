@@ -46,7 +46,7 @@ export function UsgShell() {
   }, [load]);
 
   const awaiting = proposals.filter(
-    (x) => x.status === "submitted" || x.status === "returned",
+    (x) => x.status === "submitted" || x.status === "under_review" || x.status === "returned",
   ).length;
   const publishedCount = proposals.filter((x) => x.status === "published").length;
   const ownPublished = proposals.filter((x) => x.authorKind === "usg");

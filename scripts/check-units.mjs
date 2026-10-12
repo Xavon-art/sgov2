@@ -148,6 +148,7 @@ const m24 = readPendingMigration("20260101002400_task_assignments.sql");
 const m25 = readPendingMigration("20260101002500_feed_and_calendar.sql");
 const m26 = readPendingMigration("20260101002600_documents_and_verification.sql");
 const m27 = readPendingMigration("20260101002700_document_hardening.sql");
+const m50 = readPendingMigration("20260101003050_proposal_review_flow.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -480,6 +481,28 @@ const MIGRATION_FUNCTIONS = [
       "public.review_proposal",
       "public.get_item_file",
       "public.am_i_reviewer",
+    ],
+  ],
+  [
+    "003050",
+    m50,
+    [
+      "smartgov.start_proposal_review",
+      "smartgov.match_proposal_requirement",
+      "smartgov.claim_requirement_upload",
+      "smartgov.review_proposal",
+      "smartgov.submit_requirement_response",
+      "smartgov.verify_proposal_requirements",
+      "smartgov.get_requirement_file",
+      "smartgov.proposal_detail",
+      "public.start_proposal_review",
+      "public.match_proposal_requirement",
+      "public.claim_requirement_upload",
+      "public.review_proposal",
+      "public.submit_requirement_response",
+      "public.verify_proposal_requirements",
+      "public.get_requirement_file",
+      "public.proposal_detail",
     ],
   ],
 ];
@@ -1193,17 +1216,23 @@ check(
 );
 
 // The claim branch builds the path locally and then hands that local to the RPC, so
-// a browser that sends its own path has nothing to influence. `abort` and `commit`
-// legitimately quote a path back -- both re-check the caller on the way in.
+// a browser that sends its own path has nothing to influence. There are two shapes
+// now -- a requirement item and an additional requirement -- so each builder has to
+// be followed by its own send. `abort` and `commit` legitimately quote a path back --
+// both re-check the caller on the way in.
 const claimBranch = uploadsRoute.split('action === "claim"')[1]?.split('action === "commit"')[0] ?? "";
-const builtAt = claimBranch.indexOf("const storagePath = buildStoragePath(");
-const sentAt = claimBranch.indexOf("p_storage_path: storagePath");
+function buildsThenSends(builder) {
+  const builtAt = claimBranch.indexOf(`const storagePath = ${builder}(`);
+  const sentAt = claimBranch.indexOf("p_storage_path: storagePath", builtAt);
+  return builtAt !== -1 && sentAt > builtAt;
+}
 check(
   "the upload route builds the storage path instead of trusting the browser's",
   /buildStoragePath/.test(uploadsRoute) &&
+    /buildRequirementStoragePath/.test(uploadsRoute) &&
     /account\.organizationId/.test(uploadsRoute) &&
-    builtAt !== -1 &&
-    sentAt > builtAt,
+    buildsThenSends("buildStoragePath") &&
+    buildsThenSends("buildRequirementStoragePath"),
   "letting the caller send the whole path means letting the caller choose the organization segment",
 );
 
@@ -1325,8 +1354,8 @@ check(
 
   check(
     "each side reaches its own workspace, never the other's",
-    /href:\s*"\/usg\/proposals"/.test(usgNav) &&
-      /href:\s*"\/lsg\/proposals"/.test(lsgNav) &&
+    /href:\s*"\/usg\/activities-and-events"/.test(usgNav) &&
+      /href:\s*"\/lsg\/activities-and-events"/.test(lsgNav) &&
       !/href:\s*"\/lsg/.test(usgNav) &&
       !/href:\s*"\/usg/.test(lsgNav),
     "a nav module links into the other side's tree",
@@ -1646,9 +1675,9 @@ check(
 );
 
 check(
-  "both task nav items point at routes that exist",
-  /href:\s*"\/lsg\/tasks"/.test(lsgNav) && /href:\s*"\/usg\/tasks"/.test(usgNav),
-  "a task nav item was added before its page landed",
+  "both task pages survive the reconstruction even though tasks left the nav",
+  lsgTasksPage.length > 0 && usgTasksPage.length > 0 && !/\/lsg\/tasks/.test(lsgNav) && !/\/usg\/tasks/.test(usgNav),
+  "the reconstruction pulled tasks from the nav, so the pair of pages must still work by direct URL",
 );
 
 check(
@@ -1743,16 +1772,16 @@ check(
 );
 
 check(
-  "both feed pages exist and are the same view",
-  readPendingSource("src/app/lsg/feed/page.tsx").includes("<FeedView />")
+  "the reconstruction cut the LSG feed while the page stays as a redirect",
+  /redirect\("\/lsg"\)/.test(readPendingSource("src/app/lsg/feed/page.tsx"))
     && readPendingSource("src/app/usg/feed/page.tsx").includes("<FeedView />"),
-  "one workspace is missing the feed, or the two have drifted apart",
+  "the LSG feed page vanished entirely, or the USG side no longer renders the same view",
 );
 
 check(
-  "the feed nav items exist on both sides",
-  /href:\s*"\/lsg\/feed"/.test(lsgNav) && /href:\s*"\/usg\/feed"/.test(usgNav),
-  "a feed nav item was added before its page landed",
+  "the LSG side is not offered a feed it has been cut from",
+  !/href:\s*"\/lsg\/feed"/.test(lsgNav),
+  "a feed link was added back to the LSG nav while the page still only redirects",
 );
 
 check(
@@ -2347,6 +2376,121 @@ check(
       structureProbe.indexOf("Gov Probe ${stamp}") &&
     /delete from public\.organizations where id = any/.test(structureProbe),
   "the probe registers its cleanup after its first insert, or does not clean up at all",
+);
+
+// --- 17. Proposal review flow (003050) ---
+// The explicit review step and the additional-requirements loop. Load-bearing
+// rows are mutation-tested the way item 14 is: deleting the reviewer gate off
+// start_proposal_review, taking the org-prefix derivation out of
+// claim_requirement_upload, or letting submit_requirement_response skip the
+// confirmed-document check must each turn this section red.
+const m50Flat = flat(m50);
+const m50Blocks = functionBlocks(m50);
+const block50 = (name) => m50Blocks.find((b) => b.name === name);
+const flat50 = (b) => (b ? flat(b.body) : "");
+
+check(
+  "003050 enables RLS on proposal_requirements and creates no policies",
+  /alter table smartgov\.proposal_requirements enable row level security/.test(m50Flat) &&
+    !/create policy/i.test(m50) &&
+    /revoke all on smartgov\.proposal_requirements from anon, authenticated/.test(m50Flat),
+);
+
+check(
+  "003050 grows the proposal and review status sets",
+  /check \(status in \('submitted','under_review','returned','requirements_requested','approved','rejected','published'\)\)/.test(m50Flat) &&
+    /check \(decision in \('approved','returned','rejected','requirements'\)\)/.test(m50Flat),
+  "the progress bar renders under_review and requirements_requested, so both statuses have to exist in the store",
+);
+
+check(
+  "003050 gives document_uploads a proposal_requirement target",
+  /alter column requirement_item drop not null/.test(m50Flat) &&
+    /add column if not exists proposal_requirement uuid/.test(m50Flat) &&
+    /check \(\(requirement_item is null\) <> \(proposal_requirement is null\)\)/.test(m50Flat),
+  "requirement-response bytes share the item byte store; the XOR target check keeps one claim slot per row",
+);
+
+check(
+  "003050 start_proposal_review is reviewer-gated and only opens a submitted proposal",
+  /smartgov\.is_org_reviewer\(/.test(flat50(block50("smartgov.start_proposal_review"))) &&
+    /if v_proposal\.status <> 'submitted' then[\s\S]*invalid_request/.test(flat50(block50("smartgov.start_proposal_review"))) &&
+    /set status = 'under_review'/.test(flat50(block50("smartgov.start_proposal_review"))),
+);
+
+check(
+  "003050 claim_requirement_upload derives the org from the path and answers only for an open requirement",
+  /nullif\(split_part\(p_storage_path, '\/', 1\), ''\)::uuid/.test(flat50(block50("smartgov.claim_requirement_upload"))) &&
+    /v_org <> v_account\.organization_id/.test(flat50(block50("smartgov.claim_requirement_upload"))) &&
+    /p\.status = 'requirements_requested'[\s\S]*r\.status = 'requested'/.test(flat50(block50("smartgov.claim_requirement_upload"))) &&
+    /unsupported_file_type/.test(flat50(block50("smartgov.claim_requirement_upload"))),
+  "a path is only a document if the caller owns its org prefix and the requirement is actually open",
+);
+
+check(
+  "003050 review_proposal re-declares with p_requirements and attaches them only to an approval",
+  /p_requirements\s+jsonb default null/.test(m50Flat) &&
+    /if p_decision <> 'approved' and jsonb_array_length\(v_reqs\) > 0 then[\s\S]*invalid_request/.test(flat50(block50("smartgov.review_proposal"))) &&
+    /'requirements_requested'/.test(flat50(block50("smartgov.review_proposal"))) &&
+    /'requirements'/.test(flat50(block50("smartgov.review_proposal"))),
+  "the loop's entry is a conditional approval: requirements without the approve decision must be refused",
+);
+
+check(
+  "003050 review_proposal keeps the reviewer gate and the already_reviewed guard",
+  /smartgov\.is_org_reviewer\(/.test(flat50(block50("smartgov.review_proposal"))) &&
+    /'already_reviewed'/.test(flat50(block50("smartgov.review_proposal"))),
+);
+
+check(
+  "003050 submit_requirement_response mints a version and answers every open requirement",
+  /status <> 'requirements_requested'[\s\S]*invalid_request/.test(flat50(block50("smartgov.submit_requirement_response"))) &&
+    /insert into smartgov\.proposal_versions/.test(flat50(block50("smartgov.submit_requirement_response"))) &&
+    /d\.confirmed_at is not null[\s\S]*d\.large_object_oid is not null/.test(flat50(block50("smartgov.submit_requirement_response"))) &&
+    /set status = 'under_review'/.test(flat50(block50("smartgov.submit_requirement_response"))) &&
+    /lsg_unit_ids\(/.test(flat50(block50("smartgov.submit_requirement_response"))),
+  "a response is only accepted after a real, confirmed upload and only when the whole round is answered",
+);
+
+check(
+  "003050 verify_proposal_requirements seals each submitted requirement and approves at the end",
+  /smartgov\.is_org_reviewer\(/.test(flat50(block50("smartgov.verify_proposal_requirements"))) &&
+    /v_dec not in \('accepted','waived'\)/.test(flat50(block50("smartgov.verify_proposal_requirements"))) &&
+    /set status = 'approved'/.test(flat50(block50("smartgov.verify_proposal_requirements"))) &&
+    /'already_reviewed'/.test(flat50(block50("smartgov.verify_proposal_requirements"))),
+);
+
+check(
+  "003050 get_requirement_file scopes the bytes to author, unit, and reviewer",
+  /smartgov\.is_org_reviewer\(/.test(flat50(block50("smartgov.get_requirement_file"))) &&
+    /lsg_unit_ids\(/.test(flat50(block50("smartgov.get_requirement_file"))) &&
+    /confirmed_at is not null[\s\S]*large_object_oid is not null/.test(flat50(block50("smartgov.get_requirement_file"))),
+);
+
+check(
+  "003050 proposal_detail carries requirements and the budget for the review panel",
+  /'requirements', coalesce\(/.test(m50Flat) &&
+    /'budget', \(select jsonb_build_object/.test(m50Flat) &&
+    /unit_cost,\s*'subtotal', bi\.subtotal/.test(m50Flat),
+);
+
+// The published surface of 003050 is measured the same way as item 14: every
+// `grant execute on function` in the file must name exactly one of the eight
+// intended wrappers, so a stray grant landing on a smartgov.\* definer body is
+// caught by the count rather than by prose.
+const m50Grants = [...m50Flat.matchAll(/grant execute on function\s+([\w.]+)\s*\(/g)].map((m) => m[1]);
+const M50_WRAPPERS = [
+  "public.start_proposal_review", "public.match_proposal_requirement",
+  "public.claim_requirement_upload", "public.review_proposal",
+  "public.submit_requirement_response", "public.verify_proposal_requirements",
+  "public.get_requirement_file", "public.proposal_detail",
+];
+check(
+  "003050 publishes exactly the eight intended wrappers to PostgREST",
+  m50Grants.length === 8 && m50Grants.every((g) => M50_WRAPPERS.includes(g)),
+  m50Grants.length
+    ? `granted: ${m50Grants.join(", ")} -- the audited allowlist is the whole attack surface`
+    : "no wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
 );
 
 console.log(

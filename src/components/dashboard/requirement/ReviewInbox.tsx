@@ -1,37 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import type { ProposalsListRow } from "./types";
-import { formatDate } from "./helpers";
+import type { ProposalStatus, ProposalsListRow } from "./types";
+import { formatDate, statusChipClass, statusLabel } from "./helpers";
 import { ActivityIcon } from "./ActivityIcon";
 import { ProposalDetailFlow } from "./ProposalDetailFlow";
 import { Button } from "@/components/ui/Button";
 
-function StatusBadge({ status }: { status: ProposalsListRow["status"] }) {
-  if (status === "approved") {
-    return (
-      <span className="inline-flex items-center rounded-full bg-ink px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-canvas uppercase">
-        Approved
-      </span>
-    );
-  }
-  if (status === "rejected") {
-    return (
-      <span className="inline-flex items-center rounded-full border border-line px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-ink-soft uppercase">
-        Rejected
-      </span>
-    );
-  }
+function StatusBadge({ status }: { status: ProposalStatus }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-brass-soft/45 px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] text-brass-deep uppercase">
-      {status === "published" ? "Published" : "Returned"}
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[0.6875rem] font-semibold tracking-[0.06em] uppercase ${statusChipClass(status)}`}
+    >
+      {statusLabel(status)}
     </span>
   );
 }
 
 /**
- * The USG board's review inbox. Rows needing attention -- submitted or returned
- * proposals -- open the detail flow, which carries the decision actions.
+ * The USG board's review inbox. Rows the board still has to act on -- submitted,
+ * under review, or returned -- open the detail flow, which carries the review,
+ * verification, and decision actions.
  */
 export function ReviewInbox({
   proposals,
@@ -42,7 +31,7 @@ export function ReviewInbox({
 }) {
   const [open, setOpen] = useState<ProposalsListRow | null>(null);
   const awaiting = proposals.filter(
-    (x) => x.status === "submitted" || x.status === "returned",
+    (x) => x.status === "submitted" || x.status === "under_review" || x.status === "returned",
   );
 
   if (open) {

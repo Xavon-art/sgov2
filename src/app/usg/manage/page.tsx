@@ -45,15 +45,21 @@ export default function UsgManagePage() {
   }, []);
 
   useEffect(() => {
+    // Each kind flips after its fetch resolves, not during render; the rule
+    // cannot see through the await when the loader is handed to the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUnits();
   }, [loadUnits]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadInvites();
   }, [loadInvites]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAccess();
   }, [loadAccess]);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadStructure();
   }, [loadStructure]);
 

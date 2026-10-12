@@ -21,6 +21,9 @@ export default function LsgManagePage() {
   }, []);
 
   useEffect(() => {
+    // The kind flips after the fetch resolves, not during render; the rule
+    // cannot see through the await when the loader is handed to the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadStructure();
   }, [loadStructure]);
 

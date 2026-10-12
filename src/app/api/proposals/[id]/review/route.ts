@@ -26,7 +26,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
 
-  let body: { decision?: string; remark?: string };
+  let body: {
+    decision?: string;
+    remark?: string;
+    requirements?: Array<{ label: string; detail?: string }> | null;
+  };
   try {
     body = await req.json();
   } catch {
@@ -42,6 +46,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       p_proposal_id: id,
       p_decision: body.decision,
       p_remark: body.remark ?? "",
+      p_requirements:
+        Array.isArray(body.requirements) && body.requirements.length > 0
+          ? body.requirements
+          : null,
     });
     if (!res.ok) {
       return NextResponse.json(
