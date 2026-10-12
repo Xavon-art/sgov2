@@ -1,5 +1,5 @@
-import FeedView from "@/components/dashboard/feed/FeedView";
+import { redirect } from "next/navigation";
 
 export default function LsgFeedPage() {
-  return <FeedView />;
+  redirect("/lsg");
 }

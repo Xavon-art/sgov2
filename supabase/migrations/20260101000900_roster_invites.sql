@@ -254,7 +254,41 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'already_registered');
   end if;
 
-  select case when o.governance_model = 'unitary'
+  -- ----- HANDOVER BRANCH -----
+  -- If the invite carries a handover_account_id, this is a deactivation
+  -- handover flow: the successor takes over the deactivated officer's account.
+  if v_invite.handover_account_id is not null then
+    -- load the target account; it must be suspended or pending and belong to
+    -- the same organization as the invite
+    select id, email, password_hash, status, display_name, campus_name,
+           organization_id, university_name, otp_hash, otp_expires_at
+      into v_target_acct
+      from smartgov.accounts
+      where id = v_invite.handover_account_id;
+
+    if v_target_acct.id is null then
+      return jsonb_build_object('ok', false, 'reason', 'target_not_found');
+    end if;
+
+    if v_target_acct.status not in ('suspended', 'pending') then
+      return jsonb_build_object('ok', false, 'reason', 'target_not_suspended');
+    end if;
+
+    -- update the target account: swap email, set new password, set status pending
+    -- keep campus_name, university_name; clear otp columns so verify_otp can set them
+    update smartgov.accounts
+    set email = v_invite.email,
+        password_hash = smartgov.hash_password(p_password),
+        display_name = v_invite.email, -- placeholder; the new officer can edit later
+        status = 'pending',
+        otp_hash = null,
+        otp_expires_at = null
+    where id = v_target_acct.id;
+
+    v_account_id := v_target_acct.id;
+  else
+    -- ----- NORMAL FLOW (unchanged) -----
+    select case when o.governance_model = 'unitary'
               then 'central'::smartgov.account_kind
               else 'usg'::smartgov.account_kind
          end,
