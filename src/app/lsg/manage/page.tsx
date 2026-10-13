@@ -14,7 +14,10 @@ export default function LsgManagePage() {
 
   const loadStructure = useCallback(async () => {
     try {
-      const res = await fetch("/api/structure");
+      // GET /api/structures requires a `view`; `queue` answers `ok: true` for an
+      // officer with an organization, which is all this availability gate needs.
+      // A bare `/api/structure` never existed, so the gate never resolved.
+      const res = await fetch("/api/structures?view=queue");
       const data = await res.json();
       if (res.ok && data.ok) setStructureKind("ready");
     } catch {}
