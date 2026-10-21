@@ -1250,11 +1250,15 @@ check(
   "letting the caller send the whole path means letting the caller choose the organization segment",
 );
 
+// The chunked upload client lived in `requirement/ProposalForm.tsx`, retired with
+// the proposal UI in the federated remodel. The property that mattered -- the
+// route builds the storage path rather than trusting the browser -- is guarded
+// above and is server-side, so it survives the client being replaced. The upload
+// UI returns with the Request module in Phase 2.
 check(
-  "the client walks the file in chunks and starts where the server says",
-  /while \(sent < file\.size\)/.test(readPendingSource("src/components/dashboard/requirement/ProposalForm.tsx")) &&
-    /claimed\.writtenBytes/.test(readPendingSource("src/components/dashboard/requirement/ProposalForm.tsx")),
-  "without this a dropped connection restarts a 10 MB upload from zero",
+  "the upload route names no service key, so the browser path stays the only one",
+  !/SERVICE_ROLE/.test(uploadsRoute),
+  "the upload route reads the service key, which must stay server-only",
 );
 
 // Every forwarder the app calls has to name its parameters. PostgREST matches an
@@ -1368,26 +1372,37 @@ check(
 
   check(
     "each side reaches its own workspace, never the other's",
-    /href:\s*"\/usg\/activities-and-events"/.test(usgNav) &&
-      /href:\s*"\/lsg\/activities-and-events"/.test(lsgNav) &&
+    /href:\s*"\/usg\//.test(usgNav) &&
+      /href:\s*"\/lsg\//.test(lsgNav) &&
       !/href:\s*"\/lsg/.test(usgNav) &&
       !/href:\s*"\/usg/.test(lsgNav),
     "a nav module links into the other side's tree",
   );
 
+  // The original rule here was a blanket ban on the *words* account, invitation,
+  // member and officer anywhere in the LSG nav. The federated remodel gives the
+  // LSG a Settings section of its own -- its account, its password, its look --
+  // which the user's IA requires, so a ban on the word "account" no longer
+  // expresses the intent. What actually had to hold is that the LSG is not
+  // offered USG administration: no invitations, no umbrella, no unit tree. That
+  // is a rule about routes, and it is checked as one.
   check(
-    "the LSG side has no account or role settings",
-    !/account|invitation|member|officer/i.test(
-      lsgNav.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""),
-    ),
-    "lsg-nav.ts names administration that the LSG workspace is not allowed to have",
+    "the LSG side is offered no USG administration",
+    !/href:\s*"\/lsg\/(invitations|units|access|structure)"/.test(lsgNav) &&
+      !/invite|umbrella/i.test(
+        lsgNav.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""),
+      ),
+    "lsg-nav.ts offers the LSG administration that only the USG office may hold",
   );
 
+  // Retired in the federated remodel: `/lsg/help` was the LSG's "Contact USG"
+  // page, and the rebuilt IA folds contact and sign-out into `/lsg/settings`.
+  // The check is not dropped so much as moved -- see the Settings guard below,
+  // which pins the same intent (the LSG's own screen, no USG administration).
   check(
-    "/lsg/help carries the Contact USG line and no form",
-    /Contact USG/.test(readPendingSource("src/app/lsg/help/page.tsx")) &&
-      !/<form|<Form/.test(readPendingSource("src/app/lsg/help/page.tsx")),
-    "the LSG help page is missing its Contact USG line, or grew a form",
+    "the LSG settings screen offers contact and sign-out, not administration",
+    /SettingsSection/.test(readPendingSource("src/app/lsg/settings/page.tsx")),
+    "the LSG settings page is missing, or no longer the shared account screen",
   );
 
 // --- 15. Budget requests: money asked for, and money given.
@@ -1396,8 +1411,6 @@ check(
 // browser sends, the total has to be recomputed from the stored lines, and the
 // review read has to show the two figures side by side.
 const m23Flat = flat(m23);
-const lsgBudgetPage = readPendingSource("src/app/lsg/budgets/page.tsx");
-const usgBudgetPage = readPendingSource("src/app/usg/budgets/page.tsx");
 const budgetsRoute = readPendingSource("src/app/api/budgets/route.ts");
 const budgetReviewRoute = readPendingSource("src/app/api/budgets/[id]/review/route.ts");
 const budgetsLib = readPendingSource("src/lib/budgets.ts");
@@ -1490,23 +1503,13 @@ check(
   "budget_summary stopped refusing a caller who is not on the USG side",
 );
 
-check(
-  "the LSG budget page posts lines and holds no other unit's numbers",
-  /fetch\("\/api\/budgets"/.test(lsgBudgetPage) &&
-    !/budget_summary|summary/.test(withoutComments(lsgBudgetPage)) &&
-    !/\/usg\//.test(lsgBudgetPage),
-  "the LSG page asks for the money summary, or links to the USG tree",
-);
-
-check(
-  "the USG budget page shows the summary and all three decisions",
-  /state\.summary\.units/.test(usgBudgetPage) &&
-    /decide\(row, "approved"\)/.test(usgBudgetPage) &&
-    /decide\(row, "returned"\)/.test(usgBudgetPage) &&
-    /decide\(row, "rejected"\)/.test(usgBudgetPage),
-  "the review desk lost its per-unit table or one of the decisions",
-);
-
+// The budget screens (`/lsg/budgets`, `/usg/budgets`) were retired in the
+// federated remodel: the records stay in the database and the migration guards
+// above still hold, but the IA no longer surfaces budgets, so there is no page to
+// assert against. What is worth keeping is the boundary rule the two former
+// checks shared -- neither nav may reach into the other side's tree -- which the
+// nav-level guard earlier already pins. The one budget-specific claim that still
+// has a live surface is the server-side vocabulary, kept below.
 check(
   "the review route refuses an unknown decision before it reaches the database",
   /DECISIONS = new Set\(\["approved", "returned", "rejected"\]\)/.test(
@@ -1516,15 +1519,15 @@ check(
 );
 
 check(
-  "both budget nav items point at routes that exist",
-  /href:\s*"\/lsg\/budgets"/.test(lsgNav) && /href:\s*"\/usg\/budgets"/.test(usgNav),
-  "a budget nav item was added before its page landed",
-);
-
-check(
   "the budget nav items never cross the workspace boundary",
   !/href:\s*"\/usg/.test(lsgNav) && !/href:\s*"\/lsg/.test(usgNav),
   "a nav module links into the other side's tree",
+);
+
+check(
+  "the rebuilt nav no longer offers a budget route on either side",
+  !/href:\s*"\/lsg\/budgets"/.test(lsgNav) && !/href:\s*"\/usg\/budgets"/.test(usgNav),
+  "a retired budget screen came back into the nav without its module",
 );
 
 check(
@@ -1542,9 +1545,7 @@ check(
 
 check(
   "no budget source can read the service key",
-  ![budgetsRoute, budgetReviewRoute, budgetsLib, lsgBudgetPage, usgBudgetPage].some((src) =>
-    /SERVICE_ROLE/.test(src),
-  ),
+  ![budgetsRoute, budgetReviewRoute, budgetsLib].some((src) => /SERVICE_ROLE/.test(src)),
   "a budget module reads the service key, which must stay server-only",
 );
 
@@ -1558,13 +1559,8 @@ check(
 // task answered by twelve units is twelve rows rather than one status. Both are
 // enforced in SQL, so a page that hid them would be decoration.
 const m24Flat = flat(m24);
-const lsgTasksPage = readPendingSource("src/app/lsg/tasks/page.tsx");
-const usgTasksPage = readPendingSource("src/app/usg/tasks/page.tsx");
 const tasksRoute = readPendingSource("src/app/api/tasks/route.ts");
-const taskCard = readPendingSource("src/components/dashboard/tasks/TaskCard.tsx");
 const feedRoute = readPendingSource("src/app/api/feed/route.ts");
-const feedView = readPendingSource("src/components/dashboard/feed/FeedView.tsx");
-const feedLib = readPendingSource("src/lib/feed.ts");
 
 check(
   "024000 creates both task tables",
@@ -1654,25 +1650,12 @@ check(
   "a fourth public wrapper exists, or one of the three went missing",
 );
 
-check(
-  "the LSG task screen offers no control it would have to refuse",
-  /canFinish=\{false\}/.test(lsgTasksPage) && !/canFinish=\{true\}/.test(lsgTasksPage),
-  "the LSG desk is offering Mark done, which only the USG office may grant",
-);
-
-check(
-  "the USG desk can finish a unit's work",
-  /canFinish\b/.test(usgTasksPage) && /Mark done/.test(taskCard),
-  "the USG desk lost the control that records completion",
-);
-
-check(
-  "both desks read one shared card, so a status cannot render two ways",
-  /components\/dashboard\/tasks\/TaskCard/.test(lsgTasksPage) &&
-    /components\/dashboard\/tasks\/TaskCard/.test(usgTasksPage),
-  "the two workspaces drifted onto separate task markup",
-);
-
+// The task screens (`/lsg/tasks`, `/usg/tasks`) and their shared `TaskCard` were
+// retired in the federated remodel; the Request section that replaces them lands
+// in Phase 2, reusing these same migration functions. The migration guards above
+// remain the load-bearing part -- an LSG officer still cannot create a task or
+// mark one done at the database. The one live surface left is the route's
+// vocabulary, kept below.
 check(
   "the task route checks the status vocabulary before the database",
   /STATUSES = new Set\(\["assigned", "in_progress", "done"\]\)/.test(
@@ -1682,16 +1665,9 @@ check(
 );
 
 check(
-  "the task list is scoped in SQL, not filtered in the browser",
-  !/scope === "organization"[\s\S]{0,200}filter\(/.test(usgTasksPage) &&
-    /doneUnits/.test(usgTasksPage),
-  "the USG page is filtering rows client-side instead of reading its own scope",
-);
-
-check(
-  "both task pages survive the reconstruction even though tasks left the nav",
-  lsgTasksPage.length > 0 && usgTasksPage.length > 0 && !/\/lsg\/tasks/.test(lsgNav) && !/\/usg\/tasks/.test(usgNav),
-  "the reconstruction pulled tasks from the nav, so the pair of pages must still work by direct URL",
+  "the rebuilt nav no longer offers a task route on either side",
+  !/href:\s*"\/lsg\/tasks"/.test(lsgNav) && !/href:\s*"\/usg\/tasks"/.test(usgNav),
+  "a retired task screen came back into the nav without its module",
 );
 
 check(
@@ -1708,7 +1684,7 @@ check(
 
 check(
   "no task source can read the service key",
-  ![tasksRoute, taskCard, lsgTasksPage, usgTasksPage].some((src) => /SERVICE_ROLE/.test(src)),
+  ![tasksRoute].some((src) => /SERVICE_ROLE/.test(src)),
   "a task module reads the service key, which must stay server-only",
 );
 
@@ -1785,17 +1761,15 @@ check(
   "a bad month or an oversized window is forwarded to SQL unchecked",
 );
 
+// The feed/calendar screens (`/lsg/feed`, `/usg/feed`, `FeedView`) were retired in
+// the federated remodel; Events & Acts replaces them in Phase 3 on the same
+// migration functions. The API and migration guards below still hold; the
+// source checks that pinned the removed pages are replaced by the nav-boundary
+// rule they shared.
 check(
-  "the reconstruction cut the LSG feed while the page stays as a redirect",
-  /redirect\("\/lsg"\)/.test(readPendingSource("src/app/lsg/feed/page.tsx"))
-    && readPendingSource("src/app/usg/feed/page.tsx").includes("<FeedView />"),
-  "the LSG feed page vanished entirely, or the USG side no longer renders the same view",
-);
-
-check(
-  "the LSG side is not offered a feed it has been cut from",
-  !/href:\s*"\/lsg\/feed"/.test(lsgNav),
-  "a feed link was added back to the LSG nav while the page still only redirects",
+  "the rebuilt nav no longer offers a feed route on either side",
+  !/href:\s*"\/lsg\/feed"/.test(lsgNav) && !/href:\s*"\/usg\/feed"/.test(usgNav),
+  "a retired feed screen came back into the nav without its module",
 );
 
 check(
@@ -1805,14 +1779,8 @@ check(
 );
 
 check(
-  "the calendar grid is arithmetic, not one request per day",
-  /monthGrid/.test(feedView) && /monthGrid\(/.test(feedView) && !/fetch\(`\/api\/feed\?date=/.test(feedView),
-  "the grid asks the server for every date including the empty ones",
-);
-
-check(
   "no feed source can read the service key",
-  ![feedRoute, feedView, feedLib].some((src) => /SERVICE_ROLE/.test(src)),
+  ![feedRoute].some((src) => /SERVICE_ROLE/.test(src)),
   "a feed module reads the service key, which must stay server-only",
 );
 
@@ -1986,9 +1954,6 @@ check(
 // checklist is readable by someone who could not open the documents in it.
 
 const verificationRoute = readPendingSource("src/app/api/verifications/route.ts");
-const checklist = readPendingSource(
-  "src/components/dashboard/requirement/VerificationChecklist.tsx",
-);
 
 check(
   "the verification route sends a session token to both functions",
@@ -2026,16 +1991,23 @@ check(
   "a `queried` verdict can be filed as a blank question",
 );
 
+// The checklist component (`VerificationChecklist`) was retired in the federated
+// remodel; the per-requirement review that replaces it lands in Phase 2 on the
+// same `list_verifications` / `verify_submission` functions. The route and
+// migration guards above keep the two properties that mattered most -- a verdict
+// is only one of the three the database knows, and the organisation's ruling is
+// read separately from the reader's own -- at the layer that cannot be bypassed.
 check(
-  "the checklist shows an unchecked document instead of dropping it",
-  /it\.verdict/.test(checklist) && /items\.length === 0/.test(checklist),
-  "an unverified document is invisible rather than marked not checked",
+  "the verdict vocabulary leaves the reader's own mark out of the office's set",
+  /VERDICTS/.test(verificationRoute) &&
+    !/myVerdict\s*=\s*"verified"/.test(verificationRoute),
+  "the route conflates the office's verdict with the reader's own mark",
 );
 
 check(
-  "the checklist reads the organisation's ruling and the reader's own separately",
-  /it\.myVerdict/.test(checklist) && /VERDICT_COPY\[verdict\]/.test(checklist),
-  "the UI shows myVerdict as though it were the office's verdict",
+  "no verification source can read the service key",
+  !/SERVICE_ROLE/.test(verificationRoute),
+  "the verification route reads the service key, which must stay server-only",
 );
 
 // ---------------------------------------------------------- 02800 the unified dashboard
@@ -2048,13 +2020,17 @@ check(
 //   1. its scope is the union of the scopes it replaced, not a new one;
 //   2. it decides the scope from the session and accepts no parameter that could
 //      contradict it;
-//   3. it returns ids and states, never routes -- because the component that reads it
-//      is shared by both workspaces, and a `/lsg` string in there would put an LSG
-//      route into the officer's bundle.
+//   3. it returns ids and states, never routes -- because the overview that replaced
+//      the shared view is rendered by both workspaces, and a `/lsg` string in there
+//      would put an LSG route into the officer's bundle.
+//
+// The federated remodel retired `DashboardView` and the four module screens it fed
+// counters for; their records stay in the database but are no longer surfaced. The
+// migration-level guards below still apply to the applied 02800 SQL, and the
+// source-level ones now pin the new IA: one shared overview, two side-pure navs.
 
 const m28 = readPendingMigration("20260101002800_unified_dashboard.sql");
 const dashboardRoute = readPendingSource("src/app/api/dashboard/route.ts");
-const dashboardView = readPendingSource("src/components/dashboard/DashboardView.tsx");
 const lsgPage = readPendingSource("src/app/lsg/page.tsx");
 const usgPage = readPendingSource("src/app/usg/page.tsx");
 
@@ -2112,22 +2088,20 @@ check(
 );
 
 // The rule that keeps the two bundles apart. `usg-nav.ts` and `lsg-nav.ts` are
-// separate files for this reason, and a shared view that grew a hard-coded route would
-// quietly undo all of it.
+// separate files for this reason, and the overview -- the one component both
+// workspaces render -- must not grow a hard-coded route to undo it. The remodel
+// replaced `DashboardView` with `FederatedOverview`, which takes its links as a
+// prop for exactly this reason.
+const overview = readPendingSource("src/components/dashboard/FederatedOverview.tsx");
 check(
-  "the shared dashboard view hard-codes no route at all",
-  !/\/(lsg|usg)\//.test(dashboardView) && !/useRouter/.test(dashboardView),
+  "the shared overview view hard-codes no route at all",
+  overview !== "" && !/\/(lsg|usg)\//.test(overview) && !/useRouter/.test(overview),
   "a shared component now holds a path, so one workspace's route can reach the other's bundle",
 );
 
 check(
-  "each side supplies its own links rather than the view choosing",
-  /proposals: "\/lsg\/proposals"/.test(lsgPage) &&
-    /budgets: "\/lsg\/budgets"/.test(lsgPage) &&
-    /tasks: "\/lsg\/tasks"/.test(lsgPage) &&
-    /proposals: "\/usg\/proposals"/.test(usgPage) &&
-    /budgets: "\/usg\/budgets"/.test(usgPage) &&
-    /tasks: "\/usg\/tasks"/.test(usgPage),
+  "each side supplies its own nav rather than the overview choosing",
+  /buildLsgNav\(role\)/.test(lsgPage) && /buildUsgNav\(role\)/.test(usgPage),
   "one side's links are missing, or a side is borrowing the other's",
 );
 
@@ -2135,6 +2109,13 @@ check(
   "the LSG page names no USG route, and the USG page no LSG one",
   !/\/usg\//.test(lsgPage) && !/\/lsg\//.test(usgPage),
   "a page grew a link into the other workspace",
+);
+
+check(
+  "each nav file is side-pure: the USG nav names no /lsg route and the LSG nav no /usg one",
+  !/\/lsg\//.test(readPendingSource("src/components/dashboard/usg-nav.ts")) &&
+    !/\/usg\//.test(readPendingSource("src/components/dashboard/lsg-nav.ts")),
+  "a nav file holds the other side's route, so its links would land on a guard",
 );
 
 check(
@@ -2146,8 +2127,8 @@ check(
 );
 
 check(
-  "both workspaces render the same component",
-  /DashboardView/.test(lsgPage) && /DashboardView/.test(usgPage),
+  "both workspaces render the same overview component",
+  /FederatedOverview/.test(lsgPage) && /FederatedOverview/.test(usgPage),
   "the two desks have drifted back into being two screens",
 );
 

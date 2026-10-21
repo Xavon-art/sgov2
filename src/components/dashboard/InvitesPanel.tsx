@@ -43,10 +43,9 @@ const TREE_UNIT_OPTIONS = [
 /**
  * Invitations, and the officers they produced.
  *
- * Separate from `UnitsPanel` so that neither page pays for the other's list. The
- * decentralized form needs the campus list to put somebody *into* a campus, so
- * this route does read `/api/units` -- but only for the dropdown, and only when
- * it is a USG whose units are a tree.
+ * It reads `/api/units` for the campus dropdown, but only for the dropdown, and
+ * only when it is a USG whose units are a tree. (The umbrella list of units under
+ * the USG is a different read and a different screen -- `UmbrellaSection`.)
  *
  * The centralized office sits above its units directly, so `add_unit` refuses to
  * extend one and its units are not a tree. That variant keeps a free-text invite

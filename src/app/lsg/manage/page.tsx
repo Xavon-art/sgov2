@@ -1,74 +1,87 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { useAccount } from "@/components/dashboard/dashboard-context";
-import { NotAvailable } from "@/components/dashboard/NotAvailable";
-import { useCallback, useEffect, useState } from "react";
+import { ProfileSection } from "@/components/dashboard/ProfileSection";
+import { cn } from "@/lib/utils";
 
 /**
- * LSG Manage page - simplified state version.
+ * Manage, from the LSG side.
+ *
+ * Two floors, not three: the umbrella and the invitations that grow it are the
+ * USG's job, not a unit's. What a unit does own is its own profile and the
+ * government structure of its council -- the officers and committees it is
+ * accountable for -- so those are the two tabs here.
+ *
+ * The structure builder is `/my-council/structure`, which resolves the caller's
+ * own council from the database rather than taking a unit id from the URL, so
+ * there is no id to name here.
  */
+
+type Tab = "profile" | "structure";
+
 export default function LsgManagePage() {
   const account = useAccount();
+  const [tab, setTab] = useState<Tab>("profile");
 
-  const [structureKind, setStructureKind] = useState<"loading" | "ready">("loading");
-
-  const loadStructure = useCallback(async () => {
-    try {
-      // GET /api/structures requires a `view`; `queue` answers `ok: true` for an
-      // officer with an organization, which is all this availability gate needs.
-      // A bare `/api/structure` never existed, so the gate never resolved.
-      const res = await fetch("/api/structures?view=queue");
-      const data = await res.json();
-      if (res.ok && data.ok) setStructureKind("ready");
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    // The kind flips after the fetch resolves, not during render; the rule
-    // cannot see through the await when the loader is handed to the effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadStructure();
-  }, [loadStructure]);
-
-  if (structureKind !== "ready") {
-    return <div>Loading manage section…</div>;
-  }
-
-  // Simulated deactivated check - in real app this would come from API
-  const deactivated = false;
+  const unitName = account.campusName || account.universityName || "your unit";
 
   return (
-    <section className="space-y-4">
-      <p className="eyebrow">Council structure</p>
-      <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-        Council structures
-      </h2>
-      <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
-        Every council in your organization.
-      </p>
-      {deactivated ? (
-        <div className="rounded-card border border-brass/50 bg-brass-soft/30 p-4">
-          <p className="text-[0.9375rem] text-brass-deep font-medium">
-            ⚠️ One or more accounts are deactivated. The dashboard is inaccessible
-            until the account is reactivated or handed over.
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-card border border-line bg-paper p-4">
-          <p className="text-[0.9375rem] text-ink">
-            All accounts are active. Structure is operational.
-          </p>
-        </div>
-      )}
+    <section className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <p className="eyebrow">Manage</p>
+        <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">{unitName}</h1>
+        <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
+          Your own account, and the government structure of your council.
+        </p>
+      </header>
 
-      <div className="mt-4">
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => window.location.href="/my-council/structure"}
-        >
-          View council structures
-        </button>
+      <div
+        role="tablist"
+        aria-label="Manage sections"
+        className="flex flex-wrap gap-1 border-b border-line/80"
+      >
+        {([
+          { id: "profile" as const, label: "Profile" },
+          { id: "structure" as const, label: "Government structure" },
+        ]).map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            type="button"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "pressable -mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
+              tab === t.id ? "border-brass text-ink" : "border-transparent text-muted hover:text-ink",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+
+      {tab === "profile" ? <ProfileSection allowCustomisation={false} /> : null}
+
+      {tab === "structure" ? (
+        <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+          <p className="eyebrow">Government structure</p>
+          <h2 className="mt-1 text-[1.25rem] leading-tight">Your officers and committees</h2>
+          <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+            Build and maintain your council&rsquo;s chart — the officers, positions, and committees
+            your unit is accountable for. The USG sees it under their umbrella.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/my-council/structure"
+              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+            >
+              Open the structure builder
+            </Link>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

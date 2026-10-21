@@ -16,6 +16,7 @@ import {
   IconLayers,
   IconLock,
   IconMenu,
+  IconMonitoring,
   IconPyramid,
   IconSubmission,
   IconUser,
@@ -32,7 +33,8 @@ export type NavIcon =
   | "events"
   | "budget"
   | "layers"
-  | "compass";
+  | "compass"
+  | "monitoring";
 
 const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
   dashboard: IconDashboard,
@@ -48,6 +50,9 @@ const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
   budget: IconBudget,
   layers: IconLayers,
   compass: IconCompass,
+  // Added for the federated remodel: the bar-chart glyph reads as "survey
+  // results" better than any of the document icons above.
+  monitoring: IconMonitoring,
 };
 
 export type NavItem = {

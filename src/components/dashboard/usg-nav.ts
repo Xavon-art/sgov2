@@ -2,57 +2,67 @@ import type { NavItem } from "@/components/dashboard/AppShell";
 import type { WorkspaceRole } from "@/lib/auth/workspace";
 
 /**
- * The USG workspace navigation.
+ * The USG workspace navigation, rebuilt around the federated IH: the USG is the
+ * centre and every LSG sits under it.
  *
- * Reorganized per the full system reconstruction:
- * - "activities and events" replaces "proposals" as the top-level section,
- *   housing all proposal/activity tracking.
- * - "manage" is a centralized admin section combining units, invitations,
- *   access, and deactivation handling.
- * - "tasks" removed from main navigation (functionality preserved, not in nav).
- * - "feed" kept only for USG admins; LSG has no feed link.
+ *   Overview     what needs a decision, and a way into everything else
+ *   Manage       the umbrella: your LSGs, invitations, and your own profile
+ *   Request      the core of the system -- tasks pushed down to LSGs, and the
+ *                personal requests they send back up
+ *   Events       the calendar of events and acts
+ *   Survey       forms, built by either side
+ *   Settings     your account and how the dashboard behaves
+ *
+ * The sections are named after the work, not the table behind it. "Manage" holds
+ * three floors under one roof rather than three top-level entries, because an
+ * owner thinks of the umbrella, the invitations and their own profile as one
+ * administrative job.
+ *
+ * Icons are keys, resolved in `AppShell`; a component cannot cross the server to
+ * client boundary here.
  */
 export function buildUsgNav(role: WorkspaceRole): NavItem[] {
   return [
     {
       id: "overview",
       label: "Overview",
-      hint: "What needs a decision",
+      hint: role.unitName ? `${role.unitName} · what needs a decision` : "What needs a decision",
       href: "/usg",
       icon: "dashboard",
     },
     {
-      id: "activities-and-events",
-      label: "Activities and Events",
-      hint: "Proposals, events, and activity tracking",
-      href: "/usg/activities-and-events",
+      id: "manage",
+      label: "Manage",
+      hint: "Your umbrella, invitations, and profile",
+      href: "/usg/manage",
+      icon: "layers",
+    },
+    {
+      id: "request",
+      label: "Request",
+      hint: "Tasks and personal requests",
+      href: "/usg/request",
+      icon: "submission",
+    },
+    {
+      id: "events",
+      label: "Events and Acts",
+      hint: "The calendar, and what was honoured",
+      href: "/usg/events",
       icon: "events",
     },
     {
-      id: "budgets",
-      label: "Budgets",
-      hint: "Decide what the units ask for",
-      href: "/usg/budgets",
-      icon: "budget",
+      id: "survey",
+      label: "Survey",
+      hint: "Build forms, read the results",
+      href: "/usg/survey",
+      icon: "monitoring",
     },
-    // Centralized admin section: units (departments/campuses), invitations,
-    // access control, and deactivated-account handling.
-    ...(role.isAdmin
-      ? [
-          {
-            id: "manage",
-            label: "Manage",
-            hint: "Units, invitations, access, deactivation",
-            href: "/usg/manage",
-            icon: "layers" as const,
-          },
-        ]
-      : []),
     {
-      id: "account",
-      label: "Account",
-      hint: "Your sign-in details",
-      href: "/usg/account",
+      id: "settings",
+      label: "Settings",
+      hint: "Account and dashboard",
+      href: "/usg/settings",
       icon: "lock",
     },
   ];

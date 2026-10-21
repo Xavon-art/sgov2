@@ -105,6 +105,16 @@ const RPC_MESSAGES: Record<string, string> = {
     "There is already an open revision of this structure. Finish that one first.",
   no_approved_structure:
     "There is no approved structure to renew yet.",
+
+  // ---- federated dashboard remodel (03100-03104)
+  display_name_invalid: "Use a name of 2 to 80 characters.",
+  wrong_password: "That password is not correct.",
+  same_password: "Choose a password you have not used for this account.",
+  invalid_theme: "Choose Light, Dark, or Match the system.",
+  invalid_accent: "Pick a colour as a six-digit hex value, like #16324f.",
+  logo_too_large: "That logo is too large. Choose an image under about 150 KB.",
+  missing_start: "Choose the date the deactivation starts.",
+  end_before_start: "The end date has to be after the start date.",
 };
 
 export function messageFor(reason?: string): string {
