@@ -250,45 +250,14 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'invalid_invite');
   end if;
 
+  -- The handover branch lives in 03040, not here: 03040 is where the
+  -- handover_account_id column this file cannot yet see is added, and a body
+  -- that read it here would fail to compile when this file is applied first.
   if exists (select 1 from smartgov.accounts a where lower(a.email) = v_invite.email) then
     return jsonb_build_object('ok', false, 'reason', 'already_registered');
   end if;
 
-  -- ----- HANDOVER BRANCH -----
-  -- If the invite carries a handover_account_id, this is a deactivation
-  -- handover flow: the successor takes over the deactivated officer's account.
-  if v_invite.handover_account_id is not null then
-    -- load the target account; it must be suspended or pending and belong to
-    -- the same organization as the invite
-    select id, email, password_hash, status, display_name, campus_name,
-           organization_id, university_name, otp_hash, otp_expires_at
-      into v_target_acct
-      from smartgov.accounts
-      where id = v_invite.handover_account_id;
-
-    if v_target_acct.id is null then
-      return jsonb_build_object('ok', false, 'reason', 'target_not_found');
-    end if;
-
-    if v_target_acct.status not in ('suspended', 'pending') then
-      return jsonb_build_object('ok', false, 'reason', 'target_not_suspended');
-    end if;
-
-    -- update the target account: swap email, set new password, set status pending
-    -- keep campus_name, university_name; clear otp columns so verify_otp can set them
-    update smartgov.accounts
-    set email = v_invite.email,
-        password_hash = smartgov.hash_password(p_password),
-        display_name = v_invite.email, -- placeholder; the new officer can edit later
-        status = 'pending',
-        otp_hash = null,
-        otp_expires_at = null
-    where id = v_target_acct.id;
-
-    v_account_id := v_target_acct.id;
-  else
-    -- ----- NORMAL FLOW (unchanged) -----
-    select case when o.governance_model = 'unitary'
+  select case when o.governance_model = 'unitary'
               then 'central'::smartgov.account_kind
               else 'usg'::smartgov.account_kind
          end,

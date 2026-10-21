@@ -46,6 +46,9 @@ yarn-error.log*
 # supabase cli
 supabase/.temp
 
+# local secrets notepad — must NEVER be committed
+*MUST-IGNORE*
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

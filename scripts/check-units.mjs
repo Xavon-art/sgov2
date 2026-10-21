@@ -148,6 +148,7 @@ const m24 = readPendingMigration("20260101002400_task_assignments.sql");
 const m25 = readPendingMigration("20260101002500_feed_and_calendar.sql");
 const m26 = readPendingMigration("20260101002600_documents_and_verification.sql");
 const m27 = readPendingMigration("20260101002700_document_hardening.sql");
+const m40 = readPendingMigration("20260101003040_officer_deactivation.sql");
 const m50 = readPendingMigration("20260101003050_proposal_review_flow.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
@@ -503,6 +504,19 @@ const MIGRATION_FUNCTIONS = [
       "public.verify_proposal_requirements",
       "public.get_requirement_file",
       "public.proposal_detail",
+    ],
+  ],
+  [
+    "003040",
+    m40,
+    [
+      "smartgov.list_officers",
+      "smartgov.deactivate_officer",
+      "smartgov.purge_officer",
+      "smartgov.accept_invite",
+      "public.list_officers",
+      "public.deactivate_officer",
+      "public.purge_officer",
     ],
   ],
 ];
@@ -2490,6 +2504,90 @@ check(
   m50Grants.length === 8 && m50Grants.every((g) => M50_WRAPPERS.includes(g)),
   m50Grants.length
     ? `granted: ${m50Grants.join(", ")} -- the audited allowlist is the whole attack surface`
+    : "no wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
+);
+
+// --- 18. Officer deactivation and handover (003040) ---
+// The retirement path's invariants, mutation-tested the same way: dropping the
+// owner gate, letting purge delete authored history instead of re-pointing it,
+// deleting the handover branch out of accept_invite, or granting a fourth
+// wrapper must each turn this section red.
+const m40Flat = flat(m40);
+const m40Blocks = functionBlocks(m40);
+const block40 = (name) => m40Blocks.find((b) => b.name === name);
+const flat40 = (b) => (b ? flat(b.body) : "");
+
+check(
+  "003040 adds the deactivation audit columns and the handover flag",
+  /alter table smartgov\.accounts add column if not exists deactivated_by uuid/.test(m40Flat) &&
+    /alter table smartgov\.accounts add column if not exists deactivation_reason text/.test(m40Flat) &&
+    /alter table smartgov\.invites add column if not exists handover_account_id uuid/.test(m40Flat),
+);
+
+check(
+  "003040 list_officers is owner-gated and scopes to the caller's organization",
+  /account_scope <> 'owner' then[\s\S]*?'forbidden'/.test(
+    flat40(block40("smartgov.list_officers")),
+  ) &&
+    /a\.organization_id = v_account\.organization_id/.test(
+      flat40(block40("smartgov.list_officers")),
+    ),
+  "the scope is the owner gate, not the row filter: a non-owner must be refused, not merely omitted",
+);
+
+check(
+  "003040 deactivate_officer suspends the target and mints a hashed handover invite",
+  /set status = 'suspended'/.test(flat40(block40("smartgov.deactivate_officer"))) &&
+    /insert into smartgov\.invites[\s\S]*handover_account_id/.test(
+      flat40(block40("smartgov.deactivate_officer")),
+    ) &&
+    /smartgov\.sha256\(v_raw\)/.test(flat40(block40("smartgov.deactivate_officer"))),
+  "the raw token goes back to the caller, so only its hash may sit in the invite row",
+);
+
+check(
+  "003040 purge_officer re-points authored history instead of deleting it",
+  /update smartgov\.programs set created_by = v_owner\.id where created_by = v_target\.id/.test(
+    flat40(block40("smartgov.purge_officer")),
+  ) &&
+    /update smartgov\.proposals set created_by = v_owner\.id where created_by = v_target\.id/.test(
+      flat40(block40("smartgov.purge_officer")),
+    ) &&
+    /update smartgov\.tasks set created_by = v_owner\.id where created_by = v_target\.id/.test(
+      flat40(block40("smartgov.purge_officer")),
+    ) &&
+    /delete from smartgov\.accounts where id = v_target\.id/.test(
+      flat40(block40("smartgov.purge_officer")),
+    ) &&
+    !/delete from smartgov\.(proposals|reviews|tasks|budget_requests|programs|submission_verifications)/.test(
+      flat40(block40("smartgov.purge_officer")),
+    ),
+  "an officer leaving is not a reason for the organization to lose its records",
+);
+
+check(
+  "003040 accept_invite grows the handover branch and still links the roster",
+  /handover_account_id is not null/.test(flat40(block40("smartgov.accept_invite"))) &&
+    /status not in \('suspended', 'pending'\)/.test(
+      flat40(block40("smartgov.accept_invite")),
+    ) &&
+    /update smartgov\.roster set account_id = v_account_id/.test(
+      flat40(block40("smartgov.accept_invite")),
+    ),
+);
+
+// Same measurement as 003050: every grant in the file must name exactly one of
+// the three intended wrappers, so a stray grant on a smartgov.* definer body is
+// caught by the count rather than by prose.
+const m40Grants = [...m40Flat.matchAll(/grant execute on function\s+([\w.]+)\s*\(/g)].map(
+  (m) => m[1],
+);
+const M40_WRAPPERS = ["public.list_officers", "public.deactivate_officer", "public.purge_officer"];
+check(
+  "003040 publishes exactly the three new wrappers to PostgREST",
+  m40Grants.length === 3 && m40Grants.every((g) => M40_WRAPPERS.includes(g)),
+  m40Grants.length
+    ? `granted: ${m40Grants.join(", ")}`
     : "no wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
 );
 
