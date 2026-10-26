@@ -6,8 +6,11 @@ import { Reveal } from "@/components/fx/Reveal";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
+import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
 import { ReviewQueue } from "@/components/structure/ReviewQueue";
-import { currentAccount } from "@/lib/auth/session";
+import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { fetchUnitChartResult } from "@/lib/chart";
+import { fetchStructureForSession } from "@/lib/structure-server";
 
 export const dynamic = "force-dynamic";
 
@@ -47,16 +50,37 @@ function Shell({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/**
- * The USG's structures page: one queue for every council in the organization,
- * plus the organization's own.
- *
- * No unit is named in the URL. `list_structure_queue` decides what this caller
- * may see and decide, and the page renders exactly that.
- */
+function Empty({ title, body }: { title: string; body: string }) {
+  return (
+    <Reveal className="flex flex-col items-center text-center">
+      <p className="eyebrow">Structure</p>
+      <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">{title}</h1>
+      <p className="mt-3 max-w-xl text-[0.9375rem] leading-relaxed text-body">{body}</p>
+    </Reveal>
+  );
+}
+
 export default async function UsgStructurePage() {
   const account = await currentAccount();
   if (!account) redirect("/login");
+  if (account.accountScope !== "owner") redirect("/lsg");
+
+  const token = await readSessionToken();
+  if (!token) redirect("/login");
+
+  const chart = await fetchUnitChartResult(token);
+
+  // USG's own structure: the root unit (the USG itself).
+  let ownUnit: { id: string; name: string } | null = null;
+  if (chart?.ok) {
+    const root = chart.root;
+    if (root) ownUnit = { id: root.id, name: root.name };
+  }
+
+  let structure: Awaited<ReturnType<typeof fetchStructureForSession>> = null;
+  if (ownUnit) {
+    structure = await fetchStructureForSession(token, ownUnit.id);
+  }
 
   return (
     <SessionGuard>
@@ -64,16 +88,45 @@ export default async function UsgStructurePage() {
         <Reveal className="flex flex-col items-center text-center">
           <p className="eyebrow">Structures</p>
           <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
-            Council structures
+            Your government structure
           </h1>
           <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
-            Every council in your organization, in one queue. Approve a structure and it is
-            published; send it back and the author keeps working on it.
+            Build your own structure — add officers, positions, and committees — and review the
+            structures your units have submitted below.
           </p>
         </Reveal>
 
-        <div className="mt-10">
-          <ReviewQueue />
+        {ownUnit && structure?.ok && structure.capability?.canRead ? (
+          <div className="mt-10">
+            <StructureWorkspace
+              unitId={ownUnit.id}
+              unitName={ownUnit.name}
+              capability={structure.capability}
+            />
+          </div>
+        ) : (
+          <div className="mt-10">
+            <Empty
+              title="We could not load your structure"
+              body="The account database did not answer with your council. Sign in again in a moment."
+            />
+          </div>
+        )}
+
+        <div className="mt-16">
+          <Reveal className="flex flex-col items-center text-center">
+            <p className="eyebrow">Review queue</p>
+            <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
+              Council structures
+            </h1>
+            <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
+              Every council in your organization, in one queue. Approve a structure and it is
+              published; send it back and the author keeps working on it.
+            </p>
+          </Reveal>
+          <div className="mt-10">
+            <ReviewQueue />
+          </div>
         </div>
       </Shell>
     </SessionGuard>
