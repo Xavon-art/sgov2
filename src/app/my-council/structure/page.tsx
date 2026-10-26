@@ -71,6 +71,8 @@ export default async function StructurePage() {
   const account = await currentAccount();
   if (!account) redirect("/login");
 
+  const isOwner = account.accountScope === "owner";
+
   const token = await readSessionToken();
   if (!token) redirect("/login");
 
@@ -106,16 +108,18 @@ export default async function StructurePage() {
     );
   }
 
-  // The owner's chart is the whole organization. A USG structure is built from
-  // the queue page instead, which is where an organization's own structure lives.
-  if (!isUnitScopeChart(chart)) redirect("/usg/structure");
+  // An owner edits their own USG council here too. Only non-owners without a
+  // unit scope are bounced to the USG queue.
+  if (!isUnitScopeChart(chart) && !isOwner) redirect("/usg/structure");
 
   // A chart in unit scope has the council as its root, or as the single unit
   // beneath the USG root. Both resolve to one council, and that council is the
-  // subject of the page.
+  // subject of the page. An owner edits the root unit (their USG) itself.
   const root = chart.root;
   const belowRoot = root ? chart.units.filter((u) => u.id !== root.id) : chart.units;
-  const own = belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? root;
+  const own = isOwner
+    ? root ?? belowRoot[0]
+    : belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? root;
 
   if (!own) {
     return (
