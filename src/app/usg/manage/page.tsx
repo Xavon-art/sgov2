@@ -106,27 +106,28 @@ export default function UsgManagePage() {
       {tab === "profile" ? <ProfileSection allowCustomisation={canManage} /> : null}
 
       {tab === "structure" && canManage ? (
-        <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+        <div className="rounded-2xl border border-line bg-paper/70 p-4 sm:p-5">
           <p className="eyebrow">Government structure</p>
           <h2 className="mt-1 text-[1.25rem] leading-tight">Your officers and committees</h2>
           <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
             Build and maintain your own structure — add officers, positions, and
-            committees — and review the structures your units have submitted.
-            Approving one publishes it.
+            committees — directly below. Review the structures your units have
+            submitted via the queue.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/my-council/structure"
-              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
-            >
-              Edit your own structure
-            </Link>
+          <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href="/usg/structure"
               className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
             >
               Open the structure queue
             </Link>
+          </div>
+          <div className="mt-4 overflow-hidden rounded-xl border border-line">
+            <iframe
+              src="/my-council/structure"
+              title="Government structure editor"
+              className="h-[70vh] w-full border-0"
+            />
           </div>
         </div>
       ) : null}
