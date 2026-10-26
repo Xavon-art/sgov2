@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.local.example
 
+# local secret stores that must never be committed
+*MUST-IGNORE*
+
 # vercel
 .vercel
 

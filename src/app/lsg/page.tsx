@@ -1,30 +1,21 @@
-import { DashboardView } from "@/components/dashboard/DashboardView";
+import { currentAccount } from "@/lib/auth/session";
+import { resolveWorkspaceRole } from "@/lib/auth/workspace";
+import { buildLsgNav } from "@/components/dashboard/lsg-nav";
+import { FederatedOverview } from "@/components/dashboard/FederatedOverview";
+
+export const dynamic = "force-dynamic";
 
 /**
- * What an LSG officer opens on.
+ * The LSG overview -- the mirror of `/usg/page.tsx`, from the side that answers.
  *
- * This used to be its own server page: it called `list_proposals` and rendered a
- * status strip plus a hand-written list of the two statuses an officer can act on.
- * That answer was right in spirit and wrong in coverage -- it counted proposals and
- * nothing else, so a document USG had queried about or a task that had gone overdue
- * did not appear anywhere on the screen an officer calls "Today".
- *
- * It is now the same component the USG desk uses, with the LSG links. The session
- * and the workspace side are still decided in the layout above this page; this file
- * deliberately makes no server call of its own, because the only thing it needs to
- * know is which links exist on this side.
+ * Same component, different nav. The links arrive as a prop, so this file holds
+ * no `/usg` route string and an officer's bundle cannot grow one.
  */
-export default function LsgTodayPage() {
-  return (
-    <DashboardView
-      links={{
-        proposals: "/lsg/proposals",
-        budgets: "/lsg/budgets",
-        tasks: "/lsg/tasks",
-        // The council's own builder. Which council that is comes from the
-        // database's scoped chart, so there is no unit id to name here.
-        structure: "/my-council/structure",
-      }}
-    />
-  );
+export default async function LsgTodayPage() {
+  const account = await currentAccount();
+  const role = await resolveWorkspaceRole();
+
+  if (!account || !role) return null;
+
+  return <FederatedOverview nav={buildLsgNav(role)} side="lsg" />;
 }

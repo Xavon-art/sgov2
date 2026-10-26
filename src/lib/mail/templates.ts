@@ -403,6 +403,72 @@ export function passwordResetEmail(opts: {
   return { to: opts.to, subject: `Reset your SmartGov password`, html, text };
 }
 
+// ---------------------------------------------------------------- deactivation
+
+/**
+ * Tells a unit seat that the USG has scheduled a temporary deactivation.
+ *
+ * Deliberately not phrased as a punishment. The window is a scheduling decision
+ * the USG made, and the letter's job is to say when the desk goes quiet, when it
+ * comes back, and to whom to reply -- not to argue the case. A window with no end
+ * date is stated as open-ended, because that is what it is.
+ */
+export function deactivationEmail(opts: {
+  to: string;
+  unitName: string;
+  startsAt: string;
+  endsAt: string | null;
+  reason: string;
+  actingOfficer: string;
+}): BrandedMail {
+  const url = `${siteUrl()}/login`;
+  const starts = opts.startsAt.slice(0, 10);
+  const ends = opts.endsAt ? opts.endsAt.slice(0, 10) : null;
+  const window = ends ? `${starts} to ${ends}` : `from ${starts} until further notice`;
+
+  const html = shell({
+    preheader: `Your SmartGov access for ${opts.unitName} is paused ${window}.`,
+    body: [
+      eyebrow("Access paused"),
+      heading("A temporary deactivation is scheduled"),
+      paragraph(
+        `${opts.actingOfficer} has scheduled a temporary deactivation for ${opts.unitName} on SmartGov. While the window is open, sign-in for this account is paused; everything it has already submitted stays on record and untouched.`,
+      ),
+      detailsPanel([
+        detail("Unit", opts.unitName),
+        detail("Starts", starts),
+        detail("Ends", ends ?? "Open-ended"),
+        opts.reason ? detail("Note", opts.reason) : "",
+      ].filter(Boolean)),
+      paragraph(
+        "When the window closes, the account comes back on its own — nothing has to be re-requested. If this is unexpected, reply to your USG office rather than to this message.",
+      ),
+      button(url, "Open SmartGov"),
+      fallbackLink(url),
+    ].join(""),
+    footnote: "You are receiving this because you hold a seat in this student government.",
+  });
+
+  const text = [
+    "TEMPORARY DEACTIVATION SCHEDULED",
+    "",
+    `${opts.actingOfficer} has scheduled a temporary deactivation for ${opts.unitName}.`,
+    "",
+    `Unit: ${opts.unitName}`,
+    `Starts: ${starts}`,
+    `Ends: ${ends ?? "Open-ended"}`,
+    opts.reason ? `Note: ${opts.reason}` : "",
+    "",
+    "Sign-in for this account is paused while the window is open. It returns on its own when the window closes.",
+    "",
+    url,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return { to: opts.to, subject: `${opts.unitName} is paused on SmartGov`, html, text };
+}
+
 // ---------------------------------------------------------------- welcome
 
 export function welcomeEmail(opts: {

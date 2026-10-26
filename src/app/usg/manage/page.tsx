@@ -1,233 +1,128 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useAccount } from "@/components/dashboard/dashboard-context";
-import { NotAvailable } from "@/components/dashboard/NotAvailable";
-import { useCallback, useEffect, useState } from "react";
+import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
+import { InvitesPanel } from "@/components/dashboard/InvitesPanel";
+import { ProfileSection } from "@/components/dashboard/ProfileSection";
+import { cn } from "@/lib/utils";
+
+/**
+ * Manage -- the USG's administrative roof.
+ *
+ * Three jobs that an owner thinks of as one: the umbrella they are responsible
+ * for, the invitations that grow it, and their own profile and look. They sit
+ * under a single nav entry with tabs rather than three top-level sections, so the
+ * board's nav stays six items instead of eight.
+ *
+ * The umbrella is owner-only and the database refuses it for anyone else, so an
+ * invited officer sees only the two floors they can actually use.
+ */
+
+type Tab = "umbrella" | "invites" | "structure" | "profile";
+
+const TABS: Array<{ id: Tab; label: string; ownerOnly: boolean }> = [
+  { id: "umbrella", label: "Umbrella", ownerOnly: true },
+  { id: "invites", label: "Invites", ownerOnly: true },
+  { id: "structure", label: "Government structure", ownerOnly: true },
+  { id: "profile", label: "Profile & customization", ownerOnly: false },
+];
 
 export default function UsgManagePage() {
   const account = useAccount();
+  const canManage = account.accountScope === "owner";
+  const [tab, setTab] = useState<Tab>(canManage ? "umbrella" : "profile");
 
-  const [unitsKind, setUnitsKind] = useState<"loading" | "ready">("loading");
-  const [invitesKind, setInvitesKind] = useState<"loading" | "ready">("loading");
-  const [accessKind, setAccessKind] = useState<"loading" | "ready">("loading");
-  const [structureKind, setStructureKind] = useState<"loading" | "ready">("loading");
-
-  const loadUnits = useCallback(async () => {
-    try {
-      const res = await fetch("/api/units");
-      const data = await res.json();
-      if (res.ok && data.ok) setUnitsKind("ready");
-    } catch {}
-  }, []);
-
-  const loadInvites = useCallback(async () => {
-    try {
-      const res = await fetch("/api/invites");
-      const data = await res.json();
-      if (res.ok && data.ok) setInvitesKind("ready");
-    } catch {}
-  }, []);
-
-  const loadAccess = useCallback(async () => {
-    try {
-      const res = await fetch("/api/permissions");
-      const data = await res.json();
-      if (res.ok && data.ok) setAccessKind("ready");
-    } catch {}
-  }, []);
-
-  const loadStructure = useCallback(async () => {
-    try {
-      const res = await fetch("/api/structure");
-      const data = await res.json();
-      if (res.ok && data.ok) setStructureKind("ready");
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    // Each kind flips after its fetch resolves, not during render; the rule
-    // cannot see through the await when the loader is handed to the effect.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadUnits();
-  }, [loadUnits]);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadInvites();
-  }, [loadInvites]);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadAccess();
-  }, [loadAccess]);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadStructure();
-  }, [loadStructure]);
-
-  if (
-    unitsKind !== "ready"
-    || invitesKind !== "ready"
-    || accessKind !== "ready"
-    || structureKind !== "ready"
-  ) {
-    return <div>Loading manage section…</div>;
+  // A non-owner has exactly one floor: their own profile. The guard is written
+  // as an early return rather than a filter so the owner-only tabs are never
+  // reachable even from stale state -- but the fallback is the profile, which is
+  // useful, rather than a blank screen.
+  if (!canManage) {
+    return (
+      <section className="flex flex-col gap-6">
+        <header className="flex flex-col gap-2">
+          <p className="eyebrow">Manage</p>
+          <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">Your profile</h1>
+          <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
+            Your own account and the officer details attached to it.
+          </p>
+        </header>
+        <ProfileSection allowCustomisation={false} />
+      </section>
+    );
   }
 
+  const visible = TABS.filter((t) => canManage || !t.ownerOnly);
+
   return (
-    <section className="space-y-8">
-      <div>
-        <p className="eyebrow">Structure</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">Your campuses</h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          To add a campus or department, use the form at{" "}
-          <Link href="/usg/units">/usg/units</Link>
+    <section className="flex flex-col gap-6">
+      <header className="flex flex-col gap-2">
+        <p className="eyebrow">Manage</p>
+        <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">
+          {canManage ? "Your federation" : "Your profile"}
+        </h1>
+        <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
+          {canManage
+            ? "The units under you, the people you invite into them, and how the dashboard looks."
+            : "Your own account and the officer details attached to it."}
         </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => window.location.href="/usg/units"}
-        >
-          Add campus or department
-        </button>
-      </div>
+      </header>
 
-      <div>
-        <p className="eyebrow">Officers & units</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Build your umbrella
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Manage officer invitations at{" "}
-          <Link href="/usg/invitations">/usg/invitations</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => window.location.href="/usg/invitations"}
-        >
-          Manage invitations
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Officers</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Deactivate or remove officers
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Suspend an officer and hand over their seat, or purge an account
-          outright. Manage at{" "}
-          <Link href="/usg/officers">/usg/officers</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => (window.location.href = "/usg/officers")}
-        >
-          Manage officers
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Access</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Who is allowed to invite
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Manage grants at{" "}
-          <Link href="/usg/access">/usg/access</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => window.location.href="/usg/access"}
-        >
-          Manage grants
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Surveys</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Create and manage surveys
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Build Google-Forms-style surveys, share a public link, and view
-          responses. Manage at{" "}
-          <Link href="/usg/surveys">/usg/surveys</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => (window.location.href = "/usg/surveys")}
-        >
-          Manage surveys
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Personal requests</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Review requests from LSG officers
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Approve or reject personal requests submitted by LSG officers. Manage
-          at <Link href="/usg/personal-requests">/usg/personal-requests</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => (window.location.href = "/usg/personal-requests")}
-        >
-          Review requests
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Events & acts</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Calendar and claims
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Manage events and review claims from LSG officers. Manage at{" "}
-          <Link href="/usg/events">/usg/events</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => (window.location.href = "/usg/events")}
-        >
-          Manage events
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Messages</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Conversations with officers
-        </h2>
-        <p className="mt-3 text-[0.9375rem] text-muted">
-          Start and manage conversations. Manage at{" "}
-          <Link href="/usg/messages">/usg/messages</Link>
-        </p>
-        <button
-          className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-          onClick={() => (window.location.href = "/usg/messages")}
-        >
-          Open inbox
-        </button>
-      </div>
-
-      <div>
-        <p className="eyebrow">Council structure</p>
-        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
-          Council structures
-        </h2>
-        <p className="mt-3 text-[0.9375rem] leading-relaxed text-body">
-          Every council in your organization.
-        </p>
-        {structureKind === "ready" && (
+      <div
+        role="tablist"
+        aria-label="Manage sections"
+        className="flex flex-wrap gap-1 border-b border-line/80"
+      >
+        {visible.map((t) => (
           <button
-            className="inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
-            onClick={() => window.location.href="/usg/structure"}
+            key={t.id}
+            role="tab"
+            type="button"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "pressable -mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
+              tab === t.id
+                ? "border-brass text-ink"
+                : "border-transparent text-muted hover:text-ink",
+            )}
           >
-            View council structures
+            {t.label}
           </button>
-        )}
+        ))}
       </div>
+
+      {tab === "umbrella" && canManage ? <UmbrellaSection /> : null}
+      {tab === "invites" && canManage ? (
+        <div id="invitations" className="scroll-mt-24">
+          <p className="mb-5 text-[0.9375rem] leading-relaxed text-body">
+            Invite a campus, department, or college by email. They receive a code, set a password,
+            and appear under your umbrella.
+          </p>
+          <InvitesPanel />
+        </div>
+      ) : null}
+      {tab === "profile" ? <ProfileSection allowCustomisation={canManage} /> : null}
+
+      {tab === "structure" && canManage ? (
+        <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+          <p className="eyebrow">Government structure</p>
+          <h2 className="mt-1 text-[1.25rem] leading-tight">Your officers and committees</h2>
+          <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+            Build and maintain the organisation&rsquo;s own structure, and review the structures your
+            units have submitted. Approving one publishes it.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/usg/structure"
+              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+            >
+              Open the structure queue
+            </Link>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -109,6 +109,34 @@ const RPC_MESSAGES: Record<string, string> = {
     "There is already an open revision of this structure. Finish that one first.",
   no_approved_structure:
     "There is no approved structure to renew yet.",
+
+  // ---- federated dashboard remodel (03100-03104)
+  display_name_invalid: "Use a name of 2 to 80 characters.",
+  wrong_password: "That password is not correct.",
+  same_password: "Choose a password you have not used for this account.",
+  invalid_theme: "Choose Light, Dark, or Match the system.",
+  invalid_accent: "Pick a colour as a six-digit hex value, like #16324f.",
+  logo_too_large: "That logo is too large. Choose an image under about 150 KB.",
+  missing_start: "Choose the date the deactivation starts.",
+  end_before_start: "The end date has to be after the start date.",
+
+  // ---- request module (03110-03115)
+  //
+  // The distinct-answer failures are worded as instructions, because each one
+  // has exactly one fix and the person reading it can apply it directly.
+  invalid_requirement: "Give every checklist item a name of at least 2 characters.",
+  answer_required: "Attach a file or paste a link before saving your answer.",
+  unaccepted_type:
+    "That file type is not accepted for this item. Check the types the office listed.",
+  note_required: "Write a short note so the unit knows what to change.",
+  task_closed: "This task is closed, so it no longer takes answers or messages.",
+  already_closed: "This task has already been closed.",
+  already_done: "The office has already marked this unit done.",
+  invalid_subject: "Give the request a subject of 4 to 160 characters.",
+  invalid_cover_letter: "Write a cover letter of at least 10 characters.",
+  message_empty: "Write something before sending.",
+  message_too_long: "That message is too long. Keep it under 4000 characters.",
+  invalid_reaction: "That reaction is not one of the four available.",
 };
 
 export function messageFor(reason?: string): string {

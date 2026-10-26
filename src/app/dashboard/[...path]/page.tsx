@@ -19,23 +19,35 @@ import { resolveWorkspaceRole } from "@/lib/auth/workspace";
  * the "Contact USG" line lives.
  */
 const USG_SECTIONS: Record<string, string> = {
-  units: "/usg/units",
-  invitations: "/usg/invitations",
-  access: "/usg/access",
-  account: "/usg/account",
-  requirements: "/usg/proposals",
-  proposals: "/usg/proposals",
-  tasks: "/usg/tasks",
-  feed: "/usg/feed",
-  budget: "/usg/budget",
+  units: "/usg/manage",
+  invitations: "/usg/manage",
+  access: "/usg/manage",
+  account: "/usg/settings",
+  structure: "/usg/structure",
+  // The old federated modules. Their records are kept, but the rebuilt IA has
+  // no screen for them, so an old bookmark lands on the section that replaced
+  // them rather than on a 404.
+  requirements: "/usg/request",
+  proposals: "/usg/request",
+  tasks: "/usg/request",
+  budget: "/usg/request",
+  budgets: "/usg/request",
+  feed: "/usg",
+  activities: "/usg/events",
+  events: "/usg/events",
 };
 
 const LSG_SECTIONS: Record<string, string> = {
-  requirements: "/lsg/proposals",
-  proposals: "/lsg/proposals",
-  tasks: "/lsg/tasks",
-  feed: "/lsg/feed",
-  account: "/lsg/help",
+  requirements: "/lsg/request",
+  proposals: "/lsg/request",
+  tasks: "/lsg/request",
+  budget: "/lsg/request",
+  budgets: "/lsg/request",
+  feed: "/lsg",
+  account: "/lsg/settings",
+  help: "/lsg/settings",
+  activities: "/lsg/events",
+  events: "/lsg/events",
 };
 
 export default async function DashboardLegacySection({
