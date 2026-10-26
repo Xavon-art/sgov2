@@ -124,7 +124,7 @@ export default function UsgManagePage() {
           </div>
           <div className="mt-4 overflow-hidden rounded-xl border border-line">
             <iframe
-              src="/my-council/structure"
+              src="/usg/structure"
               title="Government structure editor"
               className="h-[70vh] w-full border-0"
             />

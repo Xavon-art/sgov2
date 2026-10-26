@@ -6,7 +6,7 @@ import { Reveal } from "@/components/fx/Reveal";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
-import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
+import { OrgChartDragDrop } from "@/components/structure/OrgChartDragDrop";
 import { ReviewQueue } from "@/components/structure/ReviewQueue";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 import { fetchUnitChartResult } from "@/lib/chart";
@@ -98,7 +98,7 @@ export default async function UsgStructurePage() {
 
         {ownUnit && structure?.ok && structure.capability?.canRead ? (
           <div className="mt-10">
-            <StructureWorkspace
+            <OrgChartDragDrop
               unitId={ownUnit.id}
               unitName={ownUnit.name}
               capability={structure.capability}
