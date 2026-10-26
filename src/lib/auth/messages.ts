@@ -14,6 +14,10 @@ const RPC_MESSAGES: Record<string, string> = {
   no_organization: "This workspace is not linked to an organization yet.",
   no_unit: "Your organization has no campus or department yet.",
   invalid_email: "Enter a valid email address.",
+  replacement_registered:
+    "That email already has an account. Choose a different replacement address.",
+  confirm_mismatch:
+    "The email you typed does not match the officer's address. Check it and try again.",
   weak_password: "Use a password of at least 8 characters.",
   missing_name: "Enter your full name.",
   email_taken: "That email already has an account.",

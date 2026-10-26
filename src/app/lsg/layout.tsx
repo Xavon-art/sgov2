@@ -71,6 +71,8 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
     charterNumber: data.charterNumber,
     academicYear: data.academicYear,
     accent: data.accent,
+    theme: data.theme ?? "light",
+    logoUrl: data.logoUrl ?? null,
     governanceModel: data.governanceModel,
     inviteCount: data.inviteCount,
     pendingCount: data.pendingCount,

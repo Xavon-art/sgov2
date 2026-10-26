@@ -25,6 +25,8 @@ export type DashboardMeta = {
   charterNumber: string;
   academicYear: string;
   accent: string;
+  theme: string;
+  logoUrl: string | null;
   governanceModel: string | null;
   inviteCount: number;
   pendingCount: number;

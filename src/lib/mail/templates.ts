@@ -478,3 +478,71 @@ export function welcomeEmail(opts: {
 
   return { to: opts.to, subject: `Your SmartGov account is active`, html, text };
 }
+
+// ---------------------------------------------------------------- deactivation
+
+export function deactivationEmail(opts: {
+  to: string;
+  displayName: string | null;
+  organizationName: string;
+  reason: string | null;
+  replacementEmail: string | null;
+}): BrandedMail {
+  const who = opts.displayName ? opts.displayName : opts.to;
+  const hasReplacement = Boolean(opts.replacementEmail);
+
+  const html = shell({
+    preheader: `Your access to ${opts.organizationName} on SmartGov has been deactivated.`,
+    body: [
+      eyebrow("Access deactivated"),
+      heading("Your SmartGov access has been turned off"),
+      paragraph(
+        `Hi ${who}, the USG administrator has deactivated your officer account for ${opts.organizationName}. You can no longer sign in, and any pending invitation for your seat has been cancelled.`,
+      ),
+      opts.reason
+        ? detailsPanel([detail("Reason", opts.reason)])
+        : "",
+      hasReplacement
+        ? paragraph(
+            `A handover link has been sent to ${opts.replacementEmail} so a successor can take over your seat, memberships, and records. Nothing you authored is lost — it stays with the organization under the new account.`,
+          )
+        : paragraph(
+            "Your seat is now vacant. The administrator will assign a new officer when ready. Nothing you authored is lost — it stays with the organization.",
+          ),
+      paragraph(
+        "If you believe this was a mistake, contact the USG administrator who runs your student government.",
+      ),
+      signOff(),
+    ]
+      .filter(Boolean)
+      .join(""),
+    footnote:
+      "You are receiving this because an officer account in your name was deactivated.",
+  });
+
+  const text = [
+    "ACCESS DEACTIVATED",
+    "",
+    `Hi ${who},`,
+    "",
+    `The USG administrator has deactivated your officer account for ${opts.organizationName}.`,
+    "You can no longer sign in, and any pending invitation for your seat has been cancelled.",
+    "",
+    opts.reason ? `Reason: ${opts.reason}` : "",
+    "",
+    hasReplacement
+      ? `A handover link has been sent to ${opts.replacementEmail} so a successor can take over your seat, memberships, and records. Nothing you authored is lost.`
+      : "Your seat is now vacant. Nothing you authored is lost.",
+    "",
+    "If you believe this was a mistake, contact the USG administrator.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    to: opts.to,
+    subject: `Your SmartGov access for ${opts.organizationName} has been deactivated`,
+    html,
+    text,
+  };
+}

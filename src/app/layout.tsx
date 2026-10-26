@@ -77,7 +77,7 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `document.documentElement.classList.add("has-js")`,
+            __html: `document.documentElement.classList.add("has-js");try{if(localStorage.getItem("sgov-theme")==="dark")document.documentElement.classList.add("dark")}catch(e){}`,
           }}
         />
       </head>

@@ -31,9 +31,6 @@ export default function LsgManagePage() {
     return <div>Loading manage section…</div>;
   }
 
-  // Simulated deactivated check - in real app this would come from API
-  const deactivated = false;
-
   return (
     <section className="space-y-4">
       <p className="eyebrow">Council structure</p>
@@ -43,20 +40,11 @@ export default function LsgManagePage() {
       <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
         Every council in your organization.
       </p>
-      {deactivated ? (
-        <div className="rounded-card border border-brass/50 bg-brass-soft/30 p-4">
-          <p className="text-[0.9375rem] text-brass-deep font-medium">
-            ⚠️ One or more accounts are deactivated. The dashboard is inaccessible
-            until the account is reactivated or handed over.
-          </p>
-        </div>
-      ) : (
-        <div className="rounded-card border border-line bg-paper p-4">
-          <p className="text-[0.9375rem] text-ink">
-            All accounts are active. Structure is operational.
-          </p>
-        </div>
-      )}
+      <div className="rounded-card border border-line bg-paper p-4">
+        <p className="text-[0.9375rem] text-ink">
+          Structure is operational.
+        </p>
+      </div>
 
       <div className="mt-4">
         <button
@@ -64,6 +52,70 @@ export default function LsgManagePage() {
           onClick={() => window.location.href="/my-council/structure"}
         >
           View council structures
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <p className="eyebrow">Personal requests</p>
+        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
+          Submit a request to the USG office
+        </h2>
+        <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
+          Send a personal request with a cover letter and deadline.
+        </p>
+        <button
+          className="mt-3 inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
+          onClick={() => (window.location.href = "/lsg/personal-requests")}
+        >
+          Manage requests
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <p className="eyebrow">Events & acts</p>
+        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
+          Calendar and claims
+        </h2>
+        <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
+          Record events and claim acts for USG review.
+        </p>
+        <button
+          className="mt-3 inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
+          onClick={() => (window.location.href = "/lsg/events")}
+        >
+          Manage events
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <p className="eyebrow">Messages</p>
+        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
+          Conversations with the USG office
+        </h2>
+        <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
+          Start and manage conversations.
+        </p>
+        <button
+          className="mt-3 inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
+          onClick={() => (window.location.href = "/lsg/messages")}
+        >
+          Open inbox
+        </button>
+      </div>
+
+      <div className="mt-6">
+        <p className="eyebrow">Surveys</p>
+        <h2 className="mt-1 text-[1.375rem] leading-tight sm:text-[1.625rem]">
+          Create and manage surveys
+        </h2>
+        <p className="mt-1 text-[0.9375rem] leading-relaxed text-body">
+          Build surveys, share a public link, and view responses.
+        </p>
+        <button
+          className="mt-3 inline-flex items-center rounded-lg border border-line px-4 text-[0.9375rem] hover:bg-ink-deep"
+          onClick={() => (window.location.href = "/lsg/surveys")}
+        >
+          Manage surveys
         </button>
       </div>
     </section>
