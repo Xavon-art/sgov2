@@ -55,7 +55,7 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       id: "survey",
       label: "Survey",
       hint: "Build forms, read the results",
-      href: "/usg/survey",
+      href: "/usg/surveys",
       icon: "monitoring",
     },
     {

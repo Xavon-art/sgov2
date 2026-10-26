@@ -82,6 +82,17 @@ export default function LsgManagePage() {
           </div>
         </div>
       ) : null}
+
+      <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+        <p className="eyebrow">More</p>
+        <h2 className="mt-1 text-[1.25rem] leading-tight">Other management tools</h2>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/lsg/surveys" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Surveys</Link>
+          <Link href="/lsg/personal-requests" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Personal requests</Link>
+          <Link href="/lsg/events" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Events</Link>
+          <Link href="/lsg/messages" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Messages</Link>
+        </div>
+      </div>
     </section>
   );
 }

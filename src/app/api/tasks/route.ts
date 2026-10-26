@@ -7,6 +7,8 @@ import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
+const STATUSES = new Set(["assigned", "in_progress", "done"]);
+
 /**
  * The Request section's task surface.
  *

@@ -545,9 +545,9 @@ export function welcomeEmail(opts: {
   return { to: opts.to, subject: `Your SmartGov account is active`, html, text };
 }
 
-// ---------------------------------------------------------------- deactivation
+// ---------------------------------------------------------------- officer deactivation
 
-export function deactivationEmail(opts: {
+export function officerDeactivationEmail(opts: {
   to: string;
   displayName: string | null;
   organizationName: string;

@@ -4,7 +4,7 @@ import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
 import { currentAccount } from "@/lib/auth/session";
 import { sendBranded } from "@/lib/mail/send";
-import { deactivationEmail } from "@/lib/mail/templates";
+import { officerDeactivationEmail } from "@/lib/mail/templates";
 import { inviteEmail } from "@/lib/mail/templates";
 
 export const runtime = "nodejs";
@@ -85,7 +85,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (res.deactivatedEmail) {
       try {
         await sendBranded(
-          deactivationEmail({
+          officerDeactivationEmail({
             to: res.deactivatedEmail,
             displayName: res.deactivatedName ?? null,
             organizationName: res.organizationName ?? "",

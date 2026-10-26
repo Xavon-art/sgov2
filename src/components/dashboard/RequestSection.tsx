@@ -11,7 +11,8 @@ import { selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-sh
 import { todayIso, dueLabel } from "@/lib/tasks";
 import { uploadFile } from "@/lib/upload-client";
 function uuidv4() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return (crypto as any).randomUUID();
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    return (crypto as { randomUUID: () => string }).randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;

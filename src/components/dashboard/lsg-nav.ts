@@ -50,7 +50,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       id: "survey",
       label: "Survey",
       hint: "Answer, and build your own",
-      href: "/lsg/survey",
+      href: "/lsg/surveys",
       icon: "monitoring",
     },
     {
