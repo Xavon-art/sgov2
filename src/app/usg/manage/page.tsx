@@ -110,10 +110,17 @@ export default function UsgManagePage() {
           <p className="eyebrow">Government structure</p>
           <h2 className="mt-1 text-[1.25rem] leading-tight">Your officers and committees</h2>
           <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-            Build and maintain the organisation&rsquo;s own structure, and review the structures your
-            units have submitted. Approving one publishes it.
+            Build and maintain your own structure — add officers, positions, and
+            committees — and review the structures your units have submitted.
+            Approving one publishes it.
           </p>
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/my-council/structure"
+              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+            >
+              Edit your own structure
+            </Link>
             <Link
               href="/usg/structure"
               className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
