@@ -34,16 +34,28 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   }
 
   const decision = typeof body.decision === "string" ? body.decision.trim() : "";
-  if (decision !== "honored" && decision !== "rejected") {
-    return NextResponse.json({ ok: false, message: "Choose honor or reject." }, { status: 400 });
+  const note = typeof body.note === "string" ? body.note.trim() : "";
+
+  // `rejected` is kept as an alias so an older client does not break.
+  const normalised =
+    decision === "honored" ? "honored" : decision === "not_honored" || decision === "rejected" ? "not_honored" : "";
+
+  if (!normalised) {
+    return NextResponse.json({ ok: false, message: "Choose honour or not honour." }, { status: 400 });
+  }
+  if (normalised === "not_honored" && note.length < 3) {
+    return NextResponse.json(
+      { ok: false, message: "Give a reason the unit will see when an event is not honoured." },
+      { status: 400 },
+    );
   }
 
   try {
     const res = await callRpc<RpcResult>("decide_event", {
       p_session_token: token,
       p_event_id: id,
-      p_decision: decision,
-      p_note: typeof body.note === "string" ? body.note.trim() : null,
+      p_decision: normalised,
+      p_note: note || null,
     });
     if (!res.ok) {
       return NextResponse.json(
