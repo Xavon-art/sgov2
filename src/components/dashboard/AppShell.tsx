@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { Enter } from "@/components/fx/Presence";
@@ -103,6 +103,13 @@ export type NavItem = {
  * routes under `/dashboard`, so switching sections is a client transition rather
  * than a jump inside one long document.
  */
+function childIsActive(href: string, pathname: string, tab: string | null): boolean {
+  const [childPath, childQuery] = href.split("?");
+  if (pathname !== childPath) return false;
+  const childTab = childQuery ? new URLSearchParams(childQuery).get("tab") : null;
+  return childTab ? childTab === tab : !tab;
+}
+
 export function AppShell({
   nav,
   orgName,
@@ -116,6 +123,8 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
 
   const [unread, setUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -244,7 +253,10 @@ export function AppShell({
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
             const selected = item.href === pathname;
-            const inSection = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const inSection =
+              pathname === item.href ||
+              pathname.startsWith(`${item.href}/`) ||
+              Boolean(item.children?.some((child) => childIsActive(child.href, pathname, currentTab)));
             return (
               <div key={item.id} className="flex flex-col">
                 <Link
@@ -271,8 +283,7 @@ export function AppShell({
                 {item.children && inSection ? (
                   <div className="ml-5 flex flex-col gap-0.5 border-l border-line/70 pl-2.5 pt-0.5">
                     {item.children.map((child) => {
-                      const childPath = child.href.split("?")[0];
-                      const childSelected = pathname === childPath && !child.href.includes("?");
+                      const childSelected = childIsActive(child.href, pathname, currentTab);
                       return (
                         <Link
                           key={child.href}
@@ -351,7 +362,10 @@ export function AppShell({
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
             const selected = item.href === pathname;
-            const inSection = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const inSection =
+              pathname === item.href ||
+              pathname.startsWith(`${item.href}/`) ||
+              Boolean(item.children?.some((child) => childIsActive(child.href, pathname, currentTab)));
             return (
               <div key={item.id} className="flex flex-col">
                 <Link
@@ -383,16 +397,24 @@ export function AppShell({
                 </Link>
                 {item.children && inSection ? (
                   <div className="ml-7 flex flex-col gap-0.5 border-l border-line/70 pl-3 pb-1">
-                    {item.children.map((child) => (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        onClick={() => setOpen(false)}
-                        className="rounded-lg px-2.5 py-1.5 text-[0.875rem] text-muted hover:bg-ink/[0.04] hover:text-ink"
-                      >
-                        {child.label}
-                      </Link>
-                    ))}
+                    {item.children.map((child) => {
+                      const childSelected = childIsActive(child.href, pathname, currentTab);
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          onClick={() => setOpen(false)}
+                          className={cn(
+                            "rounded-lg px-2.5 py-1.5 text-[0.875rem] transition-colors",
+                            childSelected
+                              ? "bg-ink/[0.06] font-semibold text-ink"
+                              : "text-muted hover:bg-ink/[0.04] hover:text-ink",
+                          )}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
                   </div>
                 ) : null}
               </div>

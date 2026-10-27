@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
 import { InvitesPanel } from "@/components/dashboard/InvitesPanel";
@@ -23,6 +23,10 @@ import { cn } from "@/lib/utils";
 
 type Tab = "umbrella" | "invites" | "structure" | "profile";
 
+function isTab(value: string | null): value is Tab {
+  return value === "umbrella" || value === "invites" || value === "structure" || value === "profile";
+}
+
 const TABS: Array<{ id: Tab; label: string; ownerOnly: boolean }> = [
   { id: "umbrella", label: "Umbrella", ownerOnly: true },
   { id: "invites", label: "Invites", ownerOnly: true },
@@ -32,23 +36,16 @@ const TABS: Array<{ id: Tab; label: string; ownerOnly: boolean }> = [
 
 export default function UsgManagePage() {
   const account = useAccount();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const canManage = account.accountScope === "owner";
-  const [tab, setTab] = useState<Tab>(canManage ? "umbrella" : "profile");
 
-  // The sidebar's sub-nav links carry `?tab=`, so Manage can open on the floor
-  // the reader asked for. Read once on mount rather than on every render.
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab");
-    if (
-      requested === "umbrella" ||
-      requested === "invites" ||
-      requested === "structure" ||
-      requested === "profile"
-    ) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTab(requested);
-    }
-  }, []);
+  // The URL is the source of truth. Reading `?tab=` once on mount meant a
+  // sidebar link changed the address bar but not the panel, because Next
+  // re-renders the page instead of remounting it. Deriving the tab from
+  // `useSearchParams` makes every sub-nav link work on the first click.
+  const requested = searchParams.get("tab");
+  const tab: Tab = isTab(requested) ? requested : "umbrella";
 
   // A non-owner has exactly one floor: their own profile. The guard is written
   // as an early return rather than a filter so the owner-only tabs are never
@@ -96,7 +93,7 @@ export default function UsgManagePage() {
             role="tab"
             type="button"
             aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => router.replace(`/usg/manage?tab=${t.id}`, { scroll: false })}
             className={cn(
               "pressable -mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
               tab === t.id

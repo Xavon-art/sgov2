@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
@@ -23,18 +23,19 @@ import { cn } from "@/lib/utils";
 
 type Tab = "usg" | "profile" | "structure";
 
+function isTab(value: string | null): value is Tab {
+  return value === "usg" || value === "profile" || value === "structure";
+}
+
 export default function LsgManagePage() {
   const account = useAccount();
-  const [tab, setTab] = useState<Tab>("profile");
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // The sidebar's sub-nav carries `?tab=`, so "My USG" opens directly.
-  useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab");
-    if (requested === "usg" || requested === "profile" || requested === "structure") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTab(requested);
-    }
-  }, []);
+  // URL is the source of truth so a sidebar link switches the panel on the
+  // first click, not only after a full reload.
+  const requested = searchParams.get("tab");
+  const tab: Tab = isTab(requested) ? requested : "usg";
 
   const unitName = account.campusName || account.universityName || "your unit";
 
@@ -63,7 +64,7 @@ export default function LsgManagePage() {
             role="tab"
             type="button"
             aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => router.replace(`/lsg/manage?tab=${t.id}`, { scroll: false })}
             className={cn(
               "pressable -mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
               tab === t.id ? "border-brass text-ink" : "border-transparent text-muted hover:text-ink",
