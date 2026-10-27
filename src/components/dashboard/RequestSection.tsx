@@ -152,20 +152,28 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
 
   const openTask = useCallback(async (id: string) => {
     setSelectedTask(id);
-    const [d, t] = await Promise.all([
-      fetch(`/api/tasks/${id}?taskId=${id}`).then((r) => r.json()),
-      fetch(`/api/tasks/thread?taskId=${id}`).then((r) => r.json()),
-    ]);
+    const d = await fetch(`/api/tasks/${id}?taskId=${id}`).then((r) => r.json());
     if (d.ok) {
       setDetail(d.task);
       setReqs(d.requirements || []);
       setCanClose(d.canClose);
     }
-    if (t.ok) {
-      setMsgs(t.messages || []);
-      setClosed(t.closed);
-    }
   }, []);
+
+  useEffect(() => {
+    if (!selectedTask) return;
+    const es = new EventSource(`/api/tasks/thread/stream?taskId=${selectedTask}`);
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (Array.isArray(data.messages)) setMsgs(data.messages);
+        if (typeof data.closed === "boolean") setClosed(data.closed);
+      } catch {
+        // ignore
+      }
+    };
+    return () => es.close();
+  }, [selectedTask]);
 
   const sendMsg = useCallback(async () => {
     if (!selectedTask || !msgText.trim()) return;
@@ -276,7 +284,17 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
               <button onClick={() => setSelectedTask(null)} className="text-sm text-muted">
                 ← Back
               </button>
-              {isUsg && canClose && !closed && <CloseTaskButton taskId={selectedTask} onDone={() => openTask(selectedTask)} />}
+              <div className="flex gap-2">
+                {isUsg && (
+                  <a
+                    href={`/api/tasks/${selectedTask}/zip`}
+                    className="rounded-full border border-line px-3 py-1 text-xs text-ink hover:bg-ink/[0.04]"
+                  >
+                    Download ZIP
+                  </a>
+                )}
+                {isUsg && canClose && !closed && <CloseTaskButton taskId={selectedTask} onDone={() => openTask(selectedTask)} />}
+              </div>
             </div>
             <h2 className="text-xl font-medium">{(detail as { title?: string } | null)?.title}</h2>
             <p className="mt-2 whitespace-pre-wrap text-body">{(detail as { details?: string } | null)?.details}</p>
@@ -335,6 +353,10 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
                 ))}
               </div>
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-line bg-paper p-6">
+            <ExtensionsPanel taskId={selectedTask} isUsg={isUsg} myUnitIds={(detail as { myUnitIds?: string[] } | null)?.myUnitIds ?? []} />
           </div>
 
           <div className="rounded-2xl border border-line bg-paper p-6">
@@ -889,6 +911,91 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
             File request
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: boolean; myUnitIds: string[] }) {
+  const [exts, setExts] = useState<Array<Record<string, unknown>>>([]);
+  const [show, setShow] = useState(false);
+  const [days, setDays] = useState("3");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/tasks/extensions?taskId=${taskId}`);
+      const json = await res.json();
+      if (json.ok) setExts(json.extensions ?? []);
+    } catch {
+      // ignore
+    }
+  }, [taskId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  const request = async () => {
+    setBusy(true);
+    try {
+      await fetch("/api/tasks/extensions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "request", taskId, unitId: myUnitIds[0], days: Number(days), reason }),
+      });
+      setShow(false);
+      setReason("");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const decide = async (id: string, decision: "granted" | "denied") => {
+    await fetch("/api/tasks/extensions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "decide", extensionId: id, decision, note: "" }),
+    });
+    await load();
+  };
+
+  return (
+    <div>
+      <div className="mb-2 text-sm font-medium">Extensions</div>
+      {!isUsg && (
+        <div className="mb-2">
+          <button onClick={() => setShow((v) => !v)} className="text-sm text-muted underline">
+            Request extension
+          </button>
+          {show && (
+            <div className="mt-2 grid gap-2">
+              <input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="rounded-lg border border-line px-2 py-1 text-sm" placeholder="Days" />
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-line px-2 py-1 text-sm" placeholder="Reason" />
+              <button onClick={() => void request()} disabled={busy} className="rounded-full border border-line px-3 py-1 text-xs">Submit</button>
+            </div>
+          )}
+        </div>
+      )}
+      <div className="grid gap-2">
+        {exts.map((e) => (
+          <div key={String(e.id)} className="rounded-lg border border-line p-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span>{String(e.unitName ?? "")} � {String(e.requestedDays)} days � {String(e.status)}</span>
+              {isUsg && e.status === "pending" && (
+                <div className="flex gap-1">
+                  <button onClick={() => void decide(String(e.id), "granted")} className="text-xs text-green-700">Approve</button>
+                  <button onClick={() => void decide(String(e.id), "denied")} className="text-xs text-[#a5442c]">Deny</button>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted">{String(e.reason ?? "")}</p>
+          </div>
+        ))}
+        {exts.length === 0 && <p className="text-xs text-muted">No extensions.</p>}
       </div>
     </div>
   );
