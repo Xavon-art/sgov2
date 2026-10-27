@@ -83,6 +83,27 @@ export function buildRequirementStoragePath(args: {
   return `${organizationId}/proposals/${nonce}/reqs/v${version}/${requirementId}/${fileName}`;
 }
 
+export function buildTaskRequirementStoragePath(args: {
+  organizationId: string;
+  taskId: string;
+  requirementId: string;
+  version: number;
+  fileName: string;
+}): string {
+  const { organizationId, taskId, requirementId, version, fileName } = args;
+  return `${organizationId}/tasks/${taskId}/reqs/v${version}/${requirementId}/${fileName}`;
+}
+
+export function buildPersonalRequestStoragePath(args: {
+  organizationId: string;
+  unitId: string;
+  version: number;
+  fileName: string;
+}): string {
+  const { organizationId, unitId, version, fileName } = args;
+  return `${organizationId}/requests/v${version}/${unitId}/${fileName}`;
+}
+
 export type UploadAction = "claim" | "chunk" | "commit" | "abort";
 
 export type ClaimResponse = {

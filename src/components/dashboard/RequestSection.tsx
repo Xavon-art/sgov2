@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { Reveal } from "@/components/fx/Reveal";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +9,7 @@ import { IconPencil } from "@/components/ui/Icons";
 import { FieldShell, TextArea, TextField } from "@/components/ui/Field";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
+import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { todayIso, dueLabel } from "@/lib/tasks";
 import { uploadFile } from "@/lib/upload-client";
 function uuidv4() {
@@ -44,19 +46,8 @@ type ReqItem = {
   acceptedTypes: string[] | null;
   required: boolean;
   position: number;
-  answers?: Array<{
-    unitId: string;
-    unitName: string;
-    linkUrl: string | null;
-    storagePath: string | null;
-    originalName: string | null;
-    mimeType: string | null;
-    sizeBytes: number | null;
-    status: string;
-    note: string | null;
-    reviewedBy: string | null;
-    reviewedAt: string | null;
-  }>;
+  verdicts?: Array<Record<string, unknown>>;
+  myAnswer?: Record<string, unknown> | null;
 };
 
 type Msg = {
@@ -84,7 +75,7 @@ type PersonalReq = {
   neededOn: string | null;
   neededTime: string | null;
   neededTimezone: string | null;
-  status: "open" | "granted" | "declined" | "withdrawn";
+  status: "submitted" | "granted" | "declined" | "withdrawn" | "expired";
   decisionNote: string | null;
   decidedAt: string | null;
   document?: { storagePath: string; originalName: string; mimeType: string; sizeBytes: number } | null;
@@ -102,7 +93,15 @@ function fmtTime(s: string) {
 
 export function RequestSection({ isUsg }: { isUsg: boolean }) {
   useDashboard();
-  const [tab, setTab] = useState<"tasks" | "personal">("tasks");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<"tasks" | "personal">(
+    searchParams.get("tab") === "personal" ? "personal" : "tasks",
+  );
+  useEffect(() => {
+    const next = searchParams.get("tab") === "personal" ? "personal" : "tasks";
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTab(next);
+  }, [searchParams]);
   const [tasks, setTasks] = useState<TaskListItem[]>([]);
   const [taskState, setTaskState] = useState<"loading" | "ready" | "error">("loading");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -296,29 +295,40 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
                     </div>
                     {r.instructions && <p className="mt-1 text-sm text-muted">{r.instructions}</p>}
                     {!isUsg && <AnswerRequirement req={r} taskId={selectedTask} onDone={() => openTask(selectedTask)} />}
-                    {isUsg && r.answers && r.answers.length > 0 && (
+                    {isUsg && Array.isArray(r.verdicts) && r.verdicts.length > 0 && (
                       <div className="mt-3 grid gap-2">
-                        {r.answers.map((a) => (
-                          <div key={a.unitId} className="rounded-lg border border-line p-3">
+                        {(r.verdicts as Array<Record<string, unknown>>).map((a) => (
+                          <div key={String(a.unitId)} className="rounded-lg border border-line p-3">
                             <div className="flex items-center justify-between">
-                              <div className="text-sm font-medium">{a.unitName}</div>
-                              <span className="text-xs text-muted">{a.status}</span>
+                              <div className="text-sm font-medium">{String(a.unitName ?? "")}</div>
+                              <span className="text-xs text-muted">{String(a.reviewStatus ?? "")}</span>
                             </div>
-                            {a.linkUrl && (
+                            {typeof a.linkUrl === "string" && a.linkUrl && (
                               <a className="text-sm underline" href={a.linkUrl} target="_blank">
                                 {a.linkUrl}
                               </a>
                             )}
-                            {a.originalName && <div className="text-sm text-muted">{a.originalName}</div>}
-                            {a.status !== "approved" && (
+                            {typeof a.originalName === "string" && a.originalName && (
+                              <div className="text-sm text-muted">{a.originalName}</div>
+                            )}
+                            {a.reviewStatus !== "approved" && (
                               <div className="mt-2 flex gap-2">
-                                <ReviewBtn reqId={r.id} unitId={a.unitId} verdict="approved" onDone={() => openTask(selectedTask)} />
-                                <ReviewBtn reqId={r.id} unitId={a.unitId} verdict="flagged" onDone={() => openTask(selectedTask)} />
-                                <ReviewBtn reqId={r.id} unitId={a.unitId} verdict="returned" needNote onDone={() => openTask(selectedTask)} />
+                                <ReviewBtn reqId={r.id} unitId={String(a.unitId)} verdict="approved" onDone={() => openTask(selectedTask)} />
+                                <ReviewBtn reqId={r.id} unitId={String(a.unitId)} verdict="flagged" onDone={() => openTask(selectedTask)} />
+                                <ReviewBtn reqId={r.id} unitId={String(a.unitId)} verdict="returned" needNote onDone={() => openTask(selectedTask)} />
                               </div>
                             )}
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {!isUsg && r.myAnswer && (
+                      <div className="mt-2 rounded-lg border border-line/60 bg-canvas/40 p-2 text-sm text-muted">
+                        Your answer: {String((r.myAnswer as Record<string, unknown>).reviewStatus ?? "submitted")}
+                        {typeof (r.myAnswer as Record<string, unknown>).originalName === "string" &&
+                        (r.myAnswer as Record<string, unknown>).originalName ? (
+                          <span> · {(r.myAnswer as Record<string, unknown>).originalName as string}</span>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -377,8 +387,8 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
                     {pr.unitName} • {pr.status}
                   </div>
                 </div>
-                {isUsg && pr.status === "open" && <DecidePR prId={pr.id} onDone={loadPersonal} />}
-                {!isUsg && pr.status === "open" && <WithdrawPR prId={pr.id} onDone={loadPersonal} />}
+                {isUsg && pr.status === "submitted" && <DecidePR prId={pr.id} onDone={loadPersonal} />}
+                {!isUsg && pr.status === "submitted" && <WithdrawPR prId={pr.id} onDone={loadPersonal} />}
               </div>
               <p className="mt-2 whitespace-pre-wrap text-sm text-body">{pr.coverLetter}</p>
               {pr.decisionNote && <p className="mt-2 text-sm text-muted">Note: {pr.decisionNote}</p>}
@@ -401,8 +411,31 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
   const [autoClose, setAutoClose] = useState(false);
   const [priority, setPriority] = useState("normal");
   const [unitIds, setUnitIds] = useState<string[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<Array<{ id: string; name: string }>>([]);
+  const [dueTimezone, setDueTimezone] = useState("");
   const [reqs, setReqs] = useState<Array<{ label: string; instructions: string; acceptedTypes: string[]; required: boolean }>>([]);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/umbrella");
+        const json = await res.json();
+        if (json.ok && Array.isArray(json.units)) {
+          const us = json.units
+            .map((u: { id?: string; unitId?: string; name?: string; unitName?: string }) => ({
+              id: String(u.id ?? u.unitId ?? ""),
+              name: String(u.name ?? u.unitName ?? "Unit"),
+            }))
+            .filter((u: { id: string }) => u.id);
+          setAvailableUnits(us);
+          setUnitIds(us.map((u: { id: string }) => u.id));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
 
   const addReq = () =>
     setReqs((r) => [...r, { label: "", instructions: "", acceptedTypes: [], required: true }]);
@@ -417,7 +450,7 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
           details,
           dueDate: dueDate || null,
           dueTime: dueTime || null,
-          dueTimezone: dueTime ? Intl.DateTimeFormat().resolvedOptions().timeZone : null,
+          dueTimezone: dueTime ? (dueTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone) : null,
           priority,
           autoClose,
           unitIds,
@@ -477,6 +510,34 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
                   </select>
                 </div>
               </div>
+              <div>
+                <div className="mb-1 text-sm text-muted">Assign to units</div>
+                <div className="grid gap-1 sm:grid-cols-2">
+                  {availableUnits.map((u) => (
+                    <label key={u.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={unitIds.includes(u.id)}
+                        onChange={(e) => {
+                          setUnitIds((prev) =>
+                            e.target.checked ? [...prev, u.id] : prev.filter((x) => x !== u.id),
+                          );
+                        }}
+                      />
+                      {u.name}
+                    </label>
+                  ))}
+                  {availableUnits.length === 0 && (
+                    <span className="text-xs text-muted">No units loaded; all units will be assigned.</span>
+                  )}
+                </div>
+              </div>
+              {dueTime && (
+                <div>
+                  <div className="mb-1 text-sm text-muted">Timezone</div>
+                  <TimezonePicker value={dueTimezone} onChange={setDueTimezone} />
+                </div>
+              )}
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={autoClose} onChange={(e) => setAutoClose(e.target.checked)} />
                 Auto-close when all requirements done
@@ -538,7 +599,7 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function AnswerRequirement({ req, onDone }: { req: ReqItem; taskId: string; onDone: () => void }) {
+function AnswerRequirement({ req, taskId, onDone }: { req: ReqItem; taskId: string; onDone: () => void }) {
   const [link, setLink] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -551,7 +612,7 @@ function AnswerRequirement({ req, onDone }: { req: ReqItem; taskId: string; onDo
       let mimeType: string | undefined;
       let sizeBytes: number | undefined;
       if (file) {
-        const resUp = await uploadFile(file, { target: "requirement", requirementId: req.id, nonce: uuidv4(), version: 1 });
+        const resUp = await uploadFile(file, { target: "task_requirement", taskId, requirementId: req.id, nonce: uuidv4(), version: 1 });
         if (!resUp.ok) throw new Error(resUp.reason);
         storagePath = resUp.storagePath;
         originalName = file.name;
@@ -751,12 +812,16 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
       let mimeType: string | undefined;
       let sizeBytes: number | undefined;
       if (file) {
-        // For personal requests, use task requirement upload path shape is different; but API expects storagePath from claim
-        // We'll claim via a simple approach - use claim_personal_request_upload via direct call? Or go through /api/uploads
-        // Easier: call claim_personal_request_upload directly via RPC style not available; use fetch to a helper? 
-        // But we have API routes for tasks/requests. Alternatively upload via chunk protocol by calling claim_personal_request_upload
-        // Let us call claim_personal_request_upload via rpc-like call through our API? Not exposed. Use direct fetch to supabase rpc if key present? 
-        // Or just skip file upload for now and note - but better to do it properly
+        const resUp = await uploadFile(file, {
+          target: "personal_request",
+          nonce: uuidv4(),
+          version: 1,
+        });
+        if (!resUp.ok) throw new Error(resUp.reason);
+        storagePath = resUp.storagePath;
+        originalName = file.name;
+        mimeType = file.type;
+        sizeBytes = file.size;
       }
       const res = await fetch("/api/requests", {
         method: "POST",

@@ -8,6 +8,8 @@ import {
   UUID_RE,
   buildRequirementStoragePath,
   buildStoragePath,
+  buildTaskRequirementStoragePath,
+  buildPersonalRequestStoragePath,
   sanitizeFileName,
 } from "@/lib/documents";
 
@@ -120,7 +122,14 @@ async function handleJson(req: Request, token: string) {
     const requirementId = typeof body.requirementId === "string" ? body.requirementId : "";
     const nonce = typeof body.nonce === "string" ? body.nonce : "";
     const version = readCount(body.version);
-    const target = body.target === "requirement" ? "requirement" : "item";
+    const target =
+    body.target === "requirement"
+      ? "requirement"
+      : body.target === "task_requirement"
+        ? "task_requirement"
+        : body.target === "personal_request"
+          ? "personal_request"
+          : "item";
 
     if (!fileName || sizeBytes === null) return fail("invalid_request");
     if (sizeBytes < 1) return fail("invalid_request");
@@ -167,6 +176,81 @@ async function handleJson(req: Request, token: string) {
       if (!result.ok) return fail(result.reason ?? "retry");
 
       return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: 0 });
+    }
+
+    if (target === "task_requirement") {
+      const taskId = typeof body.taskId === "string" ? body.taskId : "";
+      if (!UUID_RE.test(requirementId) || !UUID_RE.test(taskId)) return fail("invalid_request");
+
+      const account = await currentAccount();
+      if (!account?.organizationId) return fail("no_organization", 403);
+
+      const storagePath = buildTaskRequirementStoragePath({
+        organizationId: account.organizationId,
+        taskId,
+        requirementId,
+        version,
+        fileName,
+      });
+
+      const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
+        "claim_task_requirement_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: result.writtenBytes ?? 0 });
+    }
+
+    if (target === "personal_request") {
+      let unitId = typeof body.unitId === "string" ? body.unitId : "";
+      if (!UUID_RE.test(unitId)) {
+        // Resolve the caller's own unit server-side.
+        try {
+          const res = await callRpc<RpcResult & { unitId?: string; unit?: { id?: string } }>(
+            "my_unit",
+            { p_session_token: token },
+          );
+          unitId =
+            (typeof res.unitId === "string" && res.unitId) ||
+            (typeof res.unit?.id === "string" && res.unit.id) ||
+            (typeof res.id === "string" && res.id) ||
+            "";
+        } catch {
+          unitId = "";
+        }
+      }
+      if (!UUID_RE.test(unitId)) return fail("invalid_request");
+
+      const account = await currentAccount();
+      if (!account?.organizationId) return fail("no_organization", 403);
+
+      const storagePath = buildPersonalRequestStoragePath({
+        organizationId: account.organizationId,
+        unitId,
+        version,
+        fileName,
+      });
+
+      const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
+        "claim_personal_request_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: result.writtenBytes ?? 0 });
     }
 
     if (!UUID_RE.test(itemId)) return fail("invalid_request");
