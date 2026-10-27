@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
@@ -33,6 +33,21 @@ export default function UsgManagePage() {
   const account = useAccount();
   const canManage = account.accountScope === "owner";
   const [tab, setTab] = useState<Tab>(canManage ? "umbrella" : "profile");
+
+  // The sidebar's sub-nav links carry `?tab=`, so Manage can open on the floor
+  // the reader asked for. Read once on mount rather than on every render.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (
+      requested === "umbrella" ||
+      requested === "invites" ||
+      requested === "structure" ||
+      requested === "profile"
+    ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTab(requested);
+    }
+  }, []);
 
   // A non-owner has exactly one floor: their own profile. The guard is written
   // as an early return rather than a filter so the owner-only tabs are never

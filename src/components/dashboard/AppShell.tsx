@@ -80,6 +80,13 @@ export type NavItem = {
   // to Client Components" and crashed the whole dashboard. The icon is resolved
   // here instead.
   icon: NavIcon;
+  /**
+   * The floors inside a section. Manage and Request are each one job with
+   * several rooms, so they carry their own sub-nav instead of inflating the
+   * top level to eight entries. A child is a real route (optionally with a
+   * `?tab=` query) so the browser's back button keeps working.
+   */
+  children?: Array<{ label: string; href: string }>;
 };
 
 /**
@@ -237,29 +244,53 @@ export function AppShell({
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
             const selected = item.href === pathname;
+            const inSection = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link
-                key={item.id}
-                href={item.href}
-                aria-current={selected ? "page" : undefined}
-                className={cn(
-                  "group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.875rem] font-medium transition-colors duration-300",
-                  selected
-                    ? "bg-ink text-white shadow-[0_1px_0_rgba(255,255,255,0.12)_inset]"
-                    : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
-                )}
-              >
-                <Icon
+              <div key={item.id} className="flex flex-col">
+                <Link
+                  href={item.href}
+                  aria-current={selected ? "page" : undefined}
                   className={cn(
-                    "h-[1.1rem] w-[1.1rem] shrink-0 transition-transform duration-200 ease-out",
+                    "group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.875rem] font-medium transition-colors duration-300",
                     selected
-                      ? "text-brass"
-                      : "text-brass-deep/80 group-hover:translate-x-0.5 group-hover:text-brass-deep",
+                      ? "bg-ink text-white shadow-[0_1px_0_rgba(255,255,255,0.12)_inset]"
+                      : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
                   )}
-                  strokeWidth={1.7}
-                />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </Link>
+                >
+                  <Icon
+                    className={cn(
+                      "h-[1.1rem] w-[1.1rem] shrink-0 transition-transform duration-200 ease-out",
+                      selected
+                        ? "text-brass"
+                        : "text-brass-deep/80 group-hover:translate-x-0.5 group-hover:text-brass-deep",
+                    )}
+                    strokeWidth={1.7}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                </Link>
+                {item.children && inSection ? (
+                  <div className="ml-5 flex flex-col gap-0.5 border-l border-line/70 pl-2.5 pt-0.5">
+                    {item.children.map((child) => {
+                      const childPath = child.href.split("?")[0];
+                      const childSelected = pathname === childPath && !child.href.includes("?");
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={cn(
+                            "rounded-lg px-2.5 py-1.5 text-[0.8125rem] transition-colors",
+                            childSelected
+                              ? "bg-ink/[0.06] font-semibold text-ink"
+                              : "text-muted hover:bg-ink/[0.04] hover:text-ink",
+                          )}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </nav>
@@ -320,35 +351,51 @@ export function AppShell({
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
             const selected = item.href === pathname;
+            const inSection = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link
-                key={item.id}
-                href={item.href}
-                aria-current={selected ? "page" : undefined}
-                onClick={() => setOpen(false)}
-                className={cn(
-                  // `group` was missing here. The icon below asks for
-                  // group-hover:translate-x-0.5, and without the parent class
-                  // that selector matches nothing at all -- the nudge was
-                  // silently dead on mobile, which is the only place this
-                  // drawer exists.
-                  "group flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] font-medium transition-colors duration-300",
-                  selected
-                    ? "bg-ink text-white"
-                    : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
-                )}
-              >
-                <Icon
+              <div key={item.id} className="flex flex-col">
+                <Link
+                  href={item.href}
+                  aria-current={selected ? "page" : undefined}
+                  onClick={() => setOpen(false)}
                   className={cn(
-                    "h-5 w-5 shrink-0 transition-transform duration-200 ease-out",
+                    // `group` was missing here. The icon below asks for
+                    // group-hover:translate-x-0.5, and without the parent class
+                    // that selector matches nothing at all -- the nudge was
+                    // silently dead on mobile, which is the only place this
+                    // drawer exists.
+                    "group flex min-h-12 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.9375rem] font-medium transition-colors duration-300",
                     selected
-                      ? "text-brass"
-                      : "text-brass-deep/80 group-hover:translate-x-0.5",
+                      ? "bg-ink text-white"
+                      : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
                   )}
-                  strokeWidth={1.7}
-                />
-                {item.label}
-              </Link>
+                >
+                  <Icon
+                    className={cn(
+                      "h-5 w-5 shrink-0 transition-transform duration-200 ease-out",
+                      selected
+                        ? "text-brass"
+                        : "text-brass-deep/80 group-hover:translate-x-0.5",
+                    )}
+                    strokeWidth={1.7}
+                  />
+                  {item.label}
+                </Link>
+                {item.children && inSection ? (
+                  <div className="ml-7 flex flex-col gap-0.5 border-l border-line/70 pl-3 pb-1">
+                    {item.children.map((child) => (
+                      <Link
+                        key={child.href}
+                        href={child.href}
+                        onClick={() => setOpen(false)}
+                        className="rounded-lg px-2.5 py-1.5 text-[0.875rem] text-muted hover:bg-ink/[0.04] hover:text-ink"
+                      >
+                        {child.label}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </nav>

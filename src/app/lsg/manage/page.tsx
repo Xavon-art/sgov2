@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "@/components/dashboard/dashboard-context";
+import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +20,20 @@ import { cn } from "@/lib/utils";
  * there is no id to name here.
  */
 
-type Tab = "profile" | "structure";
+type Tab = "usg" | "profile" | "structure";
 
 export default function LsgManagePage() {
   const account = useAccount();
   const [tab, setTab] = useState<Tab>("profile");
+
+  // The sidebar's sub-nav carries `?tab=`, so "My USG" opens directly.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (requested === "usg" || requested === "profile" || requested === "structure") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTab(requested);
+    }
+  }, []);
 
   const unitName = account.campusName || account.universityName || "your unit";
 
@@ -43,6 +53,7 @@ export default function LsgManagePage() {
         className="flex flex-wrap gap-1 border-b border-line/80"
       >
         {([
+          { id: "usg" as const, label: "My USG" },
           { id: "profile" as const, label: "Profile" },
           { id: "structure" as const, label: "Government structure" },
         ]).map((t) => (
@@ -61,6 +72,8 @@ export default function LsgManagePage() {
           </button>
         ))}
       </div>
+
+      {tab === "usg" ? <MyUsgPanel /> : null}
 
       {tab === "profile" ? <ProfileSection allowCustomisation={false} /> : null}
 

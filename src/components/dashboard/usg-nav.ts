@@ -36,6 +36,11 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       hint: "Your umbrella, invitations, and profile",
       href: "/usg/manage",
       icon: "layers",
+      children: [
+        { label: "Your Umbrella", href: "/usg/manage?tab=umbrella" },
+        { label: "Invites", href: "/usg/manage?tab=invites" },
+        { label: "Profile and Customization", href: "/usg/manage?tab=profile" },
+      ],
     },
     {
       id: "request",
@@ -43,6 +48,11 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       hint: "Tasks and personal requests",
       href: "/usg/request",
       icon: "submission",
+      children: [
+        { label: "Tasks", href: "/usg/request" },
+        { label: "Inbox", href: "/usg/messages" },
+        { label: "Personal Requests", href: "/usg/personal-requests" },
+      ],
     },
     {
       id: "events",

@@ -31,6 +31,10 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       hint: "Your profile and your structure",
       href: "/lsg/manage",
       icon: "layers",
+      children: [
+        { label: "My USG", href: "/lsg/manage?tab=usg" },
+        { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
+      ],
     },
     {
       id: "request",
@@ -38,6 +42,10 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       hint: "Tasks from USG, and what you send up",
       href: "/lsg/request",
       icon: "submission",
+      children: [
+        { label: "Tasks and Inbox", href: "/lsg/request" },
+        { label: "My Personal Requests", href: "/lsg/personal-requests" },
+      ],
     },
     {
       id: "events",
