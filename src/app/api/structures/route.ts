@@ -54,6 +54,47 @@ export async function GET(req: Request) {
       return NextResponse.json(res);
     }
 
+    if (view === "own") {
+      // The Manage screen embeds the editor, so it needs the caller's own unit
+      // without naming one. `unit_chart` already narrows the answer to the
+      // seats this session holds; the same root/lsg pick the full pages use is
+      // repeated here so the embedded editor cannot show a wider unit than the
+      // standalone one.
+      const chart = await callRpc<
+        | { ok: true; root: { id: string; name: string } | null; units: Array<{ id: string; name: string; unitType: string }> }
+        | { ok: false; reason: string }
+      >("unit_chart", { p_session_token: token });
+
+      if (!chart.ok) {
+        return NextResponse.json(
+          { ok: false, message: "We could not find your unit.", reason: chart.reason },
+          { status: chart.reason === "no_unit" ? 404 : 400 },
+        );
+      }
+
+      const isOwner = await callRpc<{ ok: boolean; accountScope?: string }>("account_workspace_role", {
+        p_session_token: token,
+      }).then((r) => r.ok && r.accountScope === "owner").catch(() => false);
+
+      const belowRoot = chart.root ? chart.units.filter((u) => u.id !== chart.root?.id) : chart.units;
+      const own = isOwner
+        ? chart.root ?? belowRoot[0]
+        : belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? chart.root;
+
+      if (!own) {
+        return NextResponse.json(
+          { ok: false, message: "Your account is not seated in a council yet.", reason: "no_unit" },
+          { status: 404 },
+        );
+      }
+
+      const res = await callRpc<StructureResult>("get_structure", {
+        p_session_token: token,
+        p_unit_id: own.id,
+      });
+      return NextResponse.json(res);
+    }
+
     if (view === "queue") {
       const res = await callRpc<StructureResult>("list_structure_queue", {
         p_session_token: token,

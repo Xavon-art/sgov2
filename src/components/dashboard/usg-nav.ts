@@ -39,6 +39,7 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       children: [
         { label: "Your Umbrella", href: "/usg/manage?tab=umbrella" },
         { label: "Invites", href: "/usg/manage?tab=invites" },
+        { label: "Government structure", href: "/usg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/usg/manage?tab=profile" },
       ],
     },

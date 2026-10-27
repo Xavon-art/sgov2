@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
+import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -85,12 +86,8 @@ export default function LsgManagePage() {
             Build and maintain your council&rsquo;s chart — the officers, positions, and committees
             your unit is accountable for — directly below.
           </p>
-          <div className="mt-4 overflow-hidden rounded-xl border border-line">
-            <iframe
-              src="/my-council/structure"
-              title="Government structure editor"
-              className="h-[70vh] w-full border-0"
-            />
+          <div className="mt-4">
+            <StructureEditorPanel variant="workspace" />
           </div>
         </div>
       ) : null}

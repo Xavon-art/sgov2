@@ -6,6 +6,7 @@ import { useAccount } from "@/components/dashboard/dashboard-context";
 import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
 import { InvitesPanel } from "@/components/dashboard/InvitesPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
+import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -137,12 +138,8 @@ export default function UsgManagePage() {
               Open the structure queue
             </Link>
           </div>
-          <div className="mt-4 overflow-hidden rounded-xl border border-line">
-            <iframe
-              src="/usg/structure"
-              title="Government structure editor"
-              className="h-[70vh] w-full border-0"
-            />
+          <div className="mt-4">
+            <StructureEditorPanel variant="chart" showQueue />
           </div>
         </div>
       ) : null}

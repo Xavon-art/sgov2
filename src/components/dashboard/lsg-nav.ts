@@ -33,6 +33,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       icon: "layers",
       children: [
         { label: "My USG", href: "/lsg/manage?tab=usg" },
+        { label: "Government structure", href: "/lsg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
       ],
     },

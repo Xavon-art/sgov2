@@ -37,24 +37,44 @@ function rowsFor(n: number): number[] {
   return rows;
 }
 
+export type OrgChartInitial = {
+  nodes: Array<{
+    title: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    photo: string | null;
+  }>;
+  termLabel?: string;
+  startsOn?: string;
+  endsOn?: string;
+  structureId?: string | null;
+};
+
 export function OrgChartDragDrop({
   unitId,
   unitName,
   capability,
+  initial,
 }: {
   unitId: string;
   unitName: string;
   capability: StructureCapability;
+  initial?: OrgChartInitial;
 }) {
-  const [nodes, setNodes] = useState<Node[]>([emptyNode()]);
-  const [termLabel, setTermLabel] = useState("");
-  const [startsOn, setStartsOn] = useState("");
-  const [endsOn, setEndsOn] = useState("");
+  const [nodes, setNodes] = useState<Node[]>(
+    initial && initial.nodes.length > 0
+      ? initial.nodes.map((node) => ({ id: newId(), ...node }))
+      : [emptyNode()],
+  );
+  const [termLabel, setTermLabel] = useState(initial?.termLabel ?? "");
+  const [startsOn, setStartsOn] = useState(initial?.startsOn ?? "");
+  const [endsOn, setEndsOn] = useState(initial?.endsOn ?? "");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [structureId, setStructureId] = useState<string | null>(null);
+  const [structureId, setStructureId] = useState<string | null>(initial?.structureId ?? null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
