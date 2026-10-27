@@ -110,6 +110,52 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
+  const [unread, setUnread] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifs, setNotifs] = useState<{ id: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string }[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/notifications/unread");
+        const data = await res.json();
+        if (alive && res.ok && data.ok) setUnread(data.count ?? 0);
+      } catch {
+        // ignore
+      }
+    };
+    void load();
+    const id = setInterval(load, 30000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  async function openNotifs() {
+    setNotifOpen((v) => !v);
+    if (!notifOpen) {
+      try {
+        const res = await fetch("/api/notifications?limit=20");
+        const data = await res.json();
+        if (res.ok && data.ok) setNotifs(data.notifications ?? []);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  async function markRead(id: string) {
+    try {
+      await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+      setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
+      setUnread((u) => Math.max(0, u - 1));
+    } catch {
+      // ignore
+    }
+  }
+
   // Whether the drawer owns the screen, including while it slides back out.
   //
   // The header's sign-out has to yield to the drawer's, and gating on `open`
@@ -337,6 +383,63 @@ export function AppShell({
             </div>
 
             <div className="ml-auto flex min-w-0 items-center gap-2.5">
+              <div className="relative">
+                <button
+                  type="button"
+                  aria-label="Notifications"
+                  onClick={() => void openNotifs()}
+                  className="pressable grid size-9 place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink"
+                >
+                  <span className="text-[1.1rem]">🔔</span>
+                  {unread > 0 ? (
+                    <span className="absolute -right-0.5 -top-0.5 grid min-w-[1.1rem] place-items-center rounded-full bg-brass px-1 text-[0.625rem] font-bold text-ink">
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  ) : null}
+                </button>
+                {notifOpen ? (
+                  <div className="absolute right-0 top-11 z-50 w-80 max-h-96 overflow-y-auto rounded-2xl border border-line bg-paper shadow-lift">
+                    <div className="flex items-center justify-between border-b border-line px-4 py-2">
+                      <p className="text-[0.8125rem] font-semibold text-ink">Notifications</p>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await fetch("/api/notifications/read-all", { method: "POST" });
+                          setNotifs((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+                          setUnread(0);
+                        }}
+                        className="text-[0.75rem] text-muted hover:text-ink"
+                      >
+                        Mark all read
+                      </button>
+                    </div>
+                    {notifs.length === 0 ? (
+                      <p className="px-4 py-6 text-[0.8125rem] text-muted">No notifications yet.</p>
+                    ) : (
+                      <ul className="flex flex-col">
+                        {notifs.map((n) => (
+                          <li key={n.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void markRead(n.id);
+                                if (n.link) window.location.href = n.link;
+                              }}
+                              className={`w-full px-4 py-3 text-left transition-colors hover:bg-canvas ${
+                                n.readAt ? "opacity-60" : ""
+                              }`}
+                            >
+                              <p className="text-[0.875rem] font-medium text-ink-deep">{n.title}</p>
+                              {n.body ? <p className="mt-0.5 text-[0.75rem] text-body">{n.body}</p> : null}
+                              <p className="mt-1 text-[0.625rem] text-muted">{new Date(n.createdAt).toLocaleString()}</p>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
+              </div>
               {badge ? (
                 <span className="hidden max-w-56 truncate rounded-full border border-brass/45 bg-brass-soft/35 px-3 py-1 text-[0.625rem] font-semibold tracking-[0.12em] text-ink uppercase sm:inline-flex">
                   {badge}

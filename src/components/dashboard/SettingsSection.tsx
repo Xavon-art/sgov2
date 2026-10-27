@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Reveal } from "@/components/fx/Reveal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
+import { AuditLogSection } from "@/components/dashboard/AuditLogSection";
 
 /**
  * Settings -- the account's own controls, shared by both workspaces.
@@ -86,6 +87,12 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
           </div>
         </div>
       </Reveal>
+
+      {account.accountScope === "owner" ? (
+        <Reveal delay={0.07}>
+          <AuditLogSection />
+        </Reveal>
+      ) : null}
 
       <Reveal delay={0.08}>
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-paper/70 p-6">

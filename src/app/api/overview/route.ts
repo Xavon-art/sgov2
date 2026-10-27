@@ -53,13 +53,74 @@ export async function GET() {
     // the profile are not two round trips.
     const profile = await callRpc<ApiResponse>("my_profile", { p_session_token: token });
 
-    const counts = { tasksOpen: 0, tasksOverdue: 0, requestsOpen: 0, eventsPending: 0, surveysOpen: 0 };
-
     if (!profile.ok) {
       return NextResponse.json(
         { ok: false, reason: profile.reason, message: messageFor(profile.reason) },
         { status: 403 },
       );
+    }
+
+    // Real counts from the modules that already exist. Each read is best-effort:
+    // a failure on one leaves that counter at zero rather than failing the whole
+    // overview.
+    const counts = { tasksOpen: 0, tasksOverdue: 0, requestsOpen: 0, eventsPending: 0, surveysOpen: 0 };
+
+    try {
+      const tasks = await callRpc<RpcResult & { tasks?: { status?: string; deadline?: string }[] }>(
+        "list_my_tasks",
+        { p_session_token: token },
+      );
+      if (tasks.ok && Array.isArray(tasks.tasks)) {
+        const now = Date.now();
+        for (const t of tasks.tasks) {
+          const st = String(t.status ?? "").toLowerCase();
+          if (st !== "closed" && st !== "completed" && st !== "done") counts.tasksOpen += 1;
+          if (t.deadline && new Date(t.deadline).getTime() < now && st !== "closed" && st !== "completed" && st !== "done")
+            counts.tasksOverdue += 1;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const reqs = await callRpc<RpcResult & { requests?: { status?: string }[] }>(
+        "list_personal_requests",
+        { p_session_token: token },
+      );
+      if (reqs.ok && Array.isArray(reqs.requests)) {
+        counts.requestsOpen = reqs.requests.filter((r) => {
+          const st = String(r.status ?? "").toLowerCase();
+          return st === "pending" || st === "returned";
+        }).length;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const evs = await callRpc<RpcResult & { events?: { status?: string }[] }>("list_events", {
+        p_session_token: token,
+      });
+      if (evs.ok && Array.isArray(evs.events)) {
+        counts.eventsPending = evs.events.filter((e) => {
+          const st = String(e.status ?? "").toLowerCase();
+          return st === "claimed" || st === "upcoming";
+        }).length;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const survs = await callRpc<RpcResult & { surveys?: { status?: string }[] }>("list_surveys", {
+        p_session_token: token,
+      });
+      if (survs.ok && Array.isArray(survs.surveys)) {
+        counts.surveysOpen = survs.surveys.filter((s) => String(s.status ?? "").toLowerCase() === "open").length;
+      }
+    } catch {
+      // ignore
     }
 
     return NextResponse.json({

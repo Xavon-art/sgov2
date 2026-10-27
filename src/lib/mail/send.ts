@@ -84,6 +84,18 @@ export type BrandedMail = {
  * can treat a rejection as "not sent" and keep the record in a retryable state.
  */
 export async function sendBranded(mail: BrandedMail): Promise<void> {
+  if (!isMailConfigured()) {
+    // Dev fallback: store the email in the outbox table so it is still
+    // visible and verifiable without SMTP configured.
+    const { callRpc } = await import("@/lib/auth/rpc");
+    await callRpc("create_outbox_entry", {
+      p_to: mail.to,
+      p_subject: mail.subject,
+      p_html: mail.html,
+      p_text: mail.text,
+    });
+    return;
+  }
   await getTransporter().sendMail({
     from: {
       name: process.env.MAIL_FROM_NAME ?? process.env.SMTP_FROM_NAME ?? "SmartGov",

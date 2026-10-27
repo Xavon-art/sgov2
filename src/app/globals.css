@@ -602,3 +602,22 @@
     will-change: auto;
   }
 }
+
+/* Dark mode: applied when <html> carries the .dark class. */
+html.dark {
+  --color-canvas: #0f1419;
+  --color-canvas-sunk: #161b22;
+  --color-paper: #1c2128;
+  --color-ink: #e6edf3;
+  --color-ink-deep: #f0f6fc;
+  --color-ink-soft: #b1bac4;
+  --color-ink-muted: #8b949e;
+  --color-body: #c9d1d9;
+  --color-muted: #8b949e;
+  --color-faint: #6e7681;
+  --color-line: #30363d;
+  --color-line-strong: #484f58;
+  --color-brass: #d4af37;
+  --color-brass-deep: #e6c35c;
+  --color-brass-soft: #3a3220;
+}
