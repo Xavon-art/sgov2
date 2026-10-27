@@ -20,6 +20,7 @@ type Question = {
   scaleMax: number | null;
   scaleLabelLow: string | null;
   scaleLabelHigh: string | null;
+  showIf?: { questionId?: string; values?: string[] } | null;
 };
 
 type Survey = {
@@ -63,6 +64,8 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
   const [qScaleMax, setQScaleMax] = useState("5");
   const [qLow, setQLow] = useState("");
   const [qHigh, setQHigh] = useState("");
+  const [qShowIfQuestion, setQShowIfQuestion] = useState("");
+  const [qShowIfValue, setQShowIfValue] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const [results, setResults] = useState<{ totalResponses: number; questions: { id: string; title: string; type: string; counts: Record<string, number> | null }[] } | null>(null);
@@ -117,6 +120,8 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
     setQScaleMax("5");
     setQLow("");
     setQHigh("");
+    setQShowIfQuestion("");
+    setQShowIfValue("");
     setEditingId(null);
   };
 
@@ -134,6 +139,10 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
         .split("\n")
         .map((s) => s.trim())
         .filter(Boolean);
+      const showIf =
+        qShowIfQuestion && qShowIfValue.trim()
+          ? { questionId: qShowIfQuestion, values: [qShowIfValue.trim()] }
+          : null;
       const body = {
         type: qType,
         title: qTitle.trim(),
@@ -144,6 +153,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
         scaleMax: Number(qScaleMax),
         scaleLabelLow: qLow.trim(),
         scaleLabelHigh: qHigh.trim(),
+        showIf,
       };
       let res;
       if (editingId) {
@@ -209,6 +219,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
           scaleMax: q.scaleMax,
           scaleLabelLow: q.scaleLabelLow,
           scaleLabelHigh: q.scaleLabelHigh,
+          showIf: q.showIf ?? null,
           orderIndex: questions.length,
         }),
       });
@@ -262,6 +273,9 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
     setQScaleMax(String(q.scaleMax ?? 5));
     setQLow(q.scaleLabelLow ?? "");
     setQHigh(q.scaleLabelHigh ?? "");
+    const si = (q as unknown as { showIf?: { questionId?: string; values?: string[] } }).showIf;
+    setQShowIfQuestion(si?.questionId ?? "");
+    setQShowIfValue(si?.values?.[0] ?? "");
   };
 
   const publish = async () => {
@@ -445,6 +459,33 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
                 <TextField id="q-high" label="High label" value={qHigh} onChange={(e) => setQHigh(e.target.value)} optional />
               </div>
             ) : null}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-[0.8125rem] font-semibold text-ink">Show if (optional)</label>
+                <select
+                  value={qShowIfQuestion}
+                  onChange={(e) => setQShowIfQuestion(e.target.value)}
+                  className="h-11 w-full rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep"
+                >
+                  <option value="">Always show</option>
+                  {questions
+                    .filter((q) => q.id !== editingId)
+                    .map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              {qShowIfQuestion && (
+                <TextField
+                  id="q-showif-value"
+                  label="Equals value"
+                  value={qShowIfValue}
+                  onChange={(e) => setQShowIfValue(e.target.value)}
+                />
+              )}
+            </div>
             <div className="flex gap-2">
               <Button type="submit" disabled={busy}>
                 <SwapText isPending={busy} idle={editingId ? "Save question" : "Add question"} pending="Saving…" />

@@ -47,6 +47,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       p_scale_label_low: typeof body.scaleLabelLow === "string" ? body.scaleLabelLow : null,
       p_scale_label_high: typeof body.scaleLabelHigh === "string" ? body.scaleLabelHigh : null,
       p_order_index: typeof body.orderIndex === "number" ? body.orderIndex : null,
+      p_show_if: body.showIf === undefined ? null : body.showIf,
     });
     if (!res.ok) {
       return NextResponse.json(

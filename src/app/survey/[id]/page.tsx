@@ -42,6 +42,14 @@ function SurveyForm({ id }: { id: string }) {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // OTP access mode
+  const [otpEmail, setOtpEmail] = useState(emailParam);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpBusy, setOtpBusy] = useState(false);
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     let cancelled = false;
@@ -116,6 +124,51 @@ function SurveyForm({ id }: { id: string }) {
     }
   }
 
+  const sendOtp = async () => {
+    setOtpBusy(true);
+    setOtpError(null);
+    try {
+      const res = await fetch(`/api/surveys/${id}/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setOtpError(data.message ?? "Could not send code.");
+        return;
+      }
+      setOtpSent(true);
+    } catch {
+      setOtpError("We could not reach the server.");
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    setOtpBusy(true);
+    setOtpError(null);
+    try {
+      const res = await fetch(`/api/surveys/${id}/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail.trim(), code: otpCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setOtpError(data.message ?? "Invalid code.");
+        return;
+      }
+      setOtpVerified(true);
+      setEmail(otpEmail.trim());
+    } catch {
+      setOtpError("We could not reach the server.");
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl px-5 py-12">
@@ -145,6 +198,51 @@ function SurveyForm({ id }: { id: string }) {
 
   if (!survey) return null;
 
+  if (survey.accessMode === "email_otp" && !otpVerified) {
+    return (
+      <div className="mx-auto max-w-2xl px-5 py-10">
+        <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">{survey.title}</h1>
+        {survey.description ? (
+          <p className="mt-2 text-[0.9375rem] leading-relaxed text-body">{survey.description}</p>
+        ) : null}
+        <div className="mt-8 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-[0.8125rem] font-semibold text-ink">Your email</label>
+            <input
+              type="email"
+              value={otpEmail}
+              onChange={(e) => setOtpEmail(e.target.value)}
+              className="h-11 rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none focus:border-ink/25"
+            />
+          </div>
+          {!otpSent ? (
+            <Button size="md" disabled={otpBusy} onClick={() => void sendOtp()}>
+              Send code
+            </Button>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                <label className="text-[0.8125rem] font-semibold text-ink">Access code</label>
+                <input
+                  type="text"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  className="h-11 rounded-xl border border-line bg-paper/70 px-3.5 text-[0.9375rem] text-ink-deep outline-none focus:border-ink/25"
+                />
+              </div>
+              <Button size="md" disabled={otpBusy} onClick={() => void verifyOtp()}>
+                Verify
+              </Button>
+            </>
+          )}
+          {otpError ? (
+            <p role="alert" className="text-[0.8125rem] text-[#a5442c]">{otpError}</p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl px-5 py-10">
       <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">{survey.title}</h1>
@@ -171,7 +269,15 @@ function SurveyForm({ id }: { id: string }) {
           </div>
         ) : null}
 
-        {questions.map((q) => (
+        {questions
+          .filter((q) => {
+            const si = (q as { showIf?: { questionId?: string; values?: unknown[] } }).showIf;
+            if (!si?.questionId) return true;
+            const v = answers[si.questionId];
+            if (!si.values || si.values.length === 0) return true;
+            return si.values.includes(v as never);
+          })
+          .map((q) => (
           <div key={q.id} className="rounded-2xl border border-line bg-paper/70 p-5">
             <p className="text-[0.9375rem] font-semibold text-ink">
               {q.title}

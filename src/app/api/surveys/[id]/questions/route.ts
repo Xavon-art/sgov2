@@ -47,6 +47,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       p_scale_label_low: typeof body.scaleLabelLow === "string" ? body.scaleLabelLow : null,
       p_scale_label_high: typeof body.scaleLabelHigh === "string" ? body.scaleLabelHigh : null,
       p_order_index: typeof body.orderIndex === "number" ? body.orderIndex : 0,
+      p_show_if: body.showIf ?? null,
     });
     if (!res.ok) {
       return NextResponse.json(
