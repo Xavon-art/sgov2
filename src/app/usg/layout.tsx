@@ -88,6 +88,11 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
 
   return (
     <DashboardProvider value={{ account, meta }}>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `document.documentElement.classList.toggle("dark", ${JSON.stringify(data.theme === "dark")});`,
+        }}
+      />
       <SessionGuard>
         <div className="relative isolate min-h-dvh">
           <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">
