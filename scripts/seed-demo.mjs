@@ -224,19 +224,20 @@ async function purgeAll() {
 }
 
 async function demoSessions() {
-  const { rows } = await sql(
-    `select count(*)::int as n from public.organizations where slug = $1`,
-    [ORG_SLUG],
-  );
-  if (rows[0].n === 0) return;
-  log("removing previous demo organization");
-  const { rows: orgs } = await sql(
-    `select id from public.organizations where slug = $1`,
-    [ORG_SLUG],
-  );
-  const ids = orgs.map((o) => o.id);
-  await sql(`delete from smartgov.accounts where organization_id = any($1::uuid[])`, [ids]);
-  await sql(`delete from public.organizations where id = any($1::uuid[])`, [ids]);
+  const { rows } = await sql(`select id, slug from public.organizations order by slug`);
+  if (rows.length === 0) return;
+  if (rows.length > 1 || rows[0].slug !== ORG_SLUG) {
+    throw new Error(
+      `Refusing to reset: found ${rows.length} organization(s) (${rows
+        .map((o) => o.slug)
+        .join(", ")}). Re-run with --purge only on a demo database.`,
+    );
+  }
+  // Authored rows (programs, proposals, ...) reference accounts without a
+  // cascade, so deleting the accounts first fails. The demo database holds a
+  // single organization, so the safe reset is the same truncate used by
+  // --purge; anything else is refused above.
+  await purgeAll();
 }
 
 async function main() {
