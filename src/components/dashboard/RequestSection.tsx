@@ -820,14 +820,21 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
   const [subject, setSubject] = useState("");
   const [coverLetter, setCoverLetter] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [neededOn, setNeededOn] = useState("");
+  const [neededOn, setNeededOn] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  });
   const [neededTime, setNeededTime] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
     setSaving(true);
+    setError(null);
     try {
       let storagePath: string | undefined;
       let originalName: string | undefined;
@@ -866,7 +873,11 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
       if (json.ok) {
         onClose();
         onDone();
+      } else {
+        setError(json.message ?? "We could not file that request. Please try again.");
       }
+    } catch {
+      setError("We could not file that request. Please check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -907,7 +918,15 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
             <input id="pr-link" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className={selectClass} />
           </div>
           <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="text-sm" />
-          <Button disabled={saving || !subject.trim() || !coverLetter.trim() || !purpose.trim()} onClick={submit}>
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+            >
+              {error}
+            </p>
+          ) : null}
+          <Button disabled={saving || !subject.trim() || !coverLetter.trim() || !purpose.trim() || !neededOn} onClick={submit}>
             File request
           </Button>
         </div>

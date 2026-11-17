@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Enter } from "@/components/fx/Presence";
 import { SwapText } from "@/components/fx/SwapText";
@@ -46,6 +47,7 @@ const QTYPES = [
 
 export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }) {
   const account = useAccount();
+  const router = useRouter();
   const [survey, setSurvey] = useState<Survey | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,7 +329,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
         return;
       }
       const base = isUsg ? "/usg/surveys" : "/lsg/surveys";
-      window.location.href = base;
+      router.replace(base);
     } catch {
       setActionError("We could not reach the server. Check your connection.");
     } finally {

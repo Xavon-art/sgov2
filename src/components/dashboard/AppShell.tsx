@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Wordmark } from "@/components/ui/Seal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { Enter } from "@/components/fx/Presence";
@@ -122,6 +122,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams.get("tab");
@@ -492,7 +493,10 @@ export function AppShell({
                               type="button"
                               onClick={() => {
                                 void markRead(n.id);
-                                if (n.link) window.location.href = n.link;
+                                if (n.link) {
+                                  if (n.link.startsWith("/")) router.push(n.link);
+                                  else window.location.href = n.link;
+                                }
                               }}
                               className={`w-full px-4 py-3 text-left transition-colors hover:bg-canvas ${
                                 n.readAt ? "opacity-60" : ""

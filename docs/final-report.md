@@ -29,11 +29,26 @@
 - Dead placeholder routes `/usg/survey` and `/lsg/survey` redirect to `/surveys`.
 - Dead `/api/personal-requests` removed.
 
+### Navigation and UX hardening
+- Removed the remaining hard navigations that the session guard treats as a cold load (and therefore a sign-out): survey title links, post-create survey redirect, post-delete survey redirect, and notification links. They now use `next/link` or `router.push` / `router.replace`.
+- Filing a personal request now defaults "Needed on" to tomorrow, refuses to submit without it, and shows the server's reason inline instead of closing silently on a failed write.
+- Mobile pass at 390px across every USG and LSG top-level route: no horizontal overflow, no page errors, no stuck loading state.
+- Captured fresh dashboard, customise, LSG surveys/requests, USG mobile, and member screenshots after the fixes.
+
+## End-to-end verification
+- Organization creation: federated wizard -> review -> verification -> activation email in `/dev/outbox` -> `/activate?token=` -> dashboard -> sign out -> password sign-in.
+- Invitation acceptance: owner invites into a new unit -> outbox invite link -> password set -> OTP verify -> sign in -> lands in the LSG workspace.
+- Officer lifecycle: deactivate shows the success note, purge requires the typed email, frees seats, and removes the row.
+- Request lifecycle: LSG files a personal request -> USG grants it -> status updates for both sides.
+- Event lifecycle: USG creates an event -> card renders -> cancel -> card reads cancelled.
+- Survey lifecycle: create inline -> client-side route to detail (no sign-out) -> add question -> publish -> delete with confirmation -> returns to the list.
+- Conversation delete: create -> open -> "Delete for me" -> conversation disappears from the inbox.
+
 ## Remaining gaps (not fully implemented)
 - Chat typing indicators, seen/read receipts, and message attachments for conversations (backend tables/RPCs not yet added).
 - Survey templates library (built-in templates) and result-viewer management UI.
 - File storage versioning UI (backend snapshots exist for task answers).
-- Playwright E2E specs (smoke tests not yet written; ad-hoc browser checks were run against the demo).
+- The committed Playwright check is the read-only smoke/boundary script (`npm run check:smoke`); the deeper create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
 - `check:federated` create-flow items (unitary model gating) pre-existing.
 
 ## Dashboard customisation + demo environment
@@ -45,10 +60,11 @@
 
 ## Verification
 - `npx tsc --noEmit`: clean
-- `npm run lint`: 0 errors (15 pre-existing warnings)
-- `npm run build`: success
+- `npm run lint`: 0 errors (14 warnings)
+- `npm run build`: success (67 routes)
 - `npm run check:units`: 282/282 pass
 - `npm run check:reveal`: 21/21 pass
 - `npm run check:federated`: 20/20 pass
+- `npm run check:smoke`: 25/25 pass against both `next dev` and the production `next start` build (anonymous 401/307 walls, owner/LSG role separation, cookie attributes, UI sign-in/nav/sign-out, zero console errors)
 - Browser smoke: owner/LSG/member sign-in, every nav target on both sides, customise/save/reset/persist layout, LSG hitting `/usg` returns 307 to `/lsg`, unauthenticated APIs return 401, direct table reads stay denied.
 - Vercel deployment: READY (sgov.vercel.app)

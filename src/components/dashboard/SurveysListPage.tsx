@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Enter } from "@/components/fx/Presence";
 import { SwapText } from "@/components/fx/SwapText";
@@ -23,6 +25,7 @@ type Survey = {
 
 export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
   const account = useAccount();
+  const router = useRouter();
   const [surveys, setSurveys] = useState<Survey[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +102,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
       setDeadline("");
       setNote("Survey created.");
       await load();
-      window.location.href = `${isUsg ? "/usg" : "/lsg"}/surveys/${data.surveyId}`;
+      router.push(`${isUsg ? "/usg" : "/lsg"}/surveys/${data.surveyId}`);
     } catch {
       setActionError("We could not reach the server. Check your connection.");
     } finally {
@@ -228,9 +231,9 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
             {surveys.map((s) => (
               <li key={s.id} className="flex items-start justify-between gap-3 rounded-xl border border-line bg-paper px-4 py-3">
                 <div>
-                  <a href={`${base}/surveys/${s.id}`} className="text-[0.9375rem] font-medium text-ink-deep hover:underline">
+                  <Link href={`${base}/surveys/${s.id}`} className="text-[0.9375rem] font-medium text-ink-deep hover:underline">
                     {s.title}
-                  </a>
+                  </Link>
                   <p className="text-[0.75rem] text-muted">
                     {s.status} · {s.accessMode} · {s.responseCount} response(s)
                   </p>
