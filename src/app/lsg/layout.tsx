@@ -97,7 +97,13 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
             <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />
           </div>
 
-          <AppShell nav={nav} orgName={meta.organizationName || "Workspace"} badge={badge}>
+          <AppShell
+            nav={nav}
+            orgName={meta.organizationName || "Workspace"}
+            badge={badge}
+            accountName={account.displayName}
+            roleLabel="Local council"
+          >
             {children}
           </AppShell>
         </div>

@@ -8,7 +8,11 @@ export default function UsgOfficersPage() {
   const account = useAccount();
 
   if (account.accountScope !== "owner") {
-    return <NotAvailable />;
+    return (
+      <div data-tour="officers-not-available">
+        <NotAvailable />
+      </div>
+    );
   }
 
   return (

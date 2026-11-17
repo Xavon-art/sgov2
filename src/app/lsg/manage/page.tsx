@@ -59,6 +59,7 @@ export default function LsgManagePage() {
       </header>
 
       <div
+        data-tour="manage-tabs"
         role="tablist"
         aria-label="Manage sections"
         className="flex flex-wrap gap-1 border-b border-line/80"
@@ -85,7 +86,11 @@ export default function LsgManagePage() {
         ))}
       </div>
 
-      {tab === "usg" ? <MyUsgPanel /> : null}
+      {tab === "usg" ? (
+        <div data-tour="manage-usg">
+          <MyUsgPanel />
+        </div>
+      ) : null}
 
       {tab === "profile" ? <ProfileSection allowCustomisation={false} /> : null}
 

@@ -3,10 +3,14 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Wordmark } from "@/components/ui/Seal";
+import { Seal, Wordmark } from "@/components/ui/Seal";
+import { TourHelpButton } from "@/components/tours/HelpButton";
+import { loadTourProgress, saveTourProgress } from "@/lib/tours/progress";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { Enter } from "@/components/fx/Presence";
 import {
+  IconArrowLeft,
+  IconArrowRight,
   IconBudget,
   IconClock,
   IconCompass,
@@ -110,22 +114,93 @@ function childIsActive(href: string, pathname: string, tab: string | null): bool
   return childTab ? childTab === tab : !tab;
 }
 
+function WorkspaceUserCard({
+  accountName,
+  roleLabel,
+  compact = false,
+}: {
+  accountName: string;
+  roleLabel: string;
+  compact?: boolean;
+}) {
+  const initial = accountName.trim().charAt(0).toUpperCase() || "W";
+  return (
+    <div className={cn("flex min-w-0 items-center gap-2.5", compact && "justify-center")}>
+      <span className="grid size-9 shrink-0 place-items-center rounded-full border border-brass/45 bg-brass-soft/35 text-[0.8125rem] font-semibold text-ink">
+        {initial}
+      </span>
+      {!compact ? (
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-[0.8125rem] font-medium text-ink-deep">{accountName}</span>
+          <span className="truncate text-[0.6875rem] text-muted">{roleLabel}</span>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 export function AppShell({
   nav,
   orgName,
   badge,
+  accountName = "Workspace account",
+  roleLabel = "Workspace member",
   children,
 }: {
   nav: NavItem[];
   orgName: string;
   badge?: string;
+  accountName?: string;
+  roleLabel?: string;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentTab = searchParams.get("tab");
+
+  const pathSegments = pathname.split("/").filter(Boolean);
+  const workspaceIndex = pathSegments.findIndex((segment) => segment === "usg" || segment === "lsg");
+  const sideLabel = workspaceIndex >= 0 ? pathSegments[workspaceIndex].toUpperCase() : "Workspace";
+  const hasDeeperSegment = workspaceIndex >= 0 && pathSegments.length > workspaceIndex + 1;
+
+  useEffect(() => {
+    let alive = true;
+    void Promise.resolve(loadTourProgress())
+      .then((progress) => {
+        if (alive && progress?.sidebarCollapsed) setCollapsed(true);
+      })
+      .catch(() => {
+        if (alive) setCollapsed(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function persistCollapsed(next: boolean) {
+    let saved = false;
+    try {
+      saved = (await saveTourProgress({ sidebarCollapsed: next })) === true;
+    } catch {
+      saved = false;
+    }
+    if (saved) return;
+    try {
+      const progress = await loadTourProgress();
+      await saveTourProgress({ ...progress, sidebarCollapsed: next });
+    } catch {
+      return;
+    }
+  }
+
+  function toggleCollapsed() {
+    const next = !collapsed;
+    setCollapsed(next);
+    void persistCollapsed(next);
+  }
 
   const [unread, setUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -165,7 +240,9 @@ export function AppShell({
 
   async function markRead(id: string) {
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+      const res = await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) return;
       setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
       setUnread((u) => Math.max(0, u - 1));
     } catch {
@@ -243,14 +320,43 @@ export function AppShell({
   return (
     <div className="relative isolate flex min-h-dvh">
       {/* Desktop rail */}
-      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line/80 bg-canvas/85 backdrop-blur-xl lg:flex">
-        <div className="flex h-16 items-center gap-3 border-b border-line/70 px-5">
-          <Link href="/" aria-label="SmartGov home" className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2">
-            <Wordmark compact />
+      <aside
+        data-tour="workspace-rail"
+        className={cn(
+          "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-line/80 bg-canvas/85 backdrop-blur-xl lg:flex",
+          collapsed ? "w-[4.75rem]" : "w-64",
+        )}
+      >
+        <div className={cn("flex h-16 items-center border-b border-line/70", collapsed ? "justify-center px-2" : "px-5")}>
+          <Link
+            href="/"
+            aria-label="SmartGov home"
+            className="flex min-w-0 items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2"
+          >
+            {collapsed ? <Seal size={26} /> : <Wordmark compact />}
           </Link>
         </div>
 
-        <nav aria-label="Workspace" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
+        <nav aria-label="Workspace" data-tour="workspace-nav" className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
+          <button
+            type="button"
+            data-tour="workspace-collapse"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={toggleCollapsed}
+            className={cn(
+              "pressable flex min-h-11 items-center rounded-xl text-[0.8125rem] font-medium text-ink-soft transition-colors duration-300 hover:bg-ink/[0.05] hover:text-ink",
+              collapsed ? "justify-center px-0" : "gap-3 px-3",
+            )}
+          >
+            {collapsed ? (
+              <IconArrowRight className="h-[1.1rem] w-[1.1rem] shrink-0 text-brass-deep" strokeWidth={1.7} aria-hidden />
+            ) : (
+              <IconArrowLeft className="h-[1.1rem] w-[1.1rem] shrink-0 text-brass-deep" strokeWidth={1.7} aria-hidden />
+            )}
+            {!collapsed ? <span className="min-w-0 flex-1 truncate text-left">Collapse sidebar</span> : null}
+          </button>
+
           {nav.map((item) => {
             const Icon = NAV_ICONS[item.icon];
             const selected = item.href === pathname;
@@ -262,9 +368,12 @@ export function AppShell({
               <div key={item.id} className="flex flex-col">
                 <Link
                   href={item.href}
+                  title={item.label}
+                  aria-label={item.label}
                   aria-current={selected ? "page" : undefined}
                   className={cn(
-                    "group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-[0.875rem] font-medium transition-colors duration-300",
+                    "group flex min-h-11 items-center rounded-xl py-2.5 text-[0.875rem] font-medium transition-colors duration-300",
+                    collapsed ? "justify-center px-0" : "gap-3 px-3",
                     selected
                       ? "bg-ink text-white shadow-[0_1px_0_rgba(255,255,255,0.12)_inset]"
                       : "text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
@@ -279,9 +388,9 @@ export function AppShell({
                     )}
                     strokeWidth={1.7}
                   />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {!collapsed ? <span className="min-w-0 flex-1 truncate">{item.label}</span> : null}
                 </Link>
-                {item.children && inSection ? (
+                {!collapsed && item.children && inSection ? (
                   <div className="ml-5 flex flex-col gap-0.5 border-l border-line/70 pl-2.5 pt-0.5">
                     {item.children.map((child) => {
                       const childSelected = childIsActive(child.href, pathname, currentTab);
@@ -307,8 +416,16 @@ export function AppShell({
           })}
         </nav>
 
-        <div className="border-t border-line/70 p-3">
-          <SignOutButton />
+        <div className="flex flex-col gap-2 border-t border-line/70 p-3">
+          <WorkspaceUserCard accountName={accountName} roleLabel={roleLabel} compact={collapsed} />
+          <div
+            className={cn(
+              "min-w-0",
+              collapsed && "[&>button]:h-11 [&>button]:w-11 [&>button]:justify-start [&>button]:overflow-hidden [&>button]:pl-3.5 [&>button]:pr-0",
+            )}
+          >
+            <SignOutButton />
+          </div>
         </div>
       </aside>
 
@@ -423,36 +540,52 @@ export function AppShell({
           })}
         </nav>
 
-        <div className="border-t border-line/70 p-3">
+        <div className="flex flex-col gap-2 border-t border-line/70 p-3">
+          <WorkspaceUserCard accountName={accountName} roleLabel={roleLabel} />
           <SignOutButton />
         </div>
       </Enter>
 
       {/* Content column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 border-b border-line/80 bg-canvas/80 backdrop-blur-xl">
-          <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
+        <header data-tour="workspace-topbar" className="sticky top-0 z-20 border-b border-line/80 bg-canvas/80 backdrop-blur-xl">
+          <div className="flex h-16 items-center gap-2 px-3 sm:gap-3 sm:px-6">
             <button
               type="button"
               aria-label="Open menu"
               onClick={() => setOpen(true)}
-              className="pressable grid size-10 cursor-pointer place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink lg:hidden"
+              className="pressable grid size-10 shrink-0 cursor-pointer place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink lg:hidden"
             >
               <IconMenu className="h-5 w-5" strokeWidth={1.7} />
             </button>
 
-            <div className="hidden min-w-0 items-center gap-3 lg:flex">
-              <IconDashboard
-                className="h-4 w-4 shrink-0 text-brass-deep"
-                strokeWidth={1.8}
-                aria-hidden
-              />
-              <p className="truncate text-[0.8125rem] font-medium text-ink-soft">
-                {active.label} · <span className="text-muted">{active.hint}</span>
-              </p>
+            {hasDeeperSegment ? (
+              <button
+                type="button"
+                data-tour="workspace-back"
+                aria-label="Back"
+                title="Back"
+                onClick={() => router.back()}
+                className="pressable grid size-9 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink"
+              >
+                <IconArrowLeft className="h-5 w-5" strokeWidth={1.7} />
+              </button>
+            ) : null}
+
+            <div data-tour="workspace-breadcrumbs" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+              <span className="hidden min-w-0 max-w-40 truncate text-[0.8125rem] text-muted sm:inline">
+                {sideLabel} · {orgName}
+              </span>
+              <span aria-hidden className="hidden shrink-0 text-muted sm:inline">
+                /
+              </span>
+              <span className="min-w-0 truncate text-[0.8125rem] font-medium text-ink-deep">{active.label}</span>
             </div>
 
-            <div className="ml-auto flex min-w-0 items-center gap-2.5">
+            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
+              <span data-tour-help-slot data-tour="workspace-help" className="inline-flex size-9 shrink-0 items-center justify-center">
+                <TourHelpButton compact slot />
+              </span>
               <div className="relative">
                 <button
                   type="button"
@@ -468,15 +601,21 @@ export function AppShell({
                   ) : null}
                 </button>
                 {notifOpen ? (
-                  <div className="absolute right-0 top-11 z-50 w-80 max-h-96 overflow-y-auto rounded-2xl border border-line bg-paper shadow-lift">
+                  <div className="absolute right-0 top-11 z-50 max-h-96 w-72 overflow-y-auto rounded-2xl border border-line bg-paper shadow-lift sm:w-80">
                     <div className="flex items-center justify-between border-b border-line px-4 py-2">
                       <p className="text-[0.8125rem] font-semibold text-ink">Notifications</p>
                       <button
                         type="button"
                         onClick={async () => {
-                          await fetch("/api/notifications/read-all", { method: "POST" });
-                          setNotifs((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
-                          setUnread(0);
+                          try {
+                            const res = await fetch("/api/notifications/read-all", { method: "POST" });
+                            const data = await res.json();
+                            if (!res.ok || !data.ok) return;
+                            setNotifs((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+                            setUnread(0);
+                          } catch {
+                            // ignore
+                          }
                         }}
                         className="text-[0.75rem] text-muted hover:text-ink"
                       >
@@ -495,7 +634,7 @@ export function AppShell({
                                 void markRead(n.id);
                                 if (n.link) {
                                   if (n.link.startsWith("/")) router.push(n.link);
-                                  else window.location.href = n.link;
+                                  else window.open(n.link, "_blank", "noopener,noreferrer");
                                 }
                               }}
                               className={`w-full px-4 py-3 text-left transition-colors hover:bg-canvas ${
@@ -518,9 +657,6 @@ export function AppShell({
                   {badge}
                 </span>
               ) : null}
-              <p className="hidden truncate text-[0.8125rem] font-medium text-ink sm:block">
-                {orgName}
-              </p>
               {/* This is a range, not a floor, and that is the whole fix.
 
                   The desktop rail is `hidden lg:flex`, so below `lg` this header
@@ -549,8 +685,53 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[82rem] flex-1 px-4 py-8 sm:px-6 sm:py-10">{children}</main>
+        <main
+          data-tour="workspace-main"
+          className="mx-auto w-full min-w-0 max-w-[82rem] flex-1 px-4 pb-24 pt-8 sm:px-6 sm:pt-10 md:pb-10"
+        >
+          {children}
+        </main>
       </div>
+
+      <nav
+        aria-label="Mobile workspace navigation"
+        className="fixed inset-x-0 bottom-0 z-30 flex items-stretch border-t border-line/80 bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
+      >
+        {nav.slice(0, 4).map((item) => {
+          const Icon = NAV_ICONS[item.icon];
+          const selected = item.href === pathname;
+          return (
+            <Link
+              key={item.id}
+              href={item.href}
+              title={item.label}
+              aria-label={item.label}
+              aria-current={selected ? "page" : undefined}
+              className={cn(
+                "flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[0.625rem] font-medium transition-colors",
+                selected ? "text-ink" : "text-muted hover:text-ink",
+              )}
+            >
+              <Icon
+                className={cn("h-5 w-5 shrink-0", selected ? "text-brass" : "text-brass-deep/80")}
+                strokeWidth={1.7}
+                aria-hidden
+              />
+              <span className="w-full truncate text-center">{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          aria-label="More navigation"
+          title="More navigation"
+          onClick={() => setOpen(true)}
+          className="flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[0.625rem] font-medium text-muted transition-colors hover:text-ink"
+        >
+          <IconMenu className="h-5 w-5 shrink-0 text-brass-deep/80" strokeWidth={1.7} aria-hidden />
+          <span className="w-full truncate text-center">More</span>
+        </button>
+      </nav>
     </div>
   );
 }

@@ -80,7 +80,7 @@ export default function ActivatedPage() {
         </p>
       </div>
 
-      <div className="mt-10 rounded-2xl border border-line-strong/70 bg-paper/70 p-6 sm:p-7">
+      <div data-tour="activated-summary" className="mt-10 rounded-2xl border border-line-strong/70 bg-paper/70 p-6 sm:p-7">
         <p className="eyebrow">What you set up</p>
         <dl className="mt-4 grid gap-x-8 gap-y-3 sm:grid-cols-2">
           {[
@@ -143,11 +143,11 @@ export default function ActivatedPage() {
       </ol>
 
       <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-center">
-        <ButtonLink href="/login" size="lg" className="w-full sm:w-auto">
+        <ButtonLink data-tour="activated-sign-in" href="/login" size="lg" className="w-full sm:w-auto">
           Go to Login
           <IconArrowRight className="h-4.5 w-4.5 transition-transform duration-500 group-hover:translate-x-1" />
         </ButtonLink>
-        <ButtonLink href="/" size="lg" variant="outline" className="w-full sm:w-auto">
+        <ButtonLink data-tour="activated-home" href="/" size="lg" variant="outline" className="w-full sm:w-auto">
           Back to home
         </ButtonLink>
       </div>

@@ -30,7 +30,7 @@ function PageShell({ title, children }: { title: string; children: ReactNode }) 
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />
       </div>
 
-      <header className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
+      <header data-tour="my-council-header" className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[82rem] items-center gap-4 px-5 sm:px-8">
           <Link href="/" aria-label="SmartGov home">
             <Wordmark compact />
@@ -221,7 +221,7 @@ export default async function MyCouncilPage() {
 
       {root && !unitary ? (
         <Reveal delay={0.04} className="mt-10">
-          <section className="rounded-2xl border border-line-strong bg-paper/80 p-6 shadow-lift sm:p-7">
+          <section data-tour="my-council-root" className="rounded-2xl border border-line-strong bg-paper/80 p-6 shadow-lift sm:p-7">
             <p className="eyebrow">Top of the chart</p>
             <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-[1.25rem] leading-snug text-ink-deep">
@@ -235,7 +235,7 @@ export default async function MyCouncilPage() {
         </Reveal>
       ) : null}
 
-      <div className="mt-8">
+      <div data-tour="my-council-units" className="mt-8">
         <div className="grid gap-4 sm:grid-cols-2">
           {cardUnits.map((unit, i) => (
             <Reveal key={unit.id} delay={0.06 + i * 0.02}>
@@ -249,7 +249,7 @@ export default async function MyCouncilPage() {
           has no app nav of its own, so without a way out it is a dead end: the
           officer would have to edit the URL to reach the page they came from. */}
       <Reveal delay={0.1} className="mt-10">
-        <div className="flex flex-wrap justify-center gap-3">
+        <div data-tour="my-council-actions" className="flex flex-wrap justify-center gap-3">
           <ButtonLink href="/dashboard" variant="outline" size="md">
             Back to dashboard
           </ButtonLink>

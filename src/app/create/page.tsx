@@ -45,6 +45,7 @@ const PREVIEW = [
 
 export default function CreateWelcomePage() {
   return (
+    <div data-tour="create-welcome" className="contents">
     <StepShell
       step="welcome"
       tone="bare"
@@ -56,7 +57,7 @@ export default function CreateWelcomePage() {
       }
       lede="Eight short steps. You can go back and change anything before you confirm — nothing is submitted until the very end."
     >
-      <ol className="flex flex-col">
+      <ol data-tour="create-step-list" className="flex flex-col">
         {PREVIEW.map((item, i) => {
           const Icon = item.icon;
           return (
@@ -86,11 +87,14 @@ export default function CreateWelcomePage() {
       </ol>
 
       <div className="mt-9 border-t border-line pt-7">
+        <div data-tour="create-start" className="contents">
         <StartButton />
+        </div>
         <p className="mt-4 text-center text-[0.75rem] text-muted">
           Your progress is kept for this browser session only.
         </p>
       </div>
     </StepShell>
+    </div>
   );
 }

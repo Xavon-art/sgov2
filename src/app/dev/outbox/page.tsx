@@ -39,7 +39,7 @@ export default function DevOutboxPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-5 py-10">
-      <header className="border-b border-line/80 pb-4">
+      <header data-tour="outbox-header" className="border-b border-line/80 pb-4">
         <p className="eyebrow">Dev only</p>
         <h1 className="mt-1 text-[1.5rem] leading-tight">Email outbox</h1>
         <p className="mt-1 text-[0.875rem] text-muted">
@@ -51,7 +51,7 @@ export default function DevOutboxPage() {
       </header>
 
       <div className="mt-6 grid gap-6 md:grid-cols-[20rem_1fr]">
-        <aside className="flex flex-col gap-2">
+        <aside data-tour="outbox-list" className="flex flex-col gap-2">
           {entries.length === 0 ? (
             <p className="text-[0.875rem] text-muted">No emails yet.</p>
           ) : (
@@ -71,7 +71,7 @@ export default function DevOutboxPage() {
             ))
           )}
         </aside>
-        <main className="min-h-[24rem] rounded-2xl border border-line bg-paper/70 p-4">
+        <main data-tour="outbox-detail" className="min-h-[24rem] rounded-2xl border border-line bg-paper/70 p-4">
           {!selected ? (
             <p className="text-[0.875rem] text-muted">Select an email.</p>
           ) : (

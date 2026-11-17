@@ -603,6 +603,49 @@
   }
 }
 
+.tour-floating-help {
+  display: inline-flex;
+}
+
+body:has([data-tour-help-slot]) .tour-floating-help {
+  display: none;
+}
+
+.tour-card,
+.tour-prompt {
+  animation: sg-tour-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center;
+}
+
+.tour-spotlight {
+  animation: sg-tour-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes sg-tour-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes sg-tour-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.55) inset,
+      0 0 0 0 rgba(201, 162, 75, 0.28);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.55) inset,
+      0 0 0 8px rgba(201, 162, 75, 0);
+  }
+}
+
 /* Dark mode: applied when <html> carries the .dark class. */
 html.dark {
   --color-canvas: #0f1419;

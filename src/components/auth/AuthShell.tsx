@@ -24,7 +24,7 @@ export function AuthShell({
   footer?: ReactNode;
 }) {
   return (
-    <div className="relative isolate flex min-h-dvh flex-col">
+    <div data-tour="auth-shell" className="relative isolate flex min-h-dvh flex-col">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <ShaderField strength={0.45} scale={1.2} speed={0.02} />
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/85 via-canvas/75 to-canvas" />

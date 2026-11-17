@@ -96,6 +96,7 @@ export function Features() {
   return (
     <Section
       id="features"
+      data-tour="landing-features"
       eyebrow="The platform"
       title="Everything a student government actually has to run."
       lede="Eight capabilities, one record of truth — from the first draft of a resolution to the release of its budget."

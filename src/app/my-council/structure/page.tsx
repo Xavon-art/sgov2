@@ -23,13 +23,13 @@ export const dynamic = "force-dynamic";
 
 function Shell({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="relative isolate flex min-h-dvh flex-col">
+    <div data-tour="council-structure-shell" className="relative isolate flex min-h-dvh flex-col">
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
         <ShaderField strength={0.5} scale={1.3} speed={0.022} />
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />
       </div>
 
-      <header className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
+      <header data-tour="council-structure-header" className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[82rem] items-center gap-4 px-5 sm:px-8">
           <Link href="/" aria-label="SmartGov home">
             <Wordmark compact />
@@ -159,7 +159,7 @@ export default async function StructurePage() {
           </p>
         </Reveal>
 
-        <div className="mt-10">
+        <div data-tour="council-structure-workspace" className="mt-10">
           <StructureWorkspace
             unitId={own.id}
             unitName={own.name}

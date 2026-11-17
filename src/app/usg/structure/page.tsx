@@ -85,19 +85,21 @@ export default async function UsgStructurePage() {
   return (
     <SessionGuard>
       <Shell title="Structures">
-        <Reveal className="flex flex-col items-center text-center">
-          <p className="eyebrow">Structures</p>
-          <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
-            Your government structure
-          </h1>
-          <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
-            Build your own structure — add officers, positions, and committees — and review the
-            structures your units have submitted below.
-          </p>
-        </Reveal>
+        <div data-tour="usg-structure-header">
+          <Reveal className="flex flex-col items-center text-center">
+            <p className="eyebrow">Structures</p>
+            <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">
+              Your government structure
+            </h1>
+            <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
+              Build your own structure — add officers, positions, and committees — and review the
+              structures your units have submitted below.
+            </p>
+          </Reveal>
+        </div>
 
         {ownUnit && structure?.ok && structure.capability?.canRead ? (
-          <div className="mt-10">
+          <div data-tour="usg-structure-editor" className="mt-10">
             <OrgChartDragDrop
               unitId={ownUnit.id}
               unitName={ownUnit.name}
@@ -113,7 +115,7 @@ export default async function UsgStructurePage() {
           </div>
         )}
 
-        <div className="mt-16">
+        <div data-tour="usg-structure-queue" className="mt-16">
           <Reveal className="flex flex-col items-center text-center">
             <p className="eyebrow">Review queue</p>
             <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">

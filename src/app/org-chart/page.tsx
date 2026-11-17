@@ -134,7 +134,7 @@ export default async function OrgChartPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-canvas/80 via-canvas/70 to-canvas" />
       </div>
 
-      <header className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
+      <header data-tour="org-chart-header" className="border-b border-line/80 bg-canvas/70 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[82rem] items-center gap-4 px-5 sm:px-8">
           <Link href="/" aria-label="SmartGov home">
             <Wordmark compact />
@@ -163,11 +163,13 @@ export default async function OrgChartPage() {
         </Reveal>
 
         <Reveal delay={0.04} className="mt-10">
+          <div data-tour="org-chart-add-position" className="contents">
           <AddPositionControl positions={chart.positions} />
+          </div>
         </Reveal>
 
         <Reveal delay={0.06} className="mt-4">
-          <section className="rounded-2xl border border-line-strong bg-paper/80 p-6 shadow-lift sm:p-7">
+          <section data-tour="org-chart-root" className="rounded-2xl border border-line-strong bg-paper/80 p-6 shadow-lift sm:p-7">
             <p className="eyebrow">Top of the chart</p>
             <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
               <h2 className="text-[1.25rem] leading-snug text-ink-deep">
@@ -180,7 +182,7 @@ export default async function OrgChartPage() {
           </section>
         </Reveal>
 
-        <div className="mt-8">
+        <div data-tour="org-chart-units" className="mt-8">
           {children.length === 0 ? (
             <Reveal delay={0.1}>
               <section className="rounded-2xl border border-line bg-paper/70 px-6 py-10 text-center sm:px-7">

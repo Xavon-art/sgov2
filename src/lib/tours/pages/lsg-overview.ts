@@ -1,0 +1,38 @@
+import type { PageTour } from "../types";
+
+export const lsgOverviewTour: PageTour = {
+  id: "lsg-overview",
+  version: "1",
+  route: "/lsg",
+  label: "LSG workspace overview",
+  roles: ["lsg"],
+  autoStart: true,
+  steps: [
+    {
+      target: "workspace-header",
+      title: "Workspace header",
+      body: "This header shows your council and gives you quick access to help and account options.",
+      placement: "bottom",
+    },
+    {
+      target: "workspace-tiles",
+      title: "Workspace tiles",
+      body: "Each tile opens a major area of your workspace, such as requests, messages, or surveys.",
+      placement: "bottom",
+    },
+    {
+      target: "workspace-customize",
+      title: "Customize workspace",
+      body: "Use this control to arrange the tiles so the tools you use most are easy to find.",
+      placement: "left",
+    },
+    {
+      target: "workspace-shortcuts",
+      title: "Shortcuts",
+      body: "These shortcuts take you directly to common tasks without opening another page.",
+      placement: "top",
+    },
+  ],
+};
+
+export default lsgOverviewTour;

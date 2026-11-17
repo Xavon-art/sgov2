@@ -40,7 +40,7 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
 
   return (
     <section className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+      <header data-tour="settings-header" className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <SectionIcon>
             <IconLock className="h-5 w-5" strokeWidth={1.7} />
@@ -56,7 +56,7 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
       </header>
 
       <Reveal>
-        <div className="rounded-2xl border border-line bg-paper/70 p-6">
+        <div data-tour="settings-workspace" className="rounded-2xl border border-line bg-paper/70 p-6">
           <p className="eyebrow inline-flex items-center gap-2">
             <IconBuilding className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />
             Workspace
@@ -100,6 +100,7 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
           </p>
           <div>
             <Link
+              data-tour="settings-profile-link"
               href={manageHref}
               className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
             >
@@ -117,7 +118,7 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
       ) : null}
 
       <Reveal delay={0.08}>
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-paper/70 p-6">
+        <div data-tour="settings-session" className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-paper/70 p-6">
           <div>
             <p className="eyebrow inline-flex items-center gap-2">
               <IconClock className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />

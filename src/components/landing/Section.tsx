@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Reveal } from "@/components/fx/Reveal";
 
@@ -11,16 +11,17 @@ export function Section({
   className,
   align = "left",
   tone = "canvas",
+  ...props
 }: {
   id?: string;
   eyebrow?: string;
-  title?: ReactNode;
-  lede?: ReactNode;
+  title: ReactNode;
+  lede?: string;
   children: ReactNode;
   className?: string;
   align?: "left" | "center";
   tone?: "canvas" | "paper" | "sunk";
-}) {
+} & Omit<HTMLAttributes<HTMLElement>, "title">) {
   const bg =
     tone === "paper"
       ? "bg-paper"
@@ -30,6 +31,7 @@ export function Section({
 
   return (
     <section
+      {...props}
       id={id}
       className={cn("relative scroll-mt-20 py-24 sm:py-28 lg:py-32", bg, className)}
     >

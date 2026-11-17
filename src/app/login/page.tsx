@@ -262,8 +262,9 @@ export default function LoginPage() {
       footer={footer}
     >
       {phase === "login" ? (
-        <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        <form data-tour="login-form" onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
           <TextField
+            data-tour="login-email"
             id="email"
             label="Email"
             type="email"
@@ -276,6 +277,7 @@ export default function LoginPage() {
 
           <div className="flex flex-col gap-1">
             <PasswordField
+              data-tour="login-password"
               id="password"
               label="Password"
               autoComplete="current-password"
@@ -302,7 +304,7 @@ export default function LoginPage() {
             </p>
           ) : null}
 
-          <Button type="submit" size="lg" disabled={busy} className="w-full">
+          <Button data-tour="login-submit" type="submit" size="lg" disabled={busy} className="w-full">
             {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>

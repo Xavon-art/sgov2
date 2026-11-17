@@ -77,7 +77,7 @@ export default function ReviewPage() {
       title="Review your charter"
       lede="Nothing has been submitted yet. Check every line — you can jump back to any step to change something."
     >
-      <article className="grain relative overflow-hidden rounded-2xl border border-line-strong/80 bg-paper/85 p-6 shadow-seal backdrop-blur-xl sm:p-9">
+      <article data-tour="review-charter" className="grain relative overflow-hidden rounded-2xl border border-line-strong/80 bg-paper/85 p-6 shadow-seal backdrop-blur-xl sm:p-9">
         <div aria-hidden className="hairline-grid absolute inset-0 opacity-40" />
 
         <header className="relative flex flex-col items-center gap-5 border-b border-double border-line-strong/70 pb-8 text-center">
@@ -102,7 +102,7 @@ export default function ReviewPage() {
         </header>
 
         <div className="relative mt-8 grid gap-8 lg:grid-cols-[1fr_15rem]">
-          <div className="flex flex-col gap-7">
+          <div data-tour="review-sections" className="flex flex-col gap-7">
             <section>
               <h3 className="flex items-center gap-2.5 text-[0.75rem] font-semibold tracking-[0.16em] text-ink-soft uppercase">
                 <span aria-hidden className="h-px w-5 bg-brass" />
@@ -169,7 +169,7 @@ export default function ReviewPage() {
           </div>
 
           <aside className="flex flex-col gap-5 lg:border-l lg:border-line/70 lg:pl-7">
-            <div className="rounded-xl border border-line/80 bg-canvas/50 px-3 py-3">
+            <div data-tour="review-org-chart" className="rounded-xl border border-line/80 bg-canvas/50 px-3 py-3">
               <p className="eyebrow text-[0.5625rem]">Org chart</p>
               <div className="mt-2.5">
                 <OrgDiagram
@@ -205,6 +205,7 @@ export default function ReviewPage() {
 
       <div className="mt-8 flex flex-col items-center gap-4">
         <Button
+          data-tour="review-confirm"
           type="button"
           size="lg"
           className="w-full sm:w-auto"

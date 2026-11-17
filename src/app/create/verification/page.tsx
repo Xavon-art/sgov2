@@ -140,6 +140,7 @@ export default function VerificationPage() {
   const submitting = phase === "submitting";
 
   return (
+    <div data-tour="verification-status" className="contents">
     <StepShell
       step="verification"
       tone="bare"
@@ -174,7 +175,7 @@ export default function VerificationPage() {
       }
     >
       {submitting ? (
-        <div className="mx-auto flex max-w-md flex-col items-center gap-3 text-center">
+        <div data-tour="verification-progress" className="mx-auto flex max-w-md flex-col items-center gap-3 text-center">
           <div className="h-1 w-40 overflow-hidden rounded-full bg-line-strong">
             <div className="h-full w-1/3 animate-pulse rounded-full bg-brass" />
           </div>
@@ -211,7 +212,7 @@ export default function VerificationPage() {
         </div>
       ) : (
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-          <div className="flex items-center gap-3 rounded-2xl border border-line bg-paper/70 px-5 py-4">
+          <div data-tour="verification-email-card" className="flex items-center gap-3 rounded-2xl border border-line bg-paper/70 px-5 py-4">
             <span className="grid size-10 shrink-0 place-items-center rounded-full border border-brass/40 bg-brass-soft/25 text-brass-deep">
               <IconMail className="h-4.5 w-4.5" />
             </span>
@@ -246,6 +247,7 @@ export default function VerificationPage() {
           ) : null}
 
           <Button
+            data-tour="verification-resend"
             type="button"
             variant="ghost"
             size="md"
@@ -265,5 +267,6 @@ export default function VerificationPage() {
         </div>
       )}
     </StepShell>
+    </div>
   );
 }

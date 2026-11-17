@@ -68,9 +68,9 @@ export default function GovernanceModelPage() {
       onContinue={continueStep}
       continueLabel="Continue with this model"
     >
-      <fieldset>
+      <fieldset data-tour="model-choices">
         <legend className="sr-only">Choose a governance model</legend>
-        <div className="flex flex-col gap-4">
+        <div data-tour="model-cards" className="flex flex-col gap-4">
           {MODELS.map((model) => {
             const selected = draft.model === model.id;
             const active = selected || hovered === model.id;
@@ -152,7 +152,7 @@ export default function GovernanceModelPage() {
                   </span>
                 </span>
 
-                <span className="relative mt-4 block overflow-hidden rounded-xl border border-line/70 bg-canvas/45 px-3 py-2">
+                <span data-tour="model-diagram" className="relative mt-4 block overflow-hidden rounded-xl border border-line/70 bg-canvas/45 px-3 py-2">
                   <OrgDiagram
                     model={model.id}
                     active={active}

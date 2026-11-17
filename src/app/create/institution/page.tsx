@@ -27,6 +27,7 @@ export default function InstitutionPage() {
     >
       <div className="flex flex-col gap-6">
         <TextField
+          data-tour="institution-university"
           id="universityName"
           label="University name"
           autoComplete="organization"
@@ -39,6 +40,7 @@ export default function InstitutionPage() {
 
         <div className="grid gap-6 sm:grid-cols-2">
           <TextField
+            data-tour="institution-campus"
             id="campusName"
             label="Main campus"
             autoComplete="address-level2"
@@ -50,6 +52,7 @@ export default function InstitutionPage() {
           />
 
           <TextField
+            data-tour="institution-college"
             id="college"
             label="College or office"
             autoComplete="organization"

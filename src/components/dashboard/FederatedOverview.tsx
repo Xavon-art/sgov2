@@ -253,7 +253,7 @@ export function FederatedOverview({
   return (
     <section className="flex flex-col gap-8">
       <Reveal className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
+        <div data-tour="workspace-header" className="flex items-center gap-3">
           <SectionIcon>
             <IconDashboard className="h-5 w-5" strokeWidth={1.7} />
           </SectionIcon>
@@ -313,6 +313,7 @@ export function FederatedOverview({
               </>
             ) : (
               <button
+                data-tour="workspace-customize"
                 type="button"
                 onClick={beginEditing}
                 className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift"
@@ -337,7 +338,7 @@ export function FederatedOverview({
           </p>
         ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div data-tour="workspace-tiles" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visibleTiles.map((tile) => {
             const item = byId.get(tile.id);
             if (!item) return null;
@@ -450,7 +451,7 @@ export function FederatedOverview({
       </Reveal>
 
       <Reveal delay={0.1}>
-        <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+        <div data-tour="workspace-shortcuts" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
           <p className="eyebrow">{side === "usg" ? "Your umbrella" : "Your standing"}</p>
           <p className="mt-2 text-[0.9375rem] leading-relaxed text-body">
             {side === "usg"

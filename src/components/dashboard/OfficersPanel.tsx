@@ -167,7 +167,7 @@ export function OfficersPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-tour="officers-panel" className="flex flex-col gap-6">
       {note ? (
         <Enter open as="p" role="status" className="rise-in flex items-center gap-2 rounded-xl border border-brass/40 bg-brass-soft/25 px-3.5 py-2.5 text-[0.8125rem] font-medium text-ink">
           {note}
@@ -179,7 +179,7 @@ export function OfficersPanel() {
         </Enter>
       ) : null}
 
-      <div className="fade-in overflow-x-auto">
+      <div data-tour="officers-table" className="fade-in overflow-x-auto">
         <table className="w-full min-w-[44rem] border-collapse text-left">
           <thead>
             <tr className="border-b border-line">

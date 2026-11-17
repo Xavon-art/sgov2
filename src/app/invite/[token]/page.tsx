@@ -51,6 +51,7 @@ export default async function InvitePage({ params }: Props) {
   }
 
   return (
+    <div data-tour="invite-setup" className="contents">
     <AuthShell
       eyebrow="You are invited"
       title="Set your password"
@@ -72,5 +73,6 @@ export default async function InvitePage({ params }: Props) {
         and ask them to resend your invitation.
       </p>
     </AuthShell>
+    </div>
   );
 }

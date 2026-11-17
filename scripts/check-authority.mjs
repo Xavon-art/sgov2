@@ -108,6 +108,10 @@ async function main() {
   check("direct anon table read is denied", Boolean(direct.error), JSON.stringify(direct.error));
 
   let ownerId = "";
+  let engineering = "";
+  let education = "";
+  let positionId = "";
+  const forgedId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const client = new pg.Client({ connectionString: env.DATABASE_URL });
   await client.connect();
   try {
@@ -130,9 +134,22 @@ async function main() {
           and gu.name in ('College of Engineering', 'College of Education')`,
       [orgId],
     );
-    const engineering = units.rows.find((row) => row.name === "College of Engineering")?.id;
-    const education = units.rows.find((row) => row.name === "College of Education")?.id;
+    engineering = units.rows.find((row) => row.name === "College of Engineering")?.id;
+    education = units.rows.find((row) => row.name === "College of Education")?.id;
     check("two distinct LSG units resolve", Boolean(engineering && education && engineering !== education));
+
+    const chartPosition = await client.query(
+      `insert into smartgov.org_positions (organization_id, label, sort_order)
+       values ($1, $2, $3) returning id`,
+      [orgId, `Authority test position ${Date.now()}`, 32000],
+    );
+    positionId = chartPosition.rows[0].id;
+    await client.query(
+      `insert into smartgov.unit_positions (unit_id, position_id)
+       values ($1, $2) on conflict do nothing`,
+      [engineering, positionId],
+    );
+    check("fixture org-chart position resolves", Boolean(positionId));
 
     const taskA = await client.query(
       `insert into smartgov.tasks (organization_id, title, created_by)
@@ -208,12 +225,36 @@ async function main() {
     const auditList = await call("smartgov.list_audit_log", [pedro, 10]);
     check("LSG cannot read audit log", auditList.ok === false && auditList.reason === "forbidden", JSON.stringify(auditList));
 
+    const lsgAddPosition = await call("smartgov.add_position", [pedro, "Authority test LSG position", 0]);
+    check("LSG cannot add org-chart positions", lsgAddPosition.ok === false && lsgAddPosition.reason === "forbidden", JSON.stringify(lsgAddPosition));
+
+    const lsgToggle = await call("smartgov.toggle_unit_position", [pedro, engineering, positionId, true]);
+    check("LSG cannot toggle unit seats", lsgToggle.ok === false && lsgToggle.reason === "forbidden", JSON.stringify(lsgToggle));
+
+    const lsgAssign = await call("smartgov.assign_officer", [pedro, engineering, positionId, forgedId]);
+    check("LSG cannot assign seats", lsgAssign.ok === false && lsgAssign.reason === "forbidden", JSON.stringify(lsgAssign));
+
+    const lsgRelease = await call("smartgov.release_officer", [pedro, forgedId]);
+    check("LSG cannot release seats", lsgRelease.ok === false && lsgRelease.reason === "forbidden", JSON.stringify(lsgRelease));
+
     console.log("T4 forged identifiers");
     const forgedSurvey = await call("smartgov.create_survey_otp", ["00000000-0000-0000-0000-000000000000", emails.member]);
     check("forged survey id is rejected", forgedSurvey.ok === false && forgedSurvey.reason === "not_found", JSON.stringify(forgedSurvey));
 
     const forgedVersionUnit = await call("smartgov.list_requirement_answer_versions", [pedro, requirementA.rows[0].id, education]);
     check("forged unit id cannot widen LSG scope", forgedVersionUnit.ok === false && forgedVersionUnit.reason === "forbidden", JSON.stringify(forgedVersionUnit));
+
+    const forgedToggleUnit = await call("smartgov.toggle_unit_position", [owner, forgedId, positionId, true]);
+    check("forged unit id cannot toggle a seat", forgedToggleUnit.ok === false && forgedToggleUnit.reason === "not_found", JSON.stringify(forgedToggleUnit));
+
+    const forgedTogglePosition = await call("smartgov.toggle_unit_position", [owner, engineering, forgedId, true]);
+    check("forged position id cannot toggle a seat", forgedTogglePosition.ok === false && forgedTogglePosition.reason === "not_found", JSON.stringify(forgedTogglePosition));
+
+    const forgedAssignRoster = await call("smartgov.assign_officer", [owner, engineering, positionId, forgedId]);
+    check("forged roster id cannot be assigned to a seat", forgedAssignRoster.ok === false && forgedAssignRoster.reason === "not_found", JSON.stringify(forgedAssignRoster));
+
+    const forgedRelease = await call("smartgov.release_officer", [owner, forgedId]);
+    check("forged membership id cannot release a seat", forgedRelease.ok === false && forgedRelease.reason === "not_found", JSON.stringify(forgedRelease));
 
     console.log("T5 last owner protection");
     const selfDeactivateResult = await client.query(
@@ -249,6 +290,28 @@ async function main() {
 
   const httpAnonOverview = await get("/api/overview");
   check("anonymous API is denied", httpAnonOverview.status === 401, `got ${httpAnonOverview.status}`);
+
+  console.log("Org-chart boundaries");
+  const chartWrites = [
+    ["add a position", "/api/org-chart/position", { label: "Authority test", sortOrder: 0 }],
+    ["toggle a unit seat", "/api/org-chart/unit-position", { unitId: engineering, positionId, enabled: true }],
+    ["invite to a seat", "/api/org-chart/invite", { email: emails.member, unitType: "lsg", unitId: engineering, positionId }],
+    ["assign a seat", "/api/org-chart/assign", { unitId: engineering, positionId, rosterId: forgedId }],
+    ["release a seat", "/api/org-chart/release", { membershipId: forgedId }],
+  ];
+  for (const [label, route, body] of chartWrites) {
+    const lsgWrite = await post(route, pedro, body);
+    check(`LSG API cannot ${label}`, lsgWrite.status === 403, `got ${lsgWrite.status}`);
+    const anonWrite = await post(route, "", body);
+    check(`anonymous API cannot ${label}`, anonWrite.status === 401, `got ${anonWrite.status}`);
+  }
+
+  const ownerChartPage = await get("/org-chart", owner);
+  check("owner can open the org chart", ownerChartPage.status === 200, `got ${ownerChartPage.status}`);
+  const lsgChartPage = await get("/org-chart", pedro);
+  check("LSG is redirected out of the owner chart", lsgChartPage.status === 307, `got ${lsgChartPage.status}`);
+  const anonChartPage = await get("/org-chart");
+  check("anonymous is redirected out of the owner chart", anonChartPage.status === 307, `got ${anonChartPage.status}`);
 
   console.log(`\n${checks - failures}/${checks} checks passed.`);
   if (failures > 0) process.exitCode = 1;

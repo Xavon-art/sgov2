@@ -48,6 +48,7 @@ export default function UnitsPage() {
     >
       <div className="flex flex-col gap-6">
         <TextField
+          data-tour="org-name"
           id="orgName"
           label="Student organization name"
           placeholder="University Student Government"
@@ -58,6 +59,7 @@ export default function UnitsPage() {
         />
 
         <TextArea
+          data-tour="org-description"
           id="orgDescription"
           label="Short description"
           placeholder="The University Student Government represents the entire student body, coordinates the local councils beneath it, and oversees the annual student budget."
@@ -71,6 +73,7 @@ export default function UnitsPage() {
 
         <div className="flex flex-col gap-2.5">
           <TextField
+            data-tour="academic-year"
             id="academicYear"
             label="Academic year"
             srLabel

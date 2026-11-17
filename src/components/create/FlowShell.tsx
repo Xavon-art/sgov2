@@ -78,7 +78,7 @@ export function FlowShell({ children }: { children: React.ReactNode }) {
         />
       </div>
 
-      <header className="sticky top-0 z-40 border-b border-line/80 bg-canvas/78 backdrop-blur-xl backdrop-saturate-150">
+      <header data-tour="flow-header" className="sticky top-0 z-40 border-b border-line/80 bg-canvas/78 backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto flex h-16 max-w-[76rem] items-center gap-4 px-5 sm:px-8">
           <Link
             href="/"
@@ -117,7 +117,7 @@ export function FlowShell({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        <ol className="mx-auto hidden max-w-[76rem] items-center gap-1.5 px-8 py-2.5 lg:flex">
+        <ol data-tour="flow-progress" className="mx-auto hidden max-w-[76rem] items-center gap-1.5 px-8 py-2.5 lg:flex">
           {steps.map((step, i) => {
             const done = i < index;
             const current = i === index;
@@ -151,7 +151,7 @@ export function FlowShell({ children }: { children: React.ReactNode }) {
         </ol>
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main data-tour="flow-main" className="flex-1">{children}</main>
     </div>
   );
 }

@@ -148,7 +148,7 @@ export function OtpVerify({ token }: { token: string }) {
           : "We sent a six-digit code to your email. It stays valid for 15 minutes — check spam just in case."
       }
     >
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+      <form data-tour="invite-verify-form" onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
         <div className="flex flex-col gap-2">
           <label
             htmlFor="otp"
@@ -157,6 +157,7 @@ export function OtpVerify({ token }: { token: string }) {
             Verification code
           </label>
           <input
+            data-tour="invite-verify-code"
             id="otp"
             name="otp"
             inputMode="numeric"
@@ -187,11 +188,12 @@ export function OtpVerify({ token }: { token: string }) {
           </p>
         ) : null}
 
-        <Button type="submit" size="lg" disabled={busy} className="w-full">
+        <Button data-tour="invite-verify-submit" type="submit" size="lg" disabled={busy} className="w-full">
           {busy ? "Verifying…" : "Verify and activate"}
         </Button>
 
         <Button
+          data-tour="invite-verify-resend"
           type="button"
           variant="ghost"
           size="md"

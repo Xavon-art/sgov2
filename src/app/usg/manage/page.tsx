@@ -99,6 +99,7 @@ export default function UsgManagePage() {
       </header>
 
       <div
+        data-tour="manage-tabs"
         role="tablist"
         aria-label="Manage sections"
         className="flex flex-wrap gap-1 border-b border-line/80"

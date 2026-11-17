@@ -41,8 +41,8 @@ export function StepShell({
   const previous = previousStep(step, model);
 
   return (
-    <div className="mx-auto max-w-[44rem] px-5 pt-12 pb-24 sm:px-8 sm:pt-16">
-      <div className="text-center">
+    <div data-tour="step-frame" className="mx-auto max-w-[44rem] px-5 pt-12 pb-24 sm:px-8 sm:pt-16">
+      <div data-tour="step-heading" className="text-center">
         <p className="eyebrow flex items-center justify-center gap-3">
           <span aria-hidden className="h-px w-5 bg-brass" />
           Step {index + 1} · {meta.label}
@@ -59,6 +59,7 @@ export function StepShell({
       </div>
 
       <div
+        data-tour="step-body"
         className={cn(
           "mt-10",
           tone === "card" &&
@@ -87,7 +88,7 @@ export function StepShell({
       ) : null}
 
       {onContinue || footer ? (
-        <div className="mt-8 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div data-tour="step-actions" className="mt-8 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
           {previous && !hideBack ? (
             <Link
               href={previous.path}

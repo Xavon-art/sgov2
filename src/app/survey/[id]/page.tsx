@@ -216,7 +216,7 @@ function SurveyForm({ id }: { id: string }) {
 
   if (survey.accessMode === "email_otp" && (needsOtp || !otpVerified)) {
     return (
-      <div className="mx-auto max-w-2xl px-5 py-10">
+      <div data-tour="public-survey-otp" className="mx-auto max-w-2xl px-5 py-10">
         <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">{survey.title}</h1>
         {survey.description ? (
           <p className="mt-2 text-[0.9375rem] leading-relaxed text-body">{survey.description}</p>
@@ -260,7 +260,7 @@ function SurveyForm({ id }: { id: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-5 py-10">
+    <div data-tour="public-survey-intro" className="mx-auto max-w-2xl px-5 py-10">
       <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">{survey.title}</h1>
       {survey.description ? (
         <p className="mt-2 text-[0.9375rem] leading-relaxed text-body">{survey.description}</p>
@@ -271,7 +271,7 @@ function SurveyForm({ id }: { id: string }) {
         </p>
       ) : null}
 
-      <form onSubmit={submit} className="mt-8 flex flex-col gap-6">
+      <form data-tour="public-survey-questions" onSubmit={submit} className="mt-8 flex flex-col gap-6">
         {survey.accessMode === "email_list" ? (
           <div className="flex flex-col gap-2">
             <label className="text-[0.8125rem] font-semibold text-ink">Your email</label>
@@ -414,7 +414,7 @@ function SurveyForm({ id }: { id: string }) {
           </p>
         ) : null}
 
-        <Button type="submit" size="md" disabled={submitting}>
+        <Button data-tour="public-survey-submit" type="submit" size="md" disabled={submitting}>
           <SwapText isPending={submitting} idle="Submit" pending="Submitting…" />
         </Button>
       </form>

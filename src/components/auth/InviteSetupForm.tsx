@@ -113,7 +113,7 @@ export function InviteSetupForm({
 
   return (
     <div className="flex flex-col gap-6">
-      <dl className="rounded-2xl border border-line bg-paper/60 px-4 py-1">
+      <dl data-tour="invite-details" className="rounded-2xl border border-line bg-paper/60 px-4 py-1">
         {rows.map(([label, value]) => (
           <div
             key={label}
@@ -129,6 +129,7 @@ export function InviteSetupForm({
 
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
         <PasswordField
+          data-tour="invite-password"
           id="password"
           label="Password"
           autoComplete="new-password"
@@ -164,7 +165,7 @@ export function InviteSetupForm({
           </p>
         ) : null}
 
-        <Button type="submit" size="lg" disabled={busy} className="w-full">
+        <Button data-tour="invite-continue" type="submit" size="lg" disabled={busy} className="w-full">
           {busy ? "Saving…" : "Continue"}
         </Button>
 

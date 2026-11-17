@@ -100,6 +100,7 @@ export function Hero() {
   return (
     <section
       id="top"
+      data-tour="landing-hero"
       className="grain relative isolate overflow-hidden pt-[4.25rem]"
     >
       <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
@@ -150,6 +151,7 @@ export function Hero() {
           </p>
 
           <div
+            data-tour="landing-hero-cta"
             className="animate-float-in mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
             style={{ animationDelay: "0.3s" }}
           >

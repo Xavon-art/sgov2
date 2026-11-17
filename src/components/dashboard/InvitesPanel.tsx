@@ -257,7 +257,7 @@ export function InvitesPanel() {
     "pressable grid size-10 place-items-center rounded-full text-muted hover:bg-paper hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2 disabled:opacity-45 cursor-pointer";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-tour="manage-invites" className="flex flex-col gap-6">
       <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
         {isUsg ? (
           <>

@@ -74,6 +74,7 @@ export default function AccountPage() {
     >
       <div className="flex flex-col gap-6">
         <TextField
+          data-tour="account-full-name"
           id="fullName"
           label="Full name"
           autoComplete="name"
@@ -85,6 +86,7 @@ export default function AccountPage() {
         />
 
         <TextField
+          data-tour="account-email"
           id="email"
           label="University email address"
           type="email"
@@ -99,6 +101,7 @@ export default function AccountPage() {
 
         <div className="grid gap-6 sm:grid-cols-2">
           <TextField
+            data-tour="account-password"
             id="password"
             label="Password"
             type={reveal ? "text" : "password"}
@@ -137,6 +140,7 @@ export default function AccountPage() {
         </div>
 
         <TextField
+          data-tour="account-confirm-password"
           id="confirmPassword"
           label="Confirm password"
           type={reveal ? "text" : "password"}

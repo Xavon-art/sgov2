@@ -10,7 +10,7 @@ import Link from "next/link";
  */
 export function NotAvailable() {
   return (
-    <section className="rise-in mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
+    <section data-tour="not-available" className="rise-in mx-auto flex min-h-[50vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
       <h2 className="text-[1.25rem] leading-tight">Not available on this account</h2>
       <p className="text-[0.9375rem] leading-relaxed text-body">
         This section belongs to the account owner. If you think that is wrong, ask whoever invited

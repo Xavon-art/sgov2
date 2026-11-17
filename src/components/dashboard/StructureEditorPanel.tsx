@@ -72,7 +72,7 @@ export function StructureEditorPanel({
   const initial = toInitial(current);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-tour="manage-structure" className="flex flex-col gap-6">
       {current ? (
         <p className="text-[0.8125rem] text-muted">
           {current.status === "draft"
