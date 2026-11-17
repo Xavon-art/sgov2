@@ -5,6 +5,19 @@ import { readSessionToken } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
+function statusForReason(reason?: string): number {
+  switch (reason) {
+    case "unauthenticated":
+      return 401;
+    case "forbidden":
+      return 403;
+    case "rate_limited":
+      return 429;
+    default:
+      return 400;
+  }
+}
+
 export async function GET(request: Request) {
   const token = await readSessionToken();
   if (!token) {
@@ -19,7 +32,10 @@ export async function GET(request: Request) {
       p_limit: limit,
     });
     if (!res.ok) {
-      return NextResponse.json({ ok: false, message: messageFor(res.reason) }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, message: messageFor(res.reason), reason: res.reason },
+        { status: statusForReason(res.reason) },
+      );
     }
     return NextResponse.json({ ok: true, entries: res.entries ?? [] });
   } catch (error) {

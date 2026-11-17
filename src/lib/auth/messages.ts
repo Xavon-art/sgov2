@@ -25,6 +25,7 @@ const RPC_MESSAGES: Record<string, string> = {
   invalid_invite:
     "This invitation is no longer valid. Ask the officer who invited you to send a new one.",
   otp_expired: "That code has expired. Request a new one.",
+  otp_required: "Verify your email before opening this survey.",
   otp_mismatch: "That code is not correct.",
   too_many_attempts: "Too many wrong attempts. Ask your officer for a new invitation.",
   verify_failed: "We could not verify that code. Please try again.",

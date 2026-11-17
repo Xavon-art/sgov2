@@ -5,7 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { Reveal } from "@/components/fx/Reveal";
 import { Button } from "@/components/ui/Button";
-import { IconPencil } from "@/components/ui/Icons";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import {
+  IconArchive,
+  IconArrowLeft,
+  IconPencil,
+  IconSubmission,
+  IconUser,
+} from "@/components/ui/Icons";
 import { FieldShell, TextArea, TextField } from "@/components/ui/Field";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
@@ -216,8 +223,15 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
     <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-8 px-4 py-8 sm:px-6 lg:px-10">
       <Reveal>
         <header className="flex flex-col gap-2">
-          <p className="text-xs uppercase tracking-[0.32em] text-muted">Request</p>
-          <h1 className="text-[clamp(2rem,4vw,3.4rem)] leading-[1.02]">Tasks and personal requests</h1>
+          <div className="flex items-center gap-3">
+            <SectionIcon>
+              <IconSubmission className="h-5 w-5" strokeWidth={1.7} />
+            </SectionIcon>
+            <div className="flex flex-col gap-1">
+              <p className="text-xs uppercase tracking-[0.32em] text-muted">Request</p>
+              <h1 className="text-[clamp(2rem,4vw,3.4rem)] leading-[1.02]">Tasks and personal requests</h1>
+            </div>
+          </div>
           <p className="max-w-2xl text-[0.98rem] leading-relaxed text-body">
             {isUsg
               ? "Push tasks down to units with deadlines and requirements, follow threads, and review submissions."
@@ -229,14 +243,16 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
       <div className="flex gap-2">
         <button
           onClick={() => setTab("tasks")}
-          className={`rounded-full px-4 py-1.5 text-sm ${tab === "tasks" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "tasks" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
         >
+          <IconSubmission className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           Tasks
         </button>
         <button
           onClick={() => setTab("personal")}
-          className={`rounded-full px-4 py-1.5 text-sm ${tab === "personal" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "personal" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
         >
+          <IconUser className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           Personal requests
         </button>
         {!isUsg && tab === "personal" && (
@@ -281,15 +297,17 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-2xl border border-line bg-paper p-6">
             <div className="mb-4 flex items-center justify-between">
-              <button onClick={() => setSelectedTask(null)} className="text-sm text-muted">
-                ← Back
+              <button onClick={() => setSelectedTask(null)} className="inline-flex items-center gap-1.5 text-sm text-muted">
+                <IconArrowLeft className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+                Back
               </button>
               <div className="flex gap-2">
                 {isUsg && (
                   <a
                     href={`/api/tasks/${selectedTask}/zip`}
-                    className="rounded-full border border-line px-3 py-1 text-xs text-ink hover:bg-ink/[0.04]"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs text-ink hover:bg-ink/[0.04]"
                   >
+                    <IconArchive className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
                     Download ZIP
                   </a>
                 )}

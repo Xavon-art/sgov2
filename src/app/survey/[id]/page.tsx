@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { SwapText } from "@/components/fx/SwapText";
@@ -17,6 +17,7 @@ type Question = {
   scaleMax: number | null;
   scaleLabelLow: string | null;
   scaleLabelHigh: string | null;
+  showIf?: { questionId?: string; values?: unknown[] };
 };
 
 type Survey = {
@@ -42,38 +43,45 @@ function SurveyForm({ id }: { id: string }) {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // OTP access mode
   const [otpEmail, setOtpEmail] = useState(emailParam);
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpBusy, setOtpBusy] = useState(false);
+  const [accessProof, setAccessProof] = useState("");
+  const [needsOtp, setNeedsOtp] = useState(false);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    let cancelled = false;
-    void (async () => {
+  const loadSurvey = useCallback(
+    async (proof: string) => {
       try {
-        const res = await fetch(`/api/surveys/${id}?email=${encodeURIComponent(emailParam)}`);
+        const headers: Record<string, string> = {};
+        if (proof) headers["x-survey-access-proof"] = proof;
+        const res = await fetch(`/api/surveys/${id}?email=${encodeURIComponent(emailParam)}`, {
+          headers,
+        });
         const data = await res.json();
-        if (cancelled) return;
         if (!res.ok || !data.ok) {
           setError(data.message ?? "This survey is not available.");
           return;
         }
         setSurvey(data.survey);
         setQuestions(data.questions ?? []);
+        setNeedsOtp(Boolean(data.needsOtp));
+        setError(null);
       } catch {
-        if (!cancelled) setError("We could not reach the server. Check your connection.");
+        setError("We could not reach the server. Check your connection.");
       } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [id, emailParam]);
+    },
+    [id, emailParam],
+  );
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadSurvey("");
+  }, [loadSurvey]);
 
   function setAnswer(qid: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [qid]: value }));
@@ -109,7 +117,7 @@ function SurveyForm({ id }: { id: string }) {
       const res = await fetch(`/api/surveys/${id}/responses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessEmail: email.trim(), answers }),
+        body: JSON.stringify({ accessEmail: email.trim(), answers, accessProof: accessProof }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -160,8 +168,16 @@ function SurveyForm({ id }: { id: string }) {
         setOtpError(data.message ?? "Invalid code.");
         return;
       }
+      const proof = typeof data.proofToken === "string" ? data.proofToken : "";
+      if (!proof) {
+        setOtpError("We could not verify that code. Please try again.");
+        return;
+      }
+      setAccessProof(proof);
       setOtpVerified(true);
       setEmail(otpEmail.trim());
+      setLoading(true);
+      await loadSurvey(proof);
     } catch {
       setOtpError("We could not reach the server.");
     } finally {
@@ -198,7 +214,7 @@ function SurveyForm({ id }: { id: string }) {
 
   if (!survey) return null;
 
-  if (survey.accessMode === "email_otp" && !otpVerified) {
+  if (survey.accessMode === "email_otp" && (needsOtp || !otpVerified)) {
     return (
       <div className="mx-auto max-w-2xl px-5 py-10">
         <h1 className="text-[1.75rem] font-semibold leading-tight text-ink">{survey.title}</h1>

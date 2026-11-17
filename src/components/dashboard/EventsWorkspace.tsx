@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/Button";
 import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAccount } from "@/components/dashboard/dashboard-context";
-import { selectClass } from "@/components/dashboard/workspace-shared";
+import { SectionIcon, selectClass } from "@/components/dashboard/workspace-shared";
+import { IconCheckCircle, IconClose, IconEvents, IconPencil, IconShield } from "@/components/ui/Icons";
 
 type EvFile = { id: string; name: string; url: string | null; mimeType: string | null; sizeBytes: number | null };
 type EvScope = { unitType: string | null; unitId: string | null };
@@ -276,8 +277,15 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-10">
       <header className="flex flex-col gap-2">
-        <p className="text-xs uppercase tracking-[0.32em] text-muted">Events</p>
-        <h1 className="text-[clamp(2rem,4vw,3.4rem)] leading-[1.02]">Events and acts</h1>
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconEvents className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex flex-col gap-1">
+            <p className="text-xs uppercase tracking-[0.32em] text-muted">Events</p>
+            <h1 className="text-[clamp(2rem,4vw,3.4rem)] leading-[1.02]">Events and acts</h1>
+          </div>
+        </div>
         <p className="max-w-2xl text-[0.98rem] leading-relaxed text-body">
           {isUsg
             ? "Schedule university events, honour claims from units, and track the calendar."
@@ -290,7 +298,10 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       {error && <p className="text-sm text-[#a5442c]">{error}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => setShowCreate(true)}>Create event</Button>
+        <Button size="sm" onClick={() => setShowCreate(true)}>
+          <IconPencil className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          Create event
+        </Button>
         <div className="flex gap-1">
           <button onClick={() => setView("list")} className={`rounded-full px-3 py-1 text-sm ${view === "list" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>List</button>
           <button onClick={() => setView("calendar")} className={`rounded-full px-3 py-1 text-sm ${view === "calendar" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Calendar</button>
@@ -342,16 +353,19 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                 <div className="flex flex-col gap-2">
                   {e.canDecide && (
                     <Button size="sm" onClick={() => { setDecideTarget(e); setDecideOpen(true); }}>
+                      <IconCheckCircle className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
                       Decide
                     </Button>
                   )}
                   {e.canClaim && (
                     <Button size="sm" onClick={() => { setClaimTarget(e); setClaimOpen(true); }}>
+                      <IconShield className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
                       Claim
                     </Button>
                   )}
                   {e.canEdit && !e.cancelledAt && (
-                    <button onClick={() => void cancel(e)} className="text-xs text-[#a5442c] underline">
+                    <button onClick={() => void cancel(e)} className="inline-flex items-center justify-end gap-1.5 text-xs text-[#a5442c] underline">
+                      <IconClose className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                       Cancel
                     </button>
                   )}

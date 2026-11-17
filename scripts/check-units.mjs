@@ -2572,6 +2572,106 @@ check(
     : "no wrapper is granted to anon, authenticated, so PostgREST would answer PGRST202",
 );
 
+const p0Source = readPendingMigration("20260101003192_p0_authorization_fixes.sql");
+const p0Flat = flat(p0Source);
+const p0Blocks = functionBlocks(p0Source);
+const p0Block = (name) => p0Blocks.find((b) => b.name === name);
+const p0Body = (name) => (p0Block(name) ? flat(p0Block(name).body) : "");
+const surveyListRoute = readPendingSource("src/app/api/surveys/[id]/route.ts");
+const surveyResponsesRoute = readPendingSource("src/app/api/surveys/[id]/responses/route.ts");
+const otpSendRoute = readPendingSource("src/app/api/surveys/[id]/otp/send/route.ts");
+const otpVerifyRoute = readPendingSource("src/app/api/surveys/[id]/otp/verify/route.ts");
+const publicSurveyPage = readPendingSource("src/app/survey/[id]/page.tsx");
+
+check(
+  "03192 list_requirement_answer_versions authenticates and scopes by caller",
+  p0Flat.includes(flat("drop function if exists public.list_requirement_answer_versions(text, uuid, uuid)")) &&
+    /create or replace function smartgov\.list_requirement_answer_versions\(\s*p_session_token text,\s*p_requirement_id uuid,\s*p_unit_id uuid\s*\)/i.test(
+      p0Source,
+    ) &&
+    /smartgov\.authenticate\(p_session_token\)/i.test(
+      p0Body("smartgov.list_requirement_answer_versions"),
+    ) &&
+    /smartgov\.is_usg\(/i.test(p0Body("smartgov.list_requirement_answer_versions")) &&
+    /smartgov\.lsg_unit_ids\(/i.test(p0Body("smartgov.list_requirement_answer_versions")),
+);
+
+check(
+  "03192 the answer-versions wrapper is a thin token-passing call",
+  /smartgov\.list_requirement_answer_versions\(\$1,\$2,\$3\)/i.test(
+    p0Body("public.list_requirement_answer_versions"),
+  ) &&
+    !/from smartgov\.task_requirement_answer_versions/i.test(
+      p0Body("public.list_requirement_answer_versions"),
+    ),
+);
+
+check(
+  "03192 survey OTP creation generates the code and queues the email in SQL",
+  p0Flat.includes(flat("drop function if exists public.create_survey_otp(uuid, text, text, integer)")) &&
+    /create or replace function smartgov\.create_survey_otp\(\s*p_survey_id uuid,\s*p_email text\s*\)/i.test(
+      p0Source,
+    ) &&
+    /extensions\.gen_random_bytes\(/i.test(p0Body("smartgov.create_survey_otp")) &&
+    /smartgov\.sha256\(v_code\)/i.test(p0Body("smartgov.create_survey_otp")) &&
+    /insert into smartgov\.email_queue/i.test(p0Body("smartgov.create_survey_otp")),
+);
+
+check(
+  "03192 survey OTP verification checks a plaintext code and mints server proof",
+  p0Flat.includes(flat("drop function if exists public.verify_survey_otp(uuid, text, text)")) &&
+    /create or replace function smartgov\.verify_survey_otp\(\s*p_survey_id uuid,\s*p_email text,\s*p_code text\s*\)/i.test(
+      p0Source,
+    ) &&
+    /smartgov\.sha256\(v_code\)/i.test(p0Body("smartgov.verify_survey_otp")) &&
+    /proof_token_hash/i.test(p0Body("smartgov.verify_survey_otp")) &&
+    /'proofToken'/i.test(p0Body("smartgov.verify_survey_otp")),
+);
+
+check(
+  "03192 get_survey hides email_otp questions until valid server proof is supplied",
+  p0Flat.includes(flat("drop function if exists public.get_survey(text, uuid, text)")) &&
+    /create or replace function smartgov\.get_survey\(\s*p_session_token text,\s*p_survey_id uuid,\s*p_access_email text,\s*p_access_proof text\s*\)/i.test(
+      p0Source,
+    ) &&
+    /p_access_proof/i.test(p0Body("smartgov.get_survey")) &&
+    /proof_token_hash/i.test(p0Body("smartgov.get_survey")) &&
+    /'otp_required'/i.test(p0Body("smartgov.get_survey")),
+);
+
+check(
+  "03192 submit_survey_response requires server proof for email_otp surveys",
+  p0Flat.includes(flat("drop function if exists public.submit_survey_response(text, uuid, text, jsonb)")) &&
+    /create or replace function smartgov\.submit_survey_response\(\s*p_session_token text,\s*p_survey_id uuid,\s*p_access_email text,\s*p_answers jsonb,\s*p_access_proof text\s*\)/i.test(
+      p0Source,
+    ) &&
+    /p_access_proof/i.test(p0Body("smartgov.submit_survey_response")) &&
+    /proof_token_hash/i.test(p0Body("smartgov.submit_survey_response")),
+);
+
+check(
+  "03192 OTP routes never handle a caller-supplied hash or direct mail code",
+  !/hashCode|p_code_hash|sendBranded/i.test(otpSendRoute) &&
+    /drainPendingEmails/i.test(otpSendRoute) &&
+    /p_code: code/i.test(otpVerifyRoute),
+);
+
+check(
+  "03192 survey routes carry the proof out of HTTP headers into RPC parameters",
+  /x-survey-access-proof/i.test(surveyListRoute) &&
+    /p_access_proof/i.test(surveyListRoute) &&
+    /accessProof/i.test(surveyResponsesRoute) &&
+    /p_access_proof: accessProof/i.test(surveyResponsesRoute),
+);
+
+check(
+  "03192 the public survey UI stores proof and refetches questions after verification",
+  /setAccessProof/i.test(publicSurveyPage) &&
+    /x-survey-access-proof/i.test(publicSurveyPage) &&
+    /proofToken/i.test(publicSurveyPage) &&
+    /accessProof: accessProof/i.test(publicSurveyPage),
+);
+
 console.log(
   failures === 0
     ? `\nall ${checks} checks passed\n`

@@ -6,6 +6,14 @@ import { Reveal } from "@/components/fx/Reveal";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { AuditLogSection } from "@/components/dashboard/AuditLogSection";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import {
+  IconArrowRight,
+  IconBuilding,
+  IconClock,
+  IconLock,
+  IconUser,
+} from "@/components/ui/Icons";
 
 /**
  * Settings -- the account's own controls, shared by both workspaces.
@@ -33,8 +41,15 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
   return (
     <section className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <p className="eyebrow">Settings</p>
-        <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">Your account</h1>
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconLock className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex flex-col gap-1">
+            <p className="eyebrow">Settings</p>
+            <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">Your account</h1>
+          </div>
+        </div>
         <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
           Who you are on SmartGov, how the dashboard behaves, and the way out.
         </p>
@@ -42,7 +57,10 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
 
       <Reveal>
         <div className="rounded-2xl border border-line bg-paper/70 p-6">
-          <p className="eyebrow">Workspace</p>
+          <p className="eyebrow inline-flex items-center gap-2">
+            <IconBuilding className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />
+            Workspace
+          </p>
           <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
             <div>
               <dt className="text-[0.75rem] tracking-[0.08em] text-muted uppercase">Workspace</dt>
@@ -72,7 +90,10 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
 
       <Reveal delay={0.04}>
         <div className="flex flex-col gap-3 rounded-2xl border border-line bg-paper/70 p-6">
-          <p className="eyebrow">Profile & appearance</p>
+          <p className="eyebrow inline-flex items-center gap-2">
+            <IconUser className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />
+            Profile & appearance
+          </p>
           <p className="text-[0.9375rem] leading-relaxed text-body">
             Your name, sign-in email, password, and the dashboard&rsquo;s accent and theme live in
             Manage, next to the structure they belong to.
@@ -83,6 +104,7 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
               className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
             >
               Open Manage
+              <IconArrowRight className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             </Link>
           </div>
         </div>
@@ -97,7 +119,10 @@ export function SettingsSection({ side }: { side: "usg" | "lsg" }) {
       <Reveal delay={0.08}>
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-paper/70 p-6">
           <div>
-            <p className="eyebrow">Session</p>
+            <p className="eyebrow inline-flex items-center gap-2">
+              <IconClock className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />
+              Session
+            </p>
             <p className="mt-1 text-[0.9375rem] text-body">
               Signed in as {account.displayName}.
             </p>

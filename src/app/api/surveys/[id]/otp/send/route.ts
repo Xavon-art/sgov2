@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
-import { readSessionToken } from "@/lib/auth/session";
-import { sendBranded } from "@/lib/mail/send";
-import crypto from "node:crypto";
+import { drainPendingEmails } from "@/lib/mail/send";
 
 export const runtime = "nodejs";
 
-function hashCode(code: string): string {
-  return crypto.createHash("sha256").update(code).digest("hex");
+function statusForReason(reason?: string): number {
+  switch (reason) {
+    case "forbidden":
+      return 403;
+    case "not_found":
+      return 404;
+    case "rate_limited":
+      return 429;
+    default:
+      return 400;
+  }
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -19,23 +26,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!email || !email.includes("@")) {
     return NextResponse.json({ ok: false, message: "Enter a valid email." }, { status: 400 });
   }
-  const code = String(Math.floor(100000 + Math.random() * 900000));
   try {
-    await callRpc<RpcResult>("create_survey_otp", {
+    const res = await callRpc<RpcResult>("create_survey_otp", {
       p_survey_id: id,
       p_email: email,
-      p_code_hash: hashCode(code),
-      p_ttl_minutes: 10,
     });
-    await sendBranded({
-      to: email,
-      subject: "Your SmartGov survey access code",
-      html: `<p>Your access code is <strong>${code}</strong>. It expires in 10 minutes.</p>`,
-      text: `Your access code is ${code}. It expires in 10 minutes.`,
-    });
+    if (!res.ok) {
+      return NextResponse.json(
+        { ok: false, message: messageFor(res.reason), reason: res.reason },
+        { status: statusForReason(res.reason) },
+      );
+    }
+    await drainPendingEmails(10, 2);
     return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error("[survey-otp-send]", e);
+  } catch (error) {
+    console.error("[survey-otp-send]", error);
     return NextResponse.json({ ok: false, message: "Could not send code." }, { status: 500 });
   }
 }

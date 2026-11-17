@@ -36,7 +36,7 @@ export type NavIcon =
   | "compass"
   | "monitoring";
 
-const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
+export const NAV_ICONS: Record<NavIcon, typeof IconDashboard> = {
   dashboard: IconDashboard,
   pyramid: IconPyramid,
   user: IconUser,

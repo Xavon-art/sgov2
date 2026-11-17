@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 type SurveyDetailPayload = RpcResult & {
   survey?: unknown;
   questions?: unknown;
+  needsOtp?: boolean;
 };
 
 function statusForReason(reason?: string): number {
@@ -30,12 +31,14 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   const url = new URL(request.url);
   const accessEmail = url.searchParams.get("email") ?? "";
+  const accessProof = request.headers.get("x-survey-access-proof") ?? "";
 
   try {
     const res = await callRpc<SurveyDetailPayload>("get_survey", {
       p_session_token: token ?? null,
       p_survey_id: id,
       p_access_email: accessEmail,
+      p_access_proof: accessProof || null,
     });
     if (!res.ok) {
       return NextResponse.json(
@@ -43,7 +46,12 @@ export async function GET(request: Request, ctx: { params: Promise<{ id: string 
         { status: statusForReason(res.reason) },
       );
     }
-    return NextResponse.json({ ok: true, survey: res.survey, questions: res.questions ?? [] });
+    return NextResponse.json({
+      ok: true,
+      survey: res.survey,
+      questions: res.questions ?? [],
+      needsOtp: res.needsOtp ?? false,
+    });
   } catch (error) {
     console.error("[surveys:get]", error);
     return NextResponse.json({ ok: false, message: messageFor("retry") }, { status: 503 });

@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
-import crypto from "node:crypto";
 
 export const runtime = "nodejs";
-
-function hashCode(code: string): string {
-  return crypto.createHash("sha256").update(code).digest("hex");
-}
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
@@ -22,12 +17,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const res = await callRpc<RpcResult>("verify_survey_otp", {
       p_survey_id: id,
       p_email: email,
-      p_code_hash: hashCode(code),
+      p_code: code,
     });
     if (!res.ok) {
       return NextResponse.json({ ok: false, message: messageFor(res.reason) }, { status: 400 });
     }
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, proofToken: res.proofToken });
   } catch {
     return NextResponse.json({ ok: false, message: "Could not verify code." }, { status: 500 });
   }

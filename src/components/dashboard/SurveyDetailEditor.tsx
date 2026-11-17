@@ -8,6 +8,14 @@ import { SwapText } from "@/components/fx/SwapText";
 import { TextField } from "@/components/ui/Field";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { NotAvailable } from "@/components/dashboard/NotAvailable";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import {
+  IconArchive,
+  IconCheckCircle,
+  IconClose,
+  IconMonitoring,
+  IconUpload,
+} from "@/components/ui/Icons";
 
 type Question = {
   id: string;
@@ -368,9 +376,16 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
   return (
     <div className="flex flex-col gap-8">
       <header className="border-b border-line/80 pb-4">
-        <p className="eyebrow">Survey</p>
-        <h1 className="mt-1 text-[1.5rem] leading-tight sm:text-[1.75rem]">{survey.title}</h1>
-        <p className="mt-1 text-[0.875rem] text-muted">
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconMonitoring className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="eyebrow">Survey</p>
+            <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">{survey.title}</h1>
+          </div>
+        </div>
+        <p className="mt-3 text-[0.875rem] text-muted">
           {survey.status} · {survey.accessMode} · {questions.length} question(s)
         </p>
         {survey.status === "open" ? (
@@ -397,16 +412,19 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
       <div className="flex flex-wrap gap-2">
         {survey.status === "draft" ? (
           <Button size="sm" disabled={busy || questions.length === 0} onClick={() => void publish()}>
+            <IconCheckCircle className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             <SwapText isPending={busy} idle="Publish" pending="Publishing…" />
           </Button>
         ) : null}
         {survey.status === "open" ? (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void close()}>
+            <IconClose className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             <SwapText isPending={busy} idle="Close" pending="Closing…" />
           </Button>
         ) : null}
         {survey.status !== "draft" && results && (
           <Button size="sm" variant="outline" onClick={exportCsv}>
+            <IconUpload className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             Export CSV
           </Button>
         )}
@@ -414,8 +432,9 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
           type="button"
           onClick={() => void remove()}
           disabled={busy}
-          className="pressable rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-semibold text-[#a5442c] hover:bg-[#a5442c]/[0.06]"
+          className="pressable inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-semibold text-[#a5442c] hover:bg-[#a5442c]/[0.06]"
         >
+          <IconArchive className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
           Delete
         </button>
       </div>

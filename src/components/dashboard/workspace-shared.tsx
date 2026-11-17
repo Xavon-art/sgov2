@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
 import { IconCheck, IconClock } from "@/components/ui/Icons";
@@ -21,6 +22,14 @@ import { IconCheck, IconClock } from "@/components/ui/Icons";
  */
 export const ROW_STAGGER_MS = 40;
 export const ROW_STAGGER_CAP_MS = 200;
+
+export function SectionIcon({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brass/30 bg-brass-soft/25 text-brass-deep sm:size-10" aria-hidden="true">
+      {children}
+    </span>
+  );
+}
 
 /** Types a campus, college, or department can be added as. */
 export const UNIT_TYPE_OPTIONS = [

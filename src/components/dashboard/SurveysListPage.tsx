@@ -9,6 +9,8 @@ import { SwapText } from "@/components/fx/SwapText";
 import { TextField } from "@/components/ui/Field";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { NotAvailable } from "@/components/dashboard/NotAvailable";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import { IconMonitoring, IconPencil } from "@/components/ui/Icons";
 
 type Survey = {
   id: string;
@@ -167,9 +169,16 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
   return (
     <div className="flex flex-col gap-8">
       <header className="border-b border-line/80 pb-4">
-        <p className="eyebrow">Survey</p>
-        <h1 className="mt-1 text-[1.5rem] leading-tight sm:text-[1.75rem]">Surveys</h1>
-        <p className="mt-1 text-[0.875rem] text-muted">
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconMonitoring className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex flex-col gap-1">
+            <p className="eyebrow">Survey</p>
+            <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">Surveys</h1>
+          </div>
+        </div>
+        <p className="mt-3 text-[0.875rem] text-muted">
           Build forms, collect responses, and review results.
         </p>
       </header>
@@ -187,7 +196,10 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
       {error ? <p className="text-[0.875rem] text-[#a5442c]">{error}</p> : null}
 
       <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-        <p className="eyebrow">Create a survey</p>
+        <p className="eyebrow inline-flex items-center gap-2">
+          <IconPencil className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />
+          Create a survey
+        </p>
         <form onSubmit={create} className="mt-5 flex flex-col gap-4">
           <TextField id="s-title" label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
           <TextField id="s-desc" label="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} optional />
@@ -217,6 +229,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
             <TextField id="s-deadline" label="Deadline (optional)" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} optional />
           </div>
           <Button type="submit" disabled={creating}>
+            <IconPencil className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             <SwapText isPending={creating} idle="Create survey" pending="Creating…" />
           </Button>
         </form>

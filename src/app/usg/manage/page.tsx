@@ -7,6 +7,8 @@ import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
 import { InvitesPanel } from "@/components/dashboard/InvitesPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import { IconBuilding, IconLayers, IconMail, IconUser } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -27,11 +29,11 @@ function isTab(value: string | null): value is Tab {
   return value === "umbrella" || value === "invites" || value === "structure" || value === "profile";
 }
 
-const TABS: Array<{ id: Tab; label: string; ownerOnly: boolean }> = [
-  { id: "umbrella", label: "Umbrella", ownerOnly: true },
-  { id: "invites", label: "Invites", ownerOnly: true },
-  { id: "structure", label: "Government structure", ownerOnly: true },
-  { id: "profile", label: "Profile & customization", ownerOnly: false },
+const TABS: Array<{ id: Tab; label: string; ownerOnly: boolean; icon: typeof IconBuilding }> = [
+  { id: "umbrella", label: "Umbrella", ownerOnly: true, icon: IconBuilding },
+  { id: "invites", label: "Invites", ownerOnly: true, icon: IconMail },
+  { id: "structure", label: "Government structure", ownerOnly: true, icon: IconLayers },
+  { id: "profile", label: "Profile & customization", ownerOnly: false, icon: IconUser },
 ];
 
 export default function UsgManagePage() {
@@ -55,8 +57,15 @@ export default function UsgManagePage() {
     return (
       <section className="flex flex-col gap-6">
         <header className="flex flex-col gap-2">
-          <p className="eyebrow">Manage</p>
-          <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">Your profile</h1>
+          <div className="flex items-center gap-3">
+            <SectionIcon>
+              <IconUser className="h-5 w-5" strokeWidth={1.7} />
+            </SectionIcon>
+            <div className="flex flex-col gap-1">
+              <p className="eyebrow">Manage</p>
+              <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">Your profile</h1>
+            </div>
+          </div>
           <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
             Your own account and the officer details attached to it.
           </p>
@@ -71,10 +80,17 @@ export default function UsgManagePage() {
   return (
     <section className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <p className="eyebrow">Manage</p>
-        <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">
-          {canManage ? "Your federation" : "Your profile"}
-        </h1>
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconLayers className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex flex-col gap-1">
+            <p className="eyebrow">Manage</p>
+            <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">
+              {canManage ? "Your federation" : "Your profile"}
+            </h1>
+          </div>
+        </div>
         <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
           {canManage
             ? "The units under you, the people you invite into them, and how the dashboard looks."
@@ -95,12 +111,13 @@ export default function UsgManagePage() {
             aria-selected={tab === t.id}
             onClick={() => router.replace(`/usg/manage?tab=${t.id}`, { scroll: false })}
             className={cn(
-              "pressable -mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
+              "pressable -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
               tab === t.id
                 ? "border-brass text-ink"
                 : "border-transparent text-muted hover:text-ink",
             )}
           >
+            <t.icon className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             {t.label}
           </button>
         ))}

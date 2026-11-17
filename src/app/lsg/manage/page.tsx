@@ -6,6 +6,8 @@ import { useAccount } from "@/components/dashboard/dashboard-context";
 import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import { IconBuilding, IconLayers, IconUser } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,8 +44,15 @@ export default function LsgManagePage() {
   return (
     <section className="flex flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <p className="eyebrow">Manage</p>
-        <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">{unitName}</h1>
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconLayers className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex flex-col gap-1">
+            <p className="eyebrow">Manage</p>
+            <h1 className="text-[1.5rem] leading-tight sm:text-[1.75rem]">{unitName}</h1>
+          </div>
+        </div>
         <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
           Your own account, and the government structure of your council.
         </p>
@@ -55,9 +64,9 @@ export default function LsgManagePage() {
         className="flex flex-wrap gap-1 border-b border-line/80"
       >
         {([
-          { id: "usg" as const, label: "My USG" },
-          { id: "profile" as const, label: "Profile" },
-          { id: "structure" as const, label: "Government structure" },
+          { id: "usg" as const, label: "My USG", icon: IconBuilding },
+          { id: "profile" as const, label: "Profile", icon: IconUser },
+          { id: "structure" as const, label: "Government structure", icon: IconLayers },
         ]).map((t) => (
           <button
             key={t.id}
@@ -66,10 +75,11 @@ export default function LsgManagePage() {
             aria-selected={tab === t.id}
             onClick={() => router.replace(`/lsg/manage?tab=${t.id}`, { scroll: false })}
             className={cn(
-              "pressable -mb-px rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
+              "pressable -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
               tab === t.id ? "border-brass text-ink" : "border-transparent text-muted hover:text-ink",
             )}
           >
+            <t.icon className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             {t.label}
           </button>
         ))}

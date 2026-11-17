@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { IconLock } from "@/components/ui/Icons";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export function SignOutButton() {
   return (
     <>
       <Button variant="ghost" size="sm" onClick={() => setConfirming(true)}>
+        <IconLock className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
         Sign out
       </Button>
 

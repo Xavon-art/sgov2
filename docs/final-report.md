@@ -35,6 +35,14 @@
 - Mobile pass at 390px across every USG and LSG top-level route: no horizontal overflow, no page errors, no stuck loading state.
 - Captured fresh dashboard, customise, LSG surveys/requests, USG mobile, and member screenshots after the fixes.
 
+## P0 authorization remediation
+- Applied `supabase/migrations/20260101003192_p0_authorization_fixes.sql` after verified backup `C:\Users\Julius M. Matro\Desktop\sir tonie projects\backups\smartgov-backup-20261117-192735.sql`.
+- Replaced token-ignoring requirement-answer-version access with authenticated and unit-scoped `smartgov.list_requirement_answer_versions(p_session_token, p_requirement_id, p_unit_id)`.
+- Moved survey OTP generation/hashing/TTL into SQL. Public contract is now `create_survey_otp(p_survey_id, p_email)` and `verify_survey_otp(p_survey_id, p_email, p_code)`; the verified result is a one-use proof token.
+- Server-enforced the proof for `get_survey` and `submit_survey_response`; direct reads without proof return `needsOtp` with no questions, and replayed/spent proof returns `otp_required`.
+- Wired Next.js routes and the public survey page to the server-issued proof; fixed `/api/audit-log` to return 401/403 with a machine-readable reason instead of blanket 400.
+- Added `npm run test:authority` and `npm run check:e2e` as repeatable regression suites.
+
 ## End-to-end verification
 - Organization creation: federated wizard -> review -> verification -> activation email in `/dev/outbox` -> `/activate?token=` -> dashboard -> sign out -> password sign-in.
 - Invitation acceptance: owner invites into a new unit -> outbox invite link -> password set -> OTP verify -> sign in -> lands in the LSG workspace.
@@ -48,7 +56,10 @@
 - Chat typing indicators, seen/read receipts, and message attachments for conversations (backend tables/RPCs not yet added).
 - Survey templates library (built-in templates) and result-viewer management UI.
 - File storage versioning UI (backend snapshots exist for task answers).
-- The committed Playwright check is the read-only smoke/boundary script (`npm run check:smoke`); the deeper create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
+- The committed Playwright checks are `npm run check:smoke` (read-only boundaries), `npm run test:authority` (RPC/HTTP boundaries), and `npm run check:e2e` (role navigation, validation, cancellation, responsive screenshots). Deep create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
+- OTP DB-side per-email and per-IP throttling is still advisory; application rate limits remain process-local.
+- `definer_without_search_path 11` remains after migration 03192; an optional `20260101003193_...` migration can pin `search_path` without touching applied migrations.
+- 70 foreign keys still lack a leading index; `orphan_fk_rows 0` was verified.
 - `check:federated` create-flow items (unitary model gating) pre-existing.
 
 ## Dashboard customisation + demo environment
@@ -59,12 +70,23 @@
 - Seed guard: `truncate ... cascade` empties `gov_structure_templates` through its organization foreign key, so the seeder snapshots and restores the 10 built-in blueprints around the purge.
 
 ## Verification
-- `npx tsc --noEmit`: clean
-- `npm run lint`: 0 errors (14 warnings)
-- `npm run build`: success (67 routes)
-- `npm run check:units`: 282/282 pass
-- `npm run check:reveal`: 21/21 pass
-- `npm run check:federated`: 20/20 pass
-- `npm run check:smoke`: 25/25 pass against both `next dev` and the production `next start` build (anonymous 401/307 walls, owner/LSG role separation, cookie attributes, UI sign-in/nav/sign-out, zero console errors)
-- Browser smoke: owner/LSG/member sign-in, every nav target on both sides, customise/save/reset/persist layout, LSG hitting `/usg` returns 307 to `/lsg`, unauthenticated APIs return 401, direct table reads stay denied.
-- Vercel deployment: READY (sgov.vercel.app)
+- `npx tsc --noEmit`: clean.
+- `npm run lint`: 0 errors; existing warnings remain in unused variables/imports.
+- `npm run build`: success after the audit-log status fix.
+- `npm run check:units`: 291/291 pass.
+- `npm run check:reveal`: 21/21 pass.
+- `npm run check:federated`: 20/20 pass.
+- `npm run check:smoke`: 25/25 pass against the production `next start` build (anonymous 401/307 walls, owner/LSG role separation, cookie attributes, UI sign-in/nav/sign-out, zero console errors).
+- `npm run test:authority`: 25/25 pass (T1/T2/T4/T5, invalid-token fail-closed, anon table denial, forged IDs, HTTP role boundaries).
+- `npm run check:e2e`: 31/31 pass (owner and LSG navigation, dialog cancel, validation, no console errors, 12 screenshots).
+- `npm run audit:connections -- --verbose`: exit 0; `token_ignoring_wrappers 0`, `otp_caller_controlled_pattern no`, `orphan_fk_rows 0`, `direct_untrusted_table_grants 0`, `definer_without_search_path 11`.
+- Screenshots: `C:\Users\Julius M. Matro\Desktop\sir tonie projects\screenshots\audit\` (USG/LSG overview and survey at mobile, tablet, and desktop).
+- Vercel deployment: READY (sgov.vercel.app); deploy by pushing `main`, not direct CLI.
+
+## Ambiguity decisions
+- Public wrapper grants were left as the PostgREST entry surface because removing `anon`/`authenticated` would break the custom-auth transport. The DB functions still derive identity from the session token.
+- RLS-without-policy tables are retained as a deliberate fail-closed wrapper-only architecture; the audit script guards against future direct untrusted grants.
+- `definer_without_search_path 11` was left for a separate migration rather than editing applied migration 03192; no unqualified-object exploit was demonstrated.
+- Native confirmation dialogs and missing archive/restore vocabulary were recorded as product/UX follow-ups rather than changed under this audit.
+- Real email delivery was not exercised locally because Gmail credentials are absent; queue generation and drain logic were verified instead.
+- No commit or push was made at this stage; the repository remains on the local audited tree until final handoff.

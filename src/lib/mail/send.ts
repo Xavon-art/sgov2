@@ -79,6 +79,52 @@ export type BrandedMail = {
   text: string;
 };
 
+export type QueuedEmail = {
+  id: string;
+  to_address: string;
+  subject: string;
+  html: string | null;
+  text_body: string | null;
+};
+
+export async function drainPendingEmails(
+  limit = 25,
+  passes = 4,
+): Promise<{ sent: number; failed: number }> {
+  const { callRpc } = await import("@/lib/auth/rpc");
+  let sent = 0;
+  let failed = 0;
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    const pending = await callRpc<{
+      ok: boolean;
+      emails?: QueuedEmail[];
+    }>("list_pending_emails", { p_limit: limit });
+    if (!pending.ok || !Array.isArray(pending.emails) || pending.emails.length === 0) break;
+
+    for (const email of pending.emails) {
+      try {
+        await sendBranded({
+          to: email.to_address,
+          subject: email.subject,
+          html: email.html ?? "",
+          text: email.text_body ?? "",
+        });
+        await callRpc("mark_email_sent", { p_id: email.id, p_error: null });
+        sent += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await callRpc("mark_email_sent", { p_id: email.id, p_error: message });
+        failed += 1;
+      }
+    }
+
+    if (pending.emails.length < limit) break;
+  }
+
+  return { sent, failed };
+}
+
 /**
  * Sends one branded message. Resolves only after Gmail accepts it, so callers
  * can treat a rejection as "not sent" and keep the record in a retryable state.

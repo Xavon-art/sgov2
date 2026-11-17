@@ -47,14 +47,15 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const token = await readSessionToken();
   const { id } = await ctx.params;
-  let body: { accessEmail?: unknown; answers?: unknown };
+  let body: { accessEmail?: unknown; answers?: unknown; accessProof?: unknown };
   try {
-    body = (await request.json()) as { accessEmail?: unknown; answers?: unknown };
+    body = (await request.json()) as { accessEmail?: unknown; answers?: unknown; accessProof?: unknown };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
   const accessEmail = typeof body.accessEmail === "string" ? body.accessEmail.trim() : "";
+  const accessProof = typeof body.accessProof === "string" ? body.accessProof : "";
 
   try {
     const res = await callRpc<RpcResult>("submit_survey_response", {
@@ -62,6 +63,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       p_survey_id: id,
       p_access_email: accessEmail,
       p_answers: body.answers && typeof body.answers === "object" ? body.answers : {},
+      p_access_proof: accessProof || null,
     });
     if (!res.ok) {
       return NextResponse.json(

@@ -5,7 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "@/components/fx/Reveal";
 import { ButtonLink } from "@/components/ui/Button";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
-import type { NavItem } from "@/components/dashboard/AppShell";
+import { NAV_ICONS, type NavItem } from "@/components/dashboard/AppShell";
+import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import {
+  IconArrowRight,
+  IconCheck,
+  IconClose,
+  IconDashboard,
+  IconLayers,
+  IconPencil,
+  IconSubmission,
+} from "@/components/ui/Icons";
 
 /**
  * The overview each workspace opens on.
@@ -243,8 +253,15 @@ export function FederatedOverview({
   return (
     <section className="flex flex-col gap-8">
       <Reveal className="flex flex-col gap-3">
-        <p className="eyebrow">{side === "usg" ? "Office desk" : "Unit desk"}</p>
-        <h1 className="text-[1.875rem] leading-tight sm:text-[2.25rem]">{heading}</h1>
+        <div className="flex items-center gap-3">
+          <SectionIcon>
+            <IconDashboard className="h-5 w-5" strokeWidth={1.7} />
+          </SectionIcon>
+          <div className="flex flex-col gap-1">
+            <p className="eyebrow">{side === "usg" ? "Office desk" : "Unit desk"}</p>
+            <h1 className="text-[1.875rem] leading-tight sm:text-[2.25rem]">{heading}</h1>
+          </div>
+        </div>
         <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
           {side === "usg"
             ? "You oversee every unit underneath you: their tasks, their requests back up, the events they file, and the surveys you run together. Start anywhere below."
@@ -271,16 +288,18 @@ export function FederatedOverview({
                   type="button"
                   onClick={() => void saveEditing()}
                   disabled={saving}
-                  className="rounded-full bg-ink px-4 py-2 text-[0.75rem] font-semibold text-paper transition-opacity disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-[0.75rem] font-semibold text-paper transition-opacity disabled:opacity-50"
                 >
+                  <IconCheck className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
                   {saving ? "Saving..." : "Save layout"}
                 </button>
                 <button
                   type="button"
                   onClick={cancelEditing}
                   disabled={saving}
-                  className="rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-colors hover:border-line-strong disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-colors hover:border-line-strong disabled:opacity-50"
                 >
+                  <IconClose className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
                   Cancel
                 </button>
                 <button
@@ -296,8 +315,9 @@ export function FederatedOverview({
               <button
                 type="button"
                 onClick={beginEditing}
-                className="rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift"
+                className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift"
               >
+                <IconPencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                 Customize
               </button>
             )}
@@ -321,6 +341,7 @@ export function FederatedOverview({
           {visibleTiles.map((tile) => {
             const item = byId.get(tile.id);
             if (!item) return null;
+            const TileIcon = NAV_ICONS[item.icon];
             const badge = counts ? countFor(item.id, counts) : null;
             const span = tile.wide ? " sm:col-span-2" : "";
             const position = activeLayout.findIndex((entry) => entry.id === tile.id);
@@ -333,9 +354,12 @@ export function FederatedOverview({
                     tile.hidden ? " opacity-55" : ""
                   }`}
                 >
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="text-[1.0625rem] leading-snug font-medium text-ink">
-                      {item.label}
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <TileIcon className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={1.7} aria-hidden="true" />
+                      <span className="text-[1.0625rem] leading-snug font-medium text-ink">
+                        {item.label}
+                      </span>
                     </span>
                     <span className="flex items-center gap-2">
                       {tile.hidden ? (
@@ -397,9 +421,14 @@ export function FederatedOverview({
                 href={item.href}
                 className={`group flex flex-col gap-2 rounded-2xl border border-line bg-paper/70 p-5 transition-[border-color,box-shadow,transform] duration-300 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lift${span}`}
               >
-                <span className="flex items-baseline justify-between gap-2">
-                  <span className="text-[1.0625rem] leading-snug font-medium text-ink">
-                    {item.label}
+                <span className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brass/25 bg-brass-soft/20 text-brass-deep">
+                      <TileIcon className="h-5 w-5" strokeWidth={1.7} aria-hidden="true" />
+                    </span>
+                    <span className="text-[1.0625rem] leading-snug font-medium text-ink">
+                      {item.label}
+                    </span>
                   </span>
                   {badge && badge > 0 ? (
                     <span className="shrink-0 rounded-full bg-brass-soft/50 px-2.5 py-1 text-[0.6875rem] font-semibold text-brass-deep">
@@ -430,10 +459,13 @@ export function FederatedOverview({
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <ButtonLink href={nav[1]?.href ?? nav[0].href} variant="primary" size="sm">
+              <IconLayers className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
               Open Manage
             </ButtonLink>
             <ButtonLink href={nav[2]?.href ?? nav[0].href} variant="paper" size="sm">
+              <IconSubmission className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
               Go to Request
+              <IconArrowRight className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             </ButtonLink>
           </div>
         </div>
