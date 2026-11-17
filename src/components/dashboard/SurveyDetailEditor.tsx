@@ -254,16 +254,22 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
     const b = questions[swapIdx];
     setBusy(true);
     try {
-      await fetch(`/api/surveys/${id}/questions/${a.id}`, {
+      const aRes = await fetch(`/api/surveys/${id}/questions/${a.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderIndex: b.orderIndex }),
       });
-      await fetch(`/api/surveys/${id}/questions/${b.id}`, {
+      const bRes = await fetch(`/api/surveys/${id}/questions/${b.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderIndex: a.orderIndex }),
       });
+      const aData = await aRes.json();
+      const bData = await bRes.json();
+      if (!aRes.ok || !aData.ok || !bRes.ok || !bData.ok) {
+        setActionError(aData.message ?? bData.message ?? "We could not reorder.");
+        return;
+      }
       await load();
     } catch {
       setActionError("We could not reorder.");
@@ -375,7 +381,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="border-b border-line/80 pb-4">
+      <header data-tour="survey-detail-header" className="border-b border-line/80 pb-4">
         <div className="flex items-center gap-3">
           <SectionIcon>
             <IconMonitoring className="h-5 w-5" strokeWidth={1.7} />
@@ -389,7 +395,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
           {survey.status} · {survey.accessMode} · {questions.length} question(s)
         </p>
         {survey.status === "open" ? (
-          <p className="mt-2 text-[0.8125rem] text-body">
+          <p data-tour="survey-public-link" className="mt-2 text-[0.8125rem] text-body">
             Public link:{" "}
             <a href={publicUrl} className="font-medium text-brass-deep underline" target="_blank" rel="noreferrer">
               {publicUrl}
@@ -409,7 +415,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
         </Enter>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div data-tour="survey-actions" className="flex flex-wrap gap-2">
         {survey.status === "draft" ? (
           <Button size="sm" disabled={busy || questions.length === 0} onClick={() => void publish()}>
             <IconCheckCircle className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
@@ -440,7 +446,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
       </div>
 
       {survey.status === "draft" ? (
-        <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+        <section data-tour="survey-question-editor" className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
           <p className="eyebrow">{editingId ? "Edit question" : "Add a question"}</p>
           <form onSubmit={submitQuestion} className="mt-5 flex flex-col gap-4">
             <div className="flex flex-col gap-2">

@@ -246,7 +246,9 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   };
 
   const cancel = async (ev: Ev) => {
+    if (saving) return;
     if (!window.confirm("Cancel this event?")) return;
+    setSaving(true);
     try {
       const res = await fetch(`/api/events/${ev.id}`, { method: "DELETE" });
       const json = await res.json();
@@ -255,6 +257,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       await load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not cancel.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -276,7 +280,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
 
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-10">
-      <header className="flex flex-col gap-2">
+      <header data-tour="events-header" className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <SectionIcon>
             <IconEvents className="h-5 w-5" strokeWidth={1.7} />
@@ -297,8 +301,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       {actionError && <p className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-sm font-medium text-[#a5442c]">{actionError}</p>}
       {error && <p className="text-sm text-[#a5442c]">{error}</p>}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => setShowCreate(true)}>
+      <div data-tour="events-toolbar" className="flex flex-wrap items-center gap-2">
+        <Button data-tour="events-create" size="sm" onClick={() => setShowCreate(true)}>
           <IconPencil className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           Create event
         </Button>
@@ -322,7 +326,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       {loading && <p className="text-muted">Loading…</p>}
 
       {view === "list" && !loading && (
-        <div className="grid gap-3">
+        <div data-tour="events-list" className="grid gap-3">
           {filtered.length === 0 && <p className="text-muted">No events.</p>}
           {filtered.map((e) => (
             <div key={e.id} className="rounded-2xl border border-line bg-paper p-5">
@@ -364,7 +368,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                     </Button>
                   )}
                   {e.canEdit && !e.cancelledAt && (
-                    <button onClick={() => void cancel(e)} className="inline-flex items-center justify-end gap-1.5 text-xs text-[#a5442c] underline">
+                    <button disabled={saving} onClick={() => void cancel(e)} className="inline-flex items-center justify-end gap-1.5 text-xs text-[#a5442c] underline disabled:opacity-50">
                       <IconClose className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                       Cancel
                     </button>

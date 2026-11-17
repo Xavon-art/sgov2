@@ -37,6 +37,7 @@ export function MessagesPanel() {
   const [note, setNote] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const [newSubject, setNewSubject] = useState("");
   const [newRecipient, setNewRecipient] = useState("");
@@ -70,7 +71,7 @@ export function MessagesPanel() {
       const data = await res.json();
       if (!res.ok || !data.ok) return;
       setMessages(data.messages ?? []);
-      void fetch(`/api/conversations/${convId}/read`, { method: "POST" });
+      void fetch(`/api/conversations/${convId}/read`, { method: "POST" }).catch(() => {});
     } catch {
       // ignore
     }
@@ -166,7 +167,8 @@ export function MessagesPanel() {
   }
 
   async function unsend(mid: string) {
-    if (!selectedId) return;
+    if (!selectedId || busyId) return;
+    setBusyId(mid);
     try {
       const res = await fetch(`/api/conversations/${selectedId}/unsend/${mid}`, { method: "POST" });
       const data = await res.json();
@@ -177,11 +179,15 @@ export function MessagesPanel() {
       await loadMessages(selectedId);
     } catch {
       setActionError("We could not reach the server. Check your connection.");
+    } finally {
+      setBusyId(null);
     }
   }
 
   async function deleteConv(id: string) {
+    if (busyId) return;
     if (!window.confirm("Delete this conversation for you?")) return;
+    setBusyId(id);
     try {
       const res = await fetch(`/api/conversations/${id}/delete`, { method: "POST" });
       const data = await res.json();
@@ -196,6 +202,8 @@ export function MessagesPanel() {
       await loadConversations();
     } catch {
       setActionError("We could not reach the server. Check your connection.");
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -219,9 +227,9 @@ export function MessagesPanel() {
       ) : null}
       {error ? <p className="text-[0.875rem] text-[#a5442c]">{error}</p> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div data-tour="messages-inbox" className="flex flex-wrap items-center justify-between gap-3">
         <p className="eyebrow">Inbox</p>
-        <Button size="sm" onClick={() => setShowNew((v) => !v)}>
+        <Button data-tour="messages-new" size="sm" onClick={() => setShowNew((v) => !v)}>
           {showNew ? "Cancel" : "New conversation"}
         </Button>
       </div>
@@ -251,7 +259,7 @@ export function MessagesPanel() {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-[16rem_1fr]">
-        <aside className="flex flex-col gap-2">
+        <aside data-tour="messages-conversation-list" className="flex flex-col gap-2">
           {conversations.length === 0 ? (
             <p className="text-[0.8125rem] text-muted">No conversations yet.</p>
           ) : (
@@ -284,7 +292,7 @@ export function MessagesPanel() {
           )}
         </aside>
 
-        <main className="flex min-h-[24rem] flex-col rounded-2xl border border-line bg-paper/70">
+        <main data-tour="messages-thread" className="flex min-h-[24rem] flex-col rounded-2xl border border-line bg-paper/70">
           {!selected ? (
             <div className="flex flex-1 items-center justify-center text-[0.875rem] text-muted">
               Select a conversation.
@@ -295,8 +303,9 @@ export function MessagesPanel() {
                 <p className="text-[0.9375rem] font-medium text-ink-deep">{selected.subject || "(no subject)"}</p>
                 <button
                   type="button"
+                  disabled={busyId === selected.id}
                   onClick={() => void deleteConv(selected.id)}
-                  className="pressable rounded-full border border-line px-3 py-1 text-[0.7rem] font-semibold text-[#a5442c] hover:bg-[#a5442c]/[0.06]"
+                  className="pressable rounded-full border border-line px-3 py-1 text-[0.7rem] font-semibold text-[#a5442c] hover:bg-[#a5442c]/[0.06] disabled:opacity-50"
                 >
                   Delete for me
                 </button>
@@ -321,8 +330,9 @@ export function MessagesPanel() {
                           {!m.unsent ? (
                             <button
                               type="button"
+                              disabled={busyId === m.id}
                               onClick={() => void unsend(m.id)}
-                              className="text-[0.625rem] text-muted underline hover:text-ink"
+                              className="text-[0.625rem] text-muted underline hover:text-ink disabled:opacity-50"
                             >
                               Unsend
                             </button>

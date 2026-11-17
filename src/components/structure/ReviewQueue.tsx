@@ -316,21 +316,28 @@ export function ReviewQueue({ onRenewed }: { onRenewed?: () => void }) {
     remark?: string,
   ) {
     setBusy({ kind: "working", id: structureId });
-    const res = await reviewStructure(structureId, decision, remark);
-    setBusy({ kind: "idle" });
-    if (!res.ok) {
-      setBusy({ kind: "error", message: structureError(res) });
-      return;
+    try {
+      const res = await reviewStructure(structureId, decision, remark);
+      setBusy({ kind: "idle" });
+      if (!res.ok) {
+        setBusy({ kind: "error", message: structureError(res) });
+        return;
+      }
+      setFlash(
+        decision === "approved"
+          ? "Approved. The structure is now published."
+          : decision === "returned"
+            ? "Returned to the author."
+            : "Rejected.",
+      );
+      setReload((n) => n + 1);
+      onRenewed?.();
+    } catch (e) {
+      setBusy({
+        kind: "error",
+        message: e instanceof Error ? e.message : "We could not reach the server.",
+      });
     }
-    setFlash(
-      decision === "approved"
-        ? "Approved. The structure is now published."
-        : decision === "returned"
-          ? "Returned to the author."
-          : "Rejected.",
-    );
-    setReload((n) => n + 1);
-    onRenewed?.();
   }
 
   const pending = queue?.pending ?? [];

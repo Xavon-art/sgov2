@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { Reveal } from "@/components/fx/Reveal";
 import { Button } from "@/components/ui/Button";
-import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import { ActionError, SectionIcon } from "@/components/dashboard/workspace-shared";
 import {
   IconArchive,
   IconArrowLeft,
@@ -27,6 +27,24 @@ function uuidv4() {
     const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+async function mutate(url: string, init: RequestInit): Promise<Record<string, unknown>> {
+  const res = await fetch(url, init);
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok || json.ok !== true) {
+    const detail = typeof json.message === "string" && json.message.trim()
+      ? json.message
+      : typeof json.reason === "string" && json.reason.trim()
+        ? json.reason
+        : "That action could not be completed.";
+    throw new Error(detail);
+  }
+  return json;
+}
+
+function actionMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
 type TaskListItem = {
@@ -119,6 +137,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
   const [closed, setClosed] = useState(false);
   const [msgText, setMsgText] = useState("");
   const [sending, setSending] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const [personal, setPersonal] = useState<PersonalReq[]>([]);
   const [pState, setPState] = useState<"loading" | "ready" | "error">("loading");
@@ -185,44 +204,54 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
   const sendMsg = useCallback(async () => {
     if (!selectedTask || !msgText.trim()) return;
     setSending(true);
+    setActionError(null);
     try {
-      const res = await fetch("/api/tasks/thread", {
+      await mutate("/api/tasks/thread", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "send", taskId: selectedTask, body: msgText.trim() }),
       });
-      const json = await res.json();
-      if (json.ok) {
-        setMsgText("");
-        await openTask(selectedTask);
-      }
+      setMsgText("");
+      await openTask(selectedTask);
+    } catch (e) {
+      setActionError(actionMessage(e, "We could not send that message."));
     } finally {
       setSending(false);
     }
   }, [selectedTask, msgText, openTask]);
 
   const unsend = useCallback(async (mid: string) => {
-    await fetch("/api/tasks/thread", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "unsend", messageId: mid }),
-    });
-    if (selectedTask) await openTask(selectedTask);
+    setActionError(null);
+    try {
+      await mutate("/api/tasks/thread", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "unsend", messageId: mid }),
+      });
+      if (selectedTask) await openTask(selectedTask);
+    } catch (e) {
+      setActionError(actionMessage(e, "We could not unsend that message."));
+    }
   }, [selectedTask, openTask]);
 
   const react = useCallback(async (mid: string, r: string) => {
-    await fetch("/api/tasks/thread", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "react", messageId: mid, reaction: r }),
-    });
-    if (selectedTask) await openTask(selectedTask);
+    setActionError(null);
+    try {
+      await mutate("/api/tasks/thread", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "react", messageId: mid, reaction: r }),
+      });
+      if (selectedTask) await openTask(selectedTask);
+    } catch (e) {
+      setActionError(actionMessage(e, "We could not add that reaction."));
+    }
   }, [selectedTask, openTask]);
 
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-8 px-4 py-8 sm:px-6 lg:px-10">
       <Reveal>
-        <header className="flex flex-col gap-2">
+        <header data-tour="request-header" className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
             <SectionIcon>
               <IconSubmission className="h-5 w-5" strokeWidth={1.7} />
@@ -240,7 +269,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
         </header>
       </Reveal>
 
-      <div className="flex gap-2">
+      <div data-tour="request-tabs" className="flex gap-2">
         <button
           onClick={() => setTab("tasks")}
           className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "tasks" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
@@ -256,15 +285,17 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
           Personal requests
         </button>
         {!isUsg && tab === "personal" && (
-          <Button size="sm" className="ml-auto" onClick={() => setShowPR(true)}>
+          <Button data-tour="request-file-personal" size="sm" className="ml-auto" onClick={() => setShowPR(true)}>
             <IconPencil className="h-4 w-4" /> File request
           </Button>
         )}
         {isUsg && tab === "tasks" && <CreateTaskButton onCreated={loadTasks} />}
       </div>
 
+      <ActionError message={actionError} />
+
       {tab === "tasks" && !selectedTask && (
-        <div className="grid gap-3">
+        <div data-tour="request-task-list" className="grid gap-3">
           {taskState === "loading" && <div className="text-muted">Loading...</div>}
           {taskState === "ready" &&
             tasks.map((t, i) => {
@@ -455,6 +486,7 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
   const [dueTimezone, setDueTimezone] = useState("");
   const [reqs, setReqs] = useState<Array<{ label: string; instructions: string; acceptedTypes: string[]; required: boolean }>>([]);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -481,8 +513,9 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
     setReqs((r) => [...r, { label: "", instructions: "", acceptedTypes: [], required: true }]);
   const save = async () => {
     setSaving(true);
+    setError(null);
     try {
-      const res = await fetch("/api/tasks", {
+      await mutate("/api/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -497,15 +530,14 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
           requirements: reqs.filter((x) => x.label.trim()),
         }),
       });
-      const json = await res.json();
-      if (json.ok) {
-        setOpen(false);
-        onCreated();
-        setTitle("");
-        setDetails("");
-        setReqs([]);
-        setUnitIds([]);
-      }
+      setOpen(false);
+      onCreated();
+      setTitle("");
+      setDetails("");
+      setReqs([]);
+      setUnitIds([]);
+    } catch (e) {
+      setError(actionMessage(e, "We could not create that task."));
     } finally {
       setSaving(false);
     }
@@ -513,7 +545,7 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
 
   return (
     <>
-      <Button size="sm" className="ml-auto" onClick={() => setOpen(true)}>
+      <Button data-tour="request-create-task" size="sm" className="ml-auto" onClick={() => setOpen(true)}>
         <IconPencil className="h-4 w-4" /> Create task
       </Button>
       {open && (
@@ -628,6 +660,7 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
                   ))}
                 </div>
               </div>
+              <ActionError message={error} />
               <Button disabled={saving || !title.trim()} onClick={save}>
                 Create
               </Button>
@@ -643,9 +676,11 @@ function AnswerRequirement({ req, taskId, onDone }: { req: ReqItem; taskId: stri
   const [link, setLink] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
     setSaving(true);
+    setError(null);
     try {
       let storagePath: string | undefined;
       let originalName: string | undefined;
@@ -659,17 +694,16 @@ function AnswerRequirement({ req, taskId, onDone }: { req: ReqItem; taskId: stri
         mimeType = file.type;
         sizeBytes = file.size;
       }
-      const res = await fetch("/api/tasks/answers", {
+      await mutate("/api/tasks/answers", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ requirementId: req.id, linkUrl: link, storagePath, originalName, mimeType, sizeBytes }),
       });
-      const json = await res.json();
-      if (json.ok) {
-        setLink("");
-        setFile(null);
-        onDone();
-      }
+      setLink("");
+      setFile(null);
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not submit that answer."));
     } finally {
       setSaving(false);
     }
@@ -684,6 +718,7 @@ function AnswerRequirement({ req, taskId, onDone }: { req: ReqItem; taskId: stri
         className="rounded-lg border border-line px-2 py-1 text-sm"
       />
       <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} className="text-sm" />
+      <ActionError message={error} />
       <Button size="sm" disabled={saving || (!link && !file)} onClick={submit}>
         Submit answer
       </Button>
@@ -694,14 +729,20 @@ function AnswerRequirement({ req, taskId, onDone }: { req: ReqItem; taskId: stri
 function ReviewBtn({ reqId, unitId, verdict, needNote, onDone }: { reqId: string; unitId: string; verdict: string; needNote?: boolean; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const review = async () => {
-    await fetch("/api/tasks/answers", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ requirementId: reqId, unitId, verdict, note }),
-    });
-    setOpen(false);
-    onDone();
+    setError(null);
+    try {
+      await mutate("/api/tasks/answers", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requirementId: reqId, unitId, verdict, note }),
+      });
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not review that answer."));
+    }
   };
   if (needNote) {
     return (
@@ -709,6 +750,7 @@ function ReviewBtn({ reqId, unitId, verdict, needNote, onDone }: { reqId: string
         <button onClick={() => setOpen(true)} className="rounded-full border border-line px-2 py-0.5 text-xs">
           Return
         </button>
+        <ActionError message={error} />
         {open && (
           <ConfirmDialog
             open
@@ -730,29 +772,39 @@ function ReviewBtn({ reqId, unitId, verdict, needNote, onDone }: { reqId: string
     );
   }
   return (
-    <button onClick={review} className="rounded-full border border-line px-2 py-0.5 text-xs">
-      {verdict === "approved" ? "Approve" : "Flag"}
-    </button>
+    <>
+      <button onClick={review} className="rounded-full border border-line px-2 py-0.5 text-xs">
+        {verdict === "approved" ? "Approve" : "Flag"}
+      </button>
+      <ActionError message={error} />
+    </>
   );
 }
 
 function CloseTaskButton({ taskId, onDone }: { taskId: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const close = async () => {
-    await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "close", taskId, note }),
-    });
-    setOpen(false);
-    onDone();
+    setError(null);
+    try {
+      await mutate(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "close", taskId, note }),
+      });
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not close that task."));
+    }
   };
   return (
     <>
       <Button size="sm" onClick={() => setOpen(true)}>
         Close task
       </Button>
+      <ActionError message={error} />
       {open && (
         <ConfirmDialog
           open
@@ -778,14 +830,20 @@ function DecidePR({ prId, onDone }: { prId: string; onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [decision, setDecision] = useState<"granted" | "declined">("granted");
+  const [error, setError] = useState<string | null>(null);
   const decide = async () => {
-    await fetch("/api/requests", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ requestId: prId, decision, note }),
-    });
-    setOpen(false);
-    onDone();
+    setError(null);
+    try {
+      await mutate("/api/requests", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId: prId, decision, note }),
+      });
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not update that request."));
+    }
   };
   return (
     <>
@@ -797,6 +855,7 @@ function DecidePR({ prId, onDone }: { prId: string; onDone: () => void }) {
           Decline
         </button>
       </div>
+      <ActionError message={error} />
       {open && (
         <ConfirmDialog
           open
@@ -819,18 +878,27 @@ function DecidePR({ prId, onDone }: { prId: string; onDone: () => void }) {
 }
 
 function WithdrawPR({ prId, onDone }: { prId: string; onDone: () => void }) {
+  const [error, setError] = useState<string | null>(null);
   const withdraw = async () => {
-    await fetch("/api/requests", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ requestId: prId, decision: "withdrawn" }),
-    });
-    onDone();
+    setError(null);
+    try {
+      await mutate("/api/requests", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ requestId: prId, decision: "withdrawn" }),
+      });
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not withdraw that request."));
+    }
   };
   return (
-    <button onClick={withdraw} className="rounded-full border border-line px-2 py-0.5 text-xs">
-      Withdraw
-    </button>
+    <>
+      <button onClick={withdraw} className="rounded-full border border-line px-2 py-0.5 text-xs">
+        Withdraw
+      </button>
+      <ActionError message={error} />
+    </>
   );
 }
 
@@ -870,7 +938,7 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
         mimeType = file.type;
         sizeBytes = file.size;
       }
-      const res = await fetch("/api/requests", {
+      await mutate("/api/requests", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -887,15 +955,10 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
           sizeBytes,
         }),
       });
-      const json = await res.json();
-      if (json.ok) {
-        onClose();
-        onDone();
-      } else {
-        setError(json.message ?? "We could not file that request. Please try again.");
-      }
-    } catch {
-      setError("We could not file that request. Please check your connection and try again.");
+      onClose();
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not file that request. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -959,6 +1022,7 @@ function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: 
   const [days, setDays] = useState("3");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -977,8 +1041,9 @@ function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: 
 
   const request = async () => {
     setBusy(true);
+    setError(null);
     try {
-      await fetch("/api/tasks/extensions", {
+      await mutate("/api/tasks/extensions", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "request", taskId, unitId: myUnitIds[0], days: Number(days), reason }),
@@ -986,23 +1051,35 @@ function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: 
       setShow(false);
       setReason("");
       await load();
+    } catch (e) {
+      setError(actionMessage(e, "We could not request that extension."));
     } finally {
       setBusy(false);
     }
   };
 
   const decide = async (id: string, decision: "granted" | "denied") => {
-    await fetch("/api/tasks/extensions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "decide", extensionId: id, decision, note: "" }),
-    });
-    await load();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await mutate("/api/tasks/extensions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "decide", extensionId: id, decision, note: "" }),
+      });
+      await load();
+    } catch (e) {
+      setError(actionMessage(e, "We could not decide that extension."));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div>
       <div className="mb-2 text-sm font-medium">Extensions</div>
+      <ActionError message={error} />
       {!isUsg && (
         <div className="mb-2">
           <button onClick={() => setShow((v) => !v)} className="text-sm text-muted underline">
@@ -1024,8 +1101,8 @@ function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: 
               <span>{String(e.unitName ?? "")} � {String(e.requestedDays)} days � {String(e.status)}</span>
               {isUsg && e.status === "pending" && (
                 <div className="flex gap-1">
-                  <button onClick={() => void decide(String(e.id), "granted")} className="text-xs text-green-700">Approve</button>
-                  <button onClick={() => void decide(String(e.id), "denied")} className="text-xs text-[#a5442c]">Deny</button>
+                  <button disabled={busy} onClick={() => void decide(String(e.id), "granted")} className="text-xs text-green-700 disabled:opacity-50">Approve</button>
+                  <button disabled={busy} onClick={() => void decide(String(e.id), "denied")} className="text-xs text-[#a5442c] disabled:opacity-50">Deny</button>
                 </div>
               )}
             </div>

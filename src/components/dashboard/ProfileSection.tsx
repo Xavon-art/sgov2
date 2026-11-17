@@ -114,7 +114,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, ...payload }),
     });
-    return (await res.json().catch(() => ({}))) as { ok: boolean; message?: string };
+    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+    return { ...json, ok: res.ok && json.ok === true };
   }
 
   async function saveName(e: React.FormEvent) {
@@ -128,6 +129,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
           ? { kind: "ok", text: "Your name is saved." }
           : { kind: "error", text: body.message ?? "We could not save that." },
       );
+    } catch {
+      setNameNote({ kind: "error", text: "We could not reach the server." });
     } finally {
       setBusy(null);
     }
@@ -145,6 +148,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
       } else {
         setEmailNote({ kind: "error", text: body.message ?? "We could not change that." });
       }
+    } catch {
+      setEmailNote({ kind: "error", text: "We could not reach the server." });
     } finally {
       setBusy(null);
     }
@@ -163,6 +168,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
       } else {
         setPassNote({ kind: "error", text: body.message ?? "We could not change that." });
       }
+    } catch {
+      setPassNote({ kind: "error", text: "We could not reach the server." });
     } finally {
       setBusy(null);
     }
@@ -179,6 +186,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
           ? { kind: "ok", text: "Saved. The dashboard picks the look up next time it loads." }
           : { kind: "error", text: body.message ?? "We could not save that." },
       );
+    } catch {
+      setLookNote({ kind: "error", text: "We could not reach the server." });
     } finally {
       setBusy(null);
     }
@@ -187,7 +196,7 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
   const showCustomisation = allowCustomisation && canCustomise;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div data-tour="manage-profile" className="flex flex-col gap-6">
       <section id="profile" className="scroll-mt-24">
         <Reveal>
           <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">

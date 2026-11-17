@@ -132,23 +132,25 @@ export function UmbrellaSection() {
         message?: string;
         delivered?: boolean;
       };
-      if (body.ok) {
-        setTarget(null);
-        setReason("");
-        setEndsOn("");
-        setNote({
-          kind: "ok",
-          text:
-            action === "cancel"
-              ? "The deactivation is lifted."
-              : body.delivered === false
-                ? (body.message ?? "Scheduled. The notice email did not go out — tell them directly.")
-                : "Scheduled. The unit has been emailed a notice.",
-        });
-        await load();
-      } else {
+      if (!res.ok || !body.ok) {
         setNote({ kind: "error", text: body.message ?? "We could not save that." });
+        return;
       }
+      setTarget(null);
+      setReason("");
+      setEndsOn("");
+      setNote({
+        kind: "ok",
+        text:
+          action === "cancel"
+            ? "The deactivation is lifted."
+            : body.delivered === false
+              ? (body.message ?? "Scheduled. The notice email did not go out — tell them directly.")
+              : "Scheduled. The unit has been emailed a notice.",
+      });
+      await load();
+    } catch {
+      setNote({ kind: "error", text: "We could not reach the server." });
     } finally {
       setBusy(false);
     }
@@ -167,7 +169,7 @@ export function UmbrellaSection() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div data-tour="manage-umbrella" className="flex flex-col gap-5">
       <Reveal>
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>

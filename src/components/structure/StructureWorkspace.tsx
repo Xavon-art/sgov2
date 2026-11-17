@@ -788,106 +788,109 @@ export function StructureWorkspace({
   );
 
   async function persist(): Promise<string | null> {
-    const found = checkDocument(doc);
-    setProblem(found ? found.message : null);
-    if (found) return null;
+    try {
+      const found = checkDocument(doc);
+      setProblem(found ? found.message : null);
+      if (found) return null;
 
-    if (!termLabel.trim()) {
-      setProblem("Give the term a label, such as A.Y. 2026-2027.");
+      if (!termLabel.trim()) {
+        setProblem("Give the term a label, such as A.Y. 2026-2027.");
+        return null;
+      }
+      if (!startsOn || !endsOn) {
+        setProblem("A term needs both a start and an end date.");
+        return null;
+      }
+
+      setSave({ kind: "saving" });
+      const res = await saveDraft({
+        unitId,
+        templateKey: templateKey ?? undefined,
+        termLabel: termLabel.trim(),
+        startsOn,
+        endsOn,
+        document: doc,
+        note: note.trim() || undefined,
+      });
+
+      if (!res.ok) {
+        setSave({ kind: "error", message: structureError(res) });
+        return null;
+      }
+
+      if (res.structureId) setStructureId(res.structureId);
+      setSave({ kind: "saved", revision: res.revision ?? 0 });
+      setDirty(false);
+      setStatus(null);
+      return res.structureId ?? structureId;
+    } catch (e) {
+      setSave({ kind: "error", message: e instanceof Error ? e.message : "We could not save that." });
       return null;
     }
-    if (!startsOn || !endsOn) {
-      setProblem("A term needs both a start and an end date.");
-      return null;
-    }
-
-    setSave({ kind: "saving" });
-    const res = await saveDraft({
-      unitId,
-      templateKey: templateKey ?? undefined,
-      termLabel: termLabel.trim(),
-      startsOn,
-      endsOn,
-      document: doc,
-      note: note.trim() || undefined,
-    });
-
-    if (!res.ok) {
-      setSave({ kind: "error", message: structureError(res) });
-      return null;
-    }
-
-    if (res.structureId) setStructureId(res.structureId);
-    setSave({ kind: "saved", revision: res.revision ?? 0 });
-    setDirty(false);
-    setStatus(null);
-    return res.structureId ?? structureId;
   }
 
   async function onRenew() {
-    setSave({ kind: "saving" });
-    setProblem(null);
+    try {
+      setSave({ kind: "saving" });
+      setProblem(null);
 
-    // No term is asked for here on purpose. `request_structure_renewal` defaults
-    // the new term to the day after the live one ends, for a year, and the labels
-    // are editable on the form it just opened -- so the common case is one click
-    // and an officer correcting a typo, not an officer guessing dates up front.
-    const res = await renewStructure({ unitId });
-    if (!res.ok) {
-      setSave({ kind: "error", message: structureError(res) });
-      return;
+      const res = await renewStructure({ unitId });
+      if (!res.ok) {
+        setSave({ kind: "error", message: structureError(res) });
+        return;
+      }
+
+      const after = await fetchStructure(unitId);
+      setSave({ kind: "idle" });
+      if (!after.ok) {
+        setSave({ kind: "error", message: structureError(after) });
+        return;
+      }
+
+      setStructureId(after.draft?.id ?? null);
+      setDoc(after.draft?.document ?? emptyDocument);
+      setTemplateKey(after.draft?.templateKey ?? null);
+      setTermLabel(after.draft?.termLabel ?? "");
+      setStartsOn(after.draft?.startsOn ?? "");
+      setEndsOn(after.draft?.endsOn ?? "");
+      setNote("");
+      setApproved(after.approved ?? null);
+      setRenewal(after.renewal ?? null);
+      setDirty(false);
+      setStatus("Renewed. The next term is open as a draft, carried forward from what was live.");
+    } catch (e) {
+      setSave({ kind: "error", message: e instanceof Error ? e.message : "We could not renew that." });
     }
-
-    // Re-read rather than patching: renewal seeds a whole new draft from the
-    // structure that was live, and the only place that document exists is the
-    // database.
-    const after = await fetchStructure(unitId);
-    setSave({ kind: "idle" });
-    if (!after.ok) {
-      setSave({ kind: "error", message: structureError(after) });
-      return;
-    }
-
-    setStructureId(after.draft?.id ?? null);
-    setDoc(after.draft?.document ?? emptyDocument);
-    setTemplateKey(after.draft?.templateKey ?? null);
-    setTermLabel(after.draft?.termLabel ?? "");
-    setStartsOn(after.draft?.startsOn ?? "");
-    setEndsOn(after.draft?.endsOn ?? "");
-    setNote("");
-    setApproved(after.approved ?? null);
-    setRenewal(after.renewal ?? null);
-    setDirty(false);
-    setStatus("Renewed. The next term is open as a draft, carried forward from what was live.");
   }
 
   async function onSubmit() {
-    const id = await persist();
-    if (!id) return;
-    setSave({ kind: "saving" });
-    const res = await submitDraft(id, note.trim() || undefined);
-    if (!res.ok) {
-      setSave({ kind: "error", message: structureError(res) });
-      return;
+    try {
+      const id = await persist();
+      if (!id) return;
+      setSave({ kind: "saving" });
+      const res = await submitDraft(id, note.trim() || undefined);
+      if (!res.ok) {
+        setSave({ kind: "error", message: structureError(res) });
+        return;
+      }
+      const after = await fetchStructure(unitId);
+      setSave({ kind: "idle" });
+      if (!after.ok) {
+        setSave({ kind: "error", message: structureError(after) });
+        return;
+      }
+      setStructureId(after.draft?.id ?? null);
+      setDoc(after.draft?.document ?? doc);
+      setApproved(after.approved ?? null);
+      setRenewal(after.renewal ?? null);
+      setStatus(
+        after.draft?.status === "submitted"
+          ? "Sent for review. You can keep editing until a reviewer decides."
+          : "Approved and published.",
+      );
+    } catch (e) {
+      setSave({ kind: "error", message: e instanceof Error ? e.message : "We could not submit that." });
     }
-    // Re-read rather than patching local state: `submit_structure` may have
-    // auto-approved (a root structure approves itself), and the live answer is
-    // the only one that knows which happened.
-    const after = await fetchStructure(unitId);
-    setSave({ kind: "idle" });
-    if (!after.ok) {
-      setSave({ kind: "error", message: structureError(after) });
-      return;
-    }
-    setStructureId(after.draft?.id ?? null);
-    setDoc(after.draft?.document ?? doc);
-    setApproved(after.approved ?? null);
-    setRenewal(after.renewal ?? null);
-    setStatus(
-      after.draft?.status === "submitted"
-        ? "Sent for review. You can keep editing until a reviewer decides."
-        : "Approved and published.",
-    );
   }
 
   if (!capability.canRead) {
@@ -930,20 +933,24 @@ export function StructureWorkspace({
             setProblem(null);
           }}
           onSaveCurrent={async () => {
-            const found = checkDocument(doc);
-            if (found) {
-              setProblem(found.message);
-              return;
+            try {
+              const found = checkDocument(doc);
+              if (found) {
+                setProblem(found.message);
+                return;
+              }
+              const name = window.prompt("Template name", `${unitName} structure`);
+              if (!name) return;
+              const res = await saveTemplate({
+                key: name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60),
+                name: name.trim(),
+                category: "custom",
+                document: doc,
+              });
+              setProblem(res.ok ? `Saved as "${name.trim()}".` : structureError(res));
+            } catch (e) {
+              setProblem(e instanceof Error ? e.message : "We could not save that template.");
             }
-            const name = window.prompt("Template name", `${unitName} structure`);
-            if (!name) return;
-            const res = await saveTemplate({
-              key: name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60),
-              name: name.trim(),
-              category: "custom",
-              document: doc,
-            });
-            setProblem(res.ok ? `Saved as "${name.trim()}".` : structureError(res));
           }}
         />
       </Reveal>

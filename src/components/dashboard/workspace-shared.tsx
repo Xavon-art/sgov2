@@ -31,6 +31,18 @@ export function SectionIcon({ children }: { children: ReactNode }) {
   );
 }
 
+export function ActionError({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <p
+      role="alert"
+      className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-[0.8125rem] font-medium text-[#a5442c]"
+    >
+      {message}
+    </p>
+  );
+}
+
 /** Types a campus, college, or department can be added as. */
 export const UNIT_TYPE_OPTIONS = [
   { value: "campus", label: "Campus" },

@@ -134,7 +134,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.message);
       for (const q of qs) {
-        await fetch(`/api/surveys/${data.surveyId}/questions`, {
+        const qRes = await fetch(`/api/surveys/${data.surveyId}/questions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -150,6 +150,8 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
             orderIndex: q.orderIndex,
           }),
         });
+        const qData = await qRes.json();
+        if (!qRes.ok || !qData.ok) throw new Error(qData.message ?? "We could not copy that question.");
       }
       setNote("Survey duplicated.");
       await load();
@@ -160,7 +162,12 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
     }
   };
 
-  if (isUsg && account.accountScope !== "owner") return <NotAvailable />;
+  if (isUsg && account.accountScope !== "owner")
+    return (
+      <div data-tour="surveys-not-available">
+        <NotAvailable />
+      </div>
+    );
 
   if (loading) return <p className="text-[0.9375rem] text-muted">Loading…</p>;
 
@@ -168,7 +175,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
 
   return (
     <div className="flex flex-col gap-8">
-      <header className="border-b border-line/80 pb-4">
+      <header data-tour="surveys-header" className="border-b border-line/80 pb-4">
         <div className="flex items-center gap-3">
           <SectionIcon>
             <IconMonitoring className="h-5 w-5" strokeWidth={1.7} />
@@ -195,7 +202,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
       ) : null}
       {error ? <p className="text-[0.875rem] text-[#a5442c]">{error}</p> : null}
 
-      <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+      <section data-tour="surveys-create" className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
         <p className="eyebrow inline-flex items-center gap-2">
           <IconPencil className="h-3.5 w-3.5 text-brass-deep" strokeWidth={2} aria-hidden="true" />
           Create a survey
@@ -235,7 +242,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
         </form>
       </section>
 
-      <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+      <section data-tour="surveys-list" className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
         <p className="eyebrow">Your surveys ({surveys.length})</p>
         {surveys.length === 0 ? (
           <p className="mt-4 text-[0.875rem] text-muted">No surveys yet.</p>

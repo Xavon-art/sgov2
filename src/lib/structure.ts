@@ -250,7 +250,9 @@ async function post<T>(body: Record<string, unknown>): Promise<T> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  return (await res.json()) as T;
+  const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) throw new Error(typeof payload.message === "string" ? payload.message : `Structure request failed (${res.status}).`);
+  return payload as T;
 }
 
 export async function fetchTemplates(): Promise<TemplatesPayload> {

@@ -77,7 +77,7 @@ export function OrgChartDragDrop({
   const [structureId, setStructureId] = useState<string | null>(initial?.structureId ?? null);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const canEdit = capability.canEdit;
 
@@ -242,7 +242,7 @@ export function OrgChartDragDrop({
                       {canEdit ? (
                         <button
                           type="button"
-                          onClick={() => fileRef.current?.click()}
+                          onClick={() => fileRefs.current[node.id]?.click()}
                           className="absolute -bottom-1 -right-1 grid h-6 w-6 place-items-center rounded-full bg-ink text-[0.625rem] text-canvas"
                           title="Upload photo"
                         >
@@ -250,7 +250,7 @@ export function OrgChartDragDrop({
                         </button>
                       ) : null}
                       <input
-                        ref={fileRef}
+                        ref={(el) => { fileRefs.current[node.id] = el; }}
                         type="file"
                         accept="image/*"
                         className="hidden"
