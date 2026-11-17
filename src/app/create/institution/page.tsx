@@ -64,10 +64,10 @@ export default function InstitutionPage() {
         <div className="flex items-start gap-3 rounded-xl border border-line-strong/80 bg-canvas/60 px-4 py-3.5">
           <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brass" />
           <p className="text-[0.8125rem] leading-relaxed text-muted">
-            You are registering the University Student Government, so the colleges
-            and satellite campuses under it are declared as Local Student
-            Governments on the next step — not here. You can invite a council
-            officer into each one once setup is done.
+            You are registering the University Student Government, which sits above
+            every local council. Add the colleges and satellite campuses from your
+            org chart once setup is done, then invite a council officer into each
+            one.
           </p>
         </div>
       </div>
