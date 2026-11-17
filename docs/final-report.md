@@ -41,7 +41,7 @@
 - Moved survey OTP generation/hashing/TTL into SQL. Public contract is now `create_survey_otp(p_survey_id, p_email)` and `verify_survey_otp(p_survey_id, p_email, p_code)`; the verified result is a one-use proof token.
 - Server-enforced the proof for `get_survey` and `submit_survey_response`; direct reads without proof return `needsOtp` with no questions, and replayed/spent proof returns `otp_required`.
 - Wired Next.js routes and the public survey page to the server-issued proof; fixed `/api/audit-log` to return 401/403 with a machine-readable reason instead of blanket 400.
-- Added `npm run test:authority` and `npm run check:e2e` as repeatable regression suites.
+- Added `npm run test:authority` and `npm run test:e2e` as repeatable regression suites.
 
 ## End-to-end verification
 - Organization creation: federated wizard -> review -> verification -> activation email in `/dev/outbox` -> `/activate?token=` -> dashboard -> sign out -> password sign-in.
@@ -56,9 +56,9 @@
 - Chat typing indicators, seen/read receipts, and message attachments for conversations (backend tables/RPCs not yet added).
 - Survey templates library (built-in templates) and result-viewer management UI.
 - File storage versioning UI (backend snapshots exist for task answers).
-- The committed Playwright checks are `npm run check:smoke` (read-only boundaries), `npm run test:authority` (RPC/HTTP boundaries), and `npm run check:e2e` (role navigation, validation, cancellation, responsive screenshots). Deep create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
+- The committed checks are `npm run check:smoke` (read-only boundaries), `npm run test:authority` (RPC/HTTP boundaries including org-chart), `npm run test:e2e` (role navigation, validation, cancellation, responsive screenshots), `npm run check:interactions` (high-risk interaction source contracts), and `npm run check:interactions:ui` (browser fault injection). Deep create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
 - OTP DB-side per-email and per-IP throttling is still advisory; application rate limits remain process-local.
-- `definer_without_search_path 11` remains after migration 03192; an optional `20260101003193_...` migration can pin `search_path` without touching applied migrations.
+- `definer_without_search_path 11` remains after migration 03192; an optional future migration can pin `search_path` without touching applied migrations.
 - 70 foreign keys still lack a leading index; `orphan_fk_rows 0` was verified.
 - `check:federated` create-flow items (unitary model gating) pre-existing.
 
@@ -69,17 +69,53 @@
 - Pre-change database backup: `C:\Users\Julius M. Matro\Desktop\sir tonie projects\backups\smartgov-backup-20261117-142618.sql`.
 - Seed guard: `truncate ... cascade` empties `gov_structure_templates` through its organization foreign key, so the seeder snapshots and restores the 10 built-in blueprints around the purge.
 
+## Interactive control hardening
+- Added `npm run check:interactions` (`scripts/check-interactions.mjs`) as a failing-first source-contract gate for high-risk controls; 22/22 pass.
+- Added `npm run check:interactions:ui` (`scripts/check-interactions-ui.mjs`) to exercise injected failures in a real browser; 14/14 pass.
+- Sign-out now checks the logout response, keeps the dialog open on failure, and shows a readable error instead of redirecting a still-authenticated user.
+- Notification read actions now require `res.ok` and `data.ok`; external notification links open in a new tab with `noopener,noreferrer` instead of hard-navigating the authenticated app.
+- Survey question reorder checks both PATCH responses before reloading, so a partial failure cannot be reported as success.
+- Org-chart photo upload uses one file input per node, so choosing a photo no longer risks writing to the last rendered node.
+- Structure helper rejects non-OK HTTP responses and surfaces the API message.
+- Request/task/extension/decision/withdraw actions share a response-checking `mutate` helper and show inline errors; 12 mutation paths are covered.
+- Event cancellation is guarded against duplicate submits and disables its button while in flight.
+- Survey duplication checks every question-copy response and shows an inline error instead of a false success toast.
+- Structure save/renew/submit/template-save and review-decision actions catch server failures and keep the error visible in the workspace.
+- Umbrella pause/cancel actions check HTTP status and payload together and catch network failures.
+- Profile saves check HTTP status and all four profile actions surface network/server failures inline.
+- Message read polling cannot produce an unhandled rejection; unsend and conversation delete are guarded and disabled while in flight.
+- Org-chart position templates, unit seat toggles, and seat invite/assign/release contracts check responses, guard duplicate submits, roll back optimistic seat state, and refresh the chart only after success; unit-scoped callers are redirected to `/my-council`.
+
+## Persistent adaptive shell and guided tours
+- Replaced the shell with a persistent responsive layout: desktop left rail, tablet drawer, and mobile bottom navigation with a "More" menu. Collapse and nav state survive reloads and sign-in through per-account persistence.
+- Layout targets 360px through 4K, with all touch controls at least 44px; no horizontal overflow or stuck states across breakpoints.
+- Added context-aware guided tours on all 35 renderable non-API routes, with step copy keyed to the active role and workspace (USG/LSG/public).
+- Built an in-house React tour engine; no `driver.js` or `react-joyride` dependency was added.
+- Help entry point sits in the workspace nav slot and floats on public pages.
+- Spotlight-and-tooltip step overlay supports keyboard navigation, focus management, ARIA labelling/announcements, and responsive repositioning on viewport changes.
+- Spotlight placement scrolls instantly and clamps tall sections so the tour card keeps a visible gap; public home step 4 was verified at 360px, 768px, and 1440px with the real `landing-features` body and no centered fallback or card overlap.
+- Browser verification targets the dialog's declared `data-tour` token and lets layout settle before screenshots, so logs and images reflect the intended step target.
+- Progress is DB-backed via `supabase/migrations/20260101003193_tour_progress.sql`, with a localStorage fallback. Identity is derived from the app's custom auth token; no Supabase Auth and no direct table grants were introduced (wrapper-only access preserved).
+- Auto-start prompt copy: "New: a 1-minute guide to this page is available." with Start tour / Not now / Don't ask again; dismissals and completion persist per user and route.
+- Screenshots: `C:\Users\Julius M. Matro\Desktop\sir tonie projects\screenshots\tours\`.
+
 ## Verification
 - `npx tsc --noEmit`: clean.
-- `npm run lint`: 0 errors; existing warnings remain in unused variables/imports.
-- `npm run build`: success after the audit-log status fix.
+- `npm run lint`: 0 errors; 11 warnings (unused variables/imports).
+- `npm run build`: success after the final tour visual fixes.
+- `npm run check:tours`: 310/310 pass after the final tour visual fixes.
+- `npm run check:tours:ui`: final rerun 2840/2840 pass (2 skips: live invite token, live survey id); public home step 4 passes at all three viewports.
+- `git diff --check`: clean after the final tour visual fixes.
+- `npm run check:compliance`: ALL PASS.
 - `npm run check:units`: 291/291 pass.
 - `npm run check:reveal`: 21/21 pass.
 - `npm run check:federated`: 20/20 pass.
+- `npm run check:interactions`: 22/22 pass.
+- `npm run check:interactions:ui`: 14/14 pass (failed logout, notification read/link failures, request failure feedback, partial survey duplication, event cancel guard/error, no unexpected browser console errors).
 - `npm run check:smoke`: 25/25 pass against the production `next start` build (anonymous 401/307 walls, owner/LSG role separation, cookie attributes, UI sign-in/nav/sign-out, zero console errors).
-- `npm run test:authority`: 25/25 pass (T1/T2/T4/T5, invalid-token fail-closed, anon table denial, forged IDs, HTTP role boundaries).
-- `npm run check:e2e`: 31/31 pass (owner and LSG navigation, dialog cancel, validation, no console errors, 12 screenshots).
-- `npm run audit:connections -- --verbose`: exit 0; `token_ignoring_wrappers 0`, `otp_caller_controlled_pattern no`, `orphan_fk_rows 0`, `direct_untrusted_table_grants 0`, `definer_without_search_path 11`.
+- `npm run test:authority`: 47/47 pass (T1/T2/T4/T5, invalid-token fail-closed, anon table denial, forged IDs, org-chart RPC/HTTP role boundaries, owner/LSG/anonymous chart-page walls).
+- `npm run test:e2e`: 31/31 pass (owner and LSG navigation, dialog cancel, validation, no console errors, 12 screenshots).
+- `npm run audit:connections -- --verbose`: PASS, exit 0; `definer_without_search_path 11` remains, `direct_untrusted_table_grants 0`, `token_ignoring_wrappers 0` (also `otp_caller_controlled_pattern no`, `orphan_fk_rows 0`).
 - Screenshots: `C:\Users\Julius M. Matro\Desktop\sir tonie projects\screenshots\audit\` (USG/LSG overview and survey at mobile, tablet, and desktop).
 - Vercel deployment: READY (sgov.vercel.app); deploy by pushing `main`, not direct CLI.
 
@@ -89,4 +125,4 @@
 - `definer_without_search_path 11` was left for a separate migration rather than editing applied migration 03192; no unqualified-object exploit was demonstrated.
 - Native confirmation dialogs and missing archive/restore vocabulary were recorded as product/UX follow-ups rather than changed under this audit.
 - Real email delivery was not exercised locally because Gmail credentials are absent; queue generation and drain logic were verified instead.
-- No commit or push was made at this stage; the repository remains on the local audited tree until final handoff.
+- The P0 authorization and dashboard-icon work was committed as `0db6afe` and pushed to `main`; the interactive-control, shell, and guided-tour work is included in the follow-up change set.
