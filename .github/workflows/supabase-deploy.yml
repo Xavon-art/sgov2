@@ -29,7 +29,10 @@ jobs:
           fi
 
           applied=$(psql "$DB_URL" -t -A -c \
-            "select version from supabase_migrations.schema_migrations order by version;" 2>/dev/null || true)
+            "select version from supabase_migrations.schema_migrations
+             union
+             select left(name, 14) from smartgov.applied_migrations where name ~ '^[0-9]{14}'
+             order by 1;" 2>/dev/null || true)
 
           for f in supabase/migrations/*.sql; do
             ver=$(basename "$f" | cut -c1-14)
