@@ -9,13 +9,14 @@ import { ActionError, SectionIcon } from "@/components/dashboard/workspace-share
 import {
   IconArchive,
   IconArrowLeft,
+  IconLayers,
   IconPencil,
   IconSubmission,
   IconUser,
   IconVerification,
 } from "@/components/ui/Icons";
 import { ResolutionPanel } from "@/components/dashboard/ResolutionPanel";
-import { FieldShell, TextArea, TextField } from "@/components/ui/Field";
+import { RequirementsPanel } from "@/components/dashboard/RequirementsPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
 import { TimezonePicker } from "@/components/ui/TimezonePicker";
@@ -121,16 +122,25 @@ function fmtTime(s: string) {
 export function RequestSection({ isUsg }: { isUsg: boolean }) {
   useDashboard();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<"tasks" | "personal" | "resolutions">(
+  const [tab, setTab] = useState<"tasks" | "requirements" | "personal" | "resolutions">(
     searchParams.get("tab") === "personal"
       ? "personal"
       : searchParams.get("tab") === "resolutions"
         ? "resolutions"
-        : "tasks",
+        : searchParams.get("tab") === "requirements"
+          ? "requirements"
+          : "tasks",
   );
   useEffect(() => {
     const raw = searchParams.get("tab");
-    const next = raw === "personal" ? "personal" : raw === "resolutions" ? "resolutions" : "tasks";
+    const next =
+      raw === "personal"
+        ? "personal"
+        : raw === "resolutions"
+          ? "resolutions"
+          : raw === "requirements"
+            ? "requirements"
+            : "tasks";
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab(next);
   }, [searchParams]);
@@ -265,13 +275,13 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
             </SectionIcon>
             <div className="flex flex-col gap-1">
               <p className="text-xs uppercase tracking-[0.32em] text-muted">Request</p>
-              <h1 className="text-[clamp(2rem,4vw,3.4rem)] leading-[1.02]">Tasks and personal requests</h1>
+              <h1 className="text-[clamp(2rem,4vw,3.4rem)] leading-[1.02]">Tasks, requirements, and personal requests</h1>
             </div>
           </div>
           <p className="max-w-2xl text-[0.98rem] leading-relaxed text-body">
             {isUsg
-              ? "Push tasks down to units with deadlines and requirements, follow threads, and review submissions."
-              : "Respond to tasks assigned to your unit, submit requirements, and file requests upward."}
+              ? "Push tasks down to units, review LSG requirements, follow threads, and decide submissions."
+              : "Respond to USG requirements, send LSG requirements upward, and follow every thread."}
           </p>
         </header>
       </Reveal>
@@ -283,6 +293,13 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
         >
           <IconSubmission className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           Tasks
+        </button>
+        <button
+          onClick={() => setTab("requirements")}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "requirements" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
+        >
+          <IconLayers className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          Requirements
         </button>
         <button
           onClick={() => setTab("personal")}
@@ -458,6 +475,16 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
             </div>
           </div>
         </div>
+      )}
+
+      {tab === "requirements" && (
+        <RequirementsPanel
+          isUsg={isUsg}
+          onOpenTask={(id) => {
+            setTab("tasks");
+            void openTask(id);
+          }}
+        />
       )}
 
       {tab === "personal" && (

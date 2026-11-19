@@ -1,6 +1,8 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { IconPencil } from "@/components/ui/Icons";
 import type { CalendarEvent } from "@/lib/feed";
 
 type CalendarDays = Record<string, CalendarEvent[]>;
@@ -15,7 +17,15 @@ function eventTitle(e: CalendarEvent): string {
   return e.title || "Untitled";
 }
 
-export function CalendarPanel({ variant = "calendar" }: { variant?: "calendar" | "future" }) {
+export function CalendarPanel({
+  variant = "calendar",
+  refreshKey = 0,
+  onCreate,
+}: {
+  variant?: "calendar" | "future";
+  refreshKey?: number;
+  onCreate?: () => void;
+}) {
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -48,7 +58,7 @@ export function CalendarPanel({ variant = "calendar" }: { variant?: "calendar" |
     return () => {
       cancelled = true;
     };
-  }, [month]);
+  }, [month, refreshKey]);
 
   const today = new Date().toISOString().slice(0, 10);
   const allEvents = useMemo(() => {
@@ -85,6 +95,12 @@ export function CalendarPanel({ variant = "calendar" }: { variant?: "calendar" |
           aria-label="Calendar month"
         />
         <span className="text-sm text-muted">{monthLabel(month)}</span>
+        {variant === "future" && onCreate && (
+          <Button size="sm" className="ml-auto" onClick={onCreate}>
+            <IconPencil className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+            Add future event
+          </Button>
+        )}
       </div>
 
       {loading && <p className="text-muted">Loading…</p>}

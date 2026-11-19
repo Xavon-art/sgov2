@@ -2,7 +2,7 @@ import type { PageTour } from "../types";
 
 export const councilStructureTour: PageTour = {
   id: "council-structure",
-  version: "1",
+  version: "2",
   route: "/my-council/structure",
   label: "Council structure",
   roles: ["lsg"],
@@ -12,6 +12,18 @@ export const councilStructureTour: PageTour = {
       title: "Structure page",
       body: "Review how your council is divided into units and positions.",
       placement: "bottom",
+    },
+    {
+      target: "structure-mode",
+      title: "Chart or form",
+      body: "Build your officers on the chart, or switch to the classic form. Your draft saves while you work.",
+      placement: "bottom",
+    },
+    {
+      target: "structure-chart",
+      title: "Arrange your officers",
+      body: "Drag a seat onto another to set who it reports to. Choose a format, theme, and size before you submit for review.",
+      placement: "top",
     },
     {
       target: "council-structure-workspace",

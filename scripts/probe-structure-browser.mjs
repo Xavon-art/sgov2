@@ -72,7 +72,7 @@ const emails = {
 };
 
 const db = new pg.Client({
-  connectionString: env.POSTGRES_URL,
+  connectionString: env.POSTGRES_URL || env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
   max: 1,
 });

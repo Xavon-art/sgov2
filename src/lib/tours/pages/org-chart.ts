@@ -2,7 +2,7 @@ import type { PageTour } from "../types";
 
 export const orgChartTour: PageTour = {
   id: "org-chart",
-  version: "1",
+  version: "2",
   route: "/org-chart",
   label: "Organization chart",
   roles: ["usg"],
@@ -12,6 +12,12 @@ export const orgChartTour: PageTour = {
       title: "Organization chart",
       body: "This page shows the units and positions in your student government.",
       placement: "bottom",
+    },
+    {
+      target: "org-chart-published",
+      title: "Published officer chart",
+      body: "The approved structure, drawn in the format its authors chose. Switch formats or download it as an image.",
+      placement: "top",
     },
     {
       target: "org-chart-add-position",

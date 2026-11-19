@@ -18,11 +18,12 @@ async function jsonPost(body: unknown): Promise<Record<string, unknown>> {
 }
 
 export async function uploadFile(file: File, params: {
-  target: "item" | "requirement" | "task_requirement" | "personal_request";
+  target: "item" | "requirement" | "task_requirement" | "personal_request" | "accomplishment";
   itemId?: string;
   requirementId?: string;
   taskId?: string;
   unitId?: string;
+  eventId?: string;
   nonce: string;
   version: number;
 }): Promise<UploadResult> {
@@ -37,6 +38,7 @@ export async function uploadFile(file: File, params: {
     requirementId: params.requirementId,
     taskId: params.taskId,
     unitId: params.unitId,
+    eventId: params.eventId,
     nonce: params.nonce,
     version: params.version,
   });

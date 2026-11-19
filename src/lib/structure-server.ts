@@ -10,7 +10,7 @@
  * that must not reach a page, and the caller renders one state either way.
  */
 import { callRpc } from "@/lib/auth/rpc";
-import type { StructureReadPayload } from "@/lib/structure";
+import type { OrgStructurePayload, StructureReadPayload } from "@/lib/structure";
 
 export async function fetchStructureForSession(
   sessionToken: string,
@@ -24,6 +24,26 @@ export async function fetchStructureForSession(
     return res.ok ? res : null;
   } catch (error) {
     console.error("[structures:read]", error);
+    return null;
+  }
+}
+
+/**
+ * The organization's published root structure, for any signed-in member.
+ *
+ * Same contract as above: `get_org_structure` scopes the answer to the caller's
+ * organization, and a refusal is a null rather than a reason.
+ */
+export async function fetchOrgStructureForSession(
+  sessionToken: string,
+): Promise<OrgStructurePayload | null> {
+  try {
+    const res = await callRpc<OrgStructurePayload>("get_org_structure", {
+      p_session_token: sessionToken,
+    });
+    return res.ok ? res : null;
+  } catch (error) {
+    console.error("[structures:org]", error);
     return null;
   }
 }

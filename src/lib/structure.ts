@@ -26,6 +26,12 @@ export type StructureHolder = {
   firstName?: string;
   middleName?: string;
   lastName?: string;
+  /** Display name. Derived from the parts when absent. */
+  fullName?: string;
+  nickname?: string;
+  suffix?: string;
+  /** Free-text term/promise shown under the name on a node. */
+  termNote?: string;
   birthdate?: string;
   course?: string;
   yearLevel?: string;
@@ -36,6 +42,8 @@ export type StructureHolder = {
   photo?: string;
   /** Read-only. True when the person already has a stored photo. */
   hasPhoto?: boolean;
+  /** Read-only. The roster row the photo route takes. */
+  rosterId?: string;
 };
 
 export type StructurePosition = {
@@ -43,6 +51,22 @@ export type StructurePosition = {
   title: string;
   description?: string;
   holder?: StructureHolder | null;
+  /**
+   * Co-holders. When present, the first entry is the seated holder and is
+   * mirrored onto `holder`; the rest are displayed on the chart but do not take
+   * an additional seat (the seat model allows one active holder per seat).
+   */
+  holders?: StructureHolder[];
+  /** Chart row. 0 is the top of the tree. */
+  tier?: number;
+  /** Left-to-right position within a tier. */
+  order?: number;
+  /** The seat this one reports to, by `key`. */
+  parentKey?: string | null;
+  /** Optional cluster label (committee, team, block). */
+  group?: string | null;
+  /** How many holders the chart permits on this seat. Defaults to 1. */
+  maxHolders?: number;
 };
 
 export type StructureCommittee = {
@@ -57,7 +81,58 @@ export type StructureCommittee = {
   positions: StructurePosition[];
 };
 
-export type StructureDocument = { committees: StructureCommittee[] };
+export type ChartTemplate =
+  | "hierarchy"
+  | "pyramid"
+  | "matrix"
+  | "columns"
+  | "radial"
+  | "compact";
+
+export type ChartOrientation = "vertical" | "horizontal";
+export type ChartTheme = "parchment" | "ink" | "brass" | "slate";
+export type ChartNodeSize = "sm" | "md" | "lg";
+
+/** Presentation only. Never affects who is seated. */
+export type StructureLayout = {
+  template: ChartTemplate;
+  orientation: ChartOrientation;
+  theme: ChartTheme;
+  showPhotos: boolean;
+  showTitles: boolean;
+  /** Multiplier on the gap between tiers, 0.6 - 2. */
+  tierSpacing: number;
+  nodeSize: ChartNodeSize;
+};
+
+export const DEFAULT_LAYOUT: StructureLayout = {
+  template: "hierarchy",
+  orientation: "vertical",
+  theme: "parchment",
+  showPhotos: true,
+  showTitles: true,
+  tierSpacing: 1,
+  nodeSize: "md",
+};
+
+export const CHART_TEMPLATES: Array<{
+  key: ChartTemplate;
+  label: string;
+  hint: string;
+}> = [
+  { key: "hierarchy", label: "Hierarchy", hint: "Tiers top-down, reporting lines drawn." },
+  { key: "pyramid", label: "Pyramid", hint: "Centred rows, widest at the base." },
+  { key: "matrix", label: "Matrix", hint: "Committees as columns, tiers as rows." },
+  { key: "columns", label: "Columns", hint: "One vertical column per committee." },
+  { key: "radial", label: "Radial", hint: "Concentric rings out from the chair." },
+  { key: "compact", label: "Compact", hint: "Dense chips for large councils." },
+];
+
+export type StructureDocument = {
+  committees: StructureCommittee[];
+  schemaVersion?: number;
+  layout?: StructureLayout;
+};
 
 /** One structure as the queue and the history list render it. */
 export type StructureSummary = {
@@ -197,6 +272,12 @@ export type SaveResult = RpcResult & {
   status?: string;
   revision?: number;
   authorKind?: string;
+  updatedAt?: string;
+};
+
+export type OrgStructurePayload = RpcResult & {
+  unit?: { id: string; name: string; unitType: string; isRoot: boolean } | null;
+  structure?: StructureSummary | null;
 };
 
 export type ReviewResult = RpcResult & {
@@ -227,6 +308,8 @@ const VALIDATION_REASONS = new Set([
   "duplicate_committee_key",
   "duplicate_position_key",
   "duplicate_holder",
+  "invalid_parent",
+  "too_many_holders",
 ]);
 
 /**
@@ -263,6 +346,12 @@ export async function fetchTemplates(): Promise<TemplatesPayload> {
 export async function fetchQueue(): Promise<QueuePayload> {
   const res = await fetch("/api/structures?view=queue");
   return (await res.json()) as QueuePayload;
+}
+
+/** The organization's published root structure, for any member. */
+export async function fetchOrgStructure(): Promise<OrgStructurePayload> {
+  const res = await fetch("/api/structures?view=org");
+  return (await res.json()) as OrgStructurePayload;
 }
 
 export async function fetchStructure(unitId: string): Promise<StructureReadPayload> {
@@ -304,6 +393,11 @@ export function saveDraft(input: {
   endsOn: string;
   document: StructureDocument;
   note?: string;
+  /**
+   * The `updatedAt` the browser built this edit on. The database answers
+   * `conflict` instead of overwriting a newer draft.
+   */
+  expectedUpdatedAt?: string | null;
 }): Promise<SaveResult> {
   return post<SaveResult>({ action: "save", ...input });
 }

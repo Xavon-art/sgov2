@@ -10,6 +10,7 @@ import {
   buildStoragePath,
   buildTaskRequirementStoragePath,
   buildPersonalRequestStoragePath,
+  buildAccomplishmentStoragePath,
   sanitizeFileName,
 } from "@/lib/documents";
 
@@ -129,7 +130,9 @@ async function handleJson(req: Request, token: string) {
         ? "task_requirement"
         : body.target === "personal_request"
           ? "personal_request"
-          : "item";
+          : body.target === "accomplishment"
+            ? "accomplishment"
+            : "item";
 
     if (!fileName || sizeBytes === null) return fail("invalid_request");
     if (sizeBytes < 1) return fail("invalid_request");
@@ -240,6 +243,34 @@ async function handleJson(req: Request, token: string) {
 
       const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
         "claim_personal_request_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: result.writtenBytes ?? 0 });
+    }
+
+    if (target === "accomplishment") {
+      const eventId = typeof body.eventId === "string" ? body.eventId : "";
+      if (!UUID_RE.test(eventId)) return fail("invalid_request");
+
+      const storagePath = buildAccomplishmentStoragePath({
+        organizationId: account.organizationId,
+        eventId,
+        nonce,
+        fileName,
+      });
+
+      // The claim function decides whether the caller may file for this event;
+      // until then this is just a reserved path, not an attachment.
+      const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
+        "claim_accomplishment_upload",
         {
           p_session_token: token,
           p_storage_path: storagePath,

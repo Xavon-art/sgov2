@@ -104,6 +104,21 @@ export function buildPersonalRequestStoragePath(args: {
   return `${organizationId}/requests/v${version}/${unitId}/${fileName}`;
 }
 
+/**
+ * A file attached to an accomplishment report. The event id is in the path so
+ * the claim function can check the caller is allowed to file for that event
+ * before any bytes are stored; the nonce keeps two drafts apart.
+ */
+export function buildAccomplishmentStoragePath(args: {
+  organizationId: string;
+  eventId: string;
+  nonce: string;
+  fileName: string;
+}): string {
+  const { organizationId, eventId, nonce, fileName } = args;
+  return `${organizationId}/accomplishments/${eventId}/${nonce}/${fileName}`;
+}
+
 export type UploadAction = "claim" | "chunk" | "commit" | "abort";
 
 export type ClaimResponse = {

@@ -13,6 +13,8 @@ import {
 } from "@/components/org-chart/OrgChartControls";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 import { ChartRefresher } from "@/components/org-chart/ChartRefresher";
+import { ChartViewer } from "@/components/structure/ChartViewer";
+import { fetchOrgStructureForSession } from "@/lib/structure-server";
 import {
   fetchRoster,
   fetchUnitChart,
@@ -93,6 +95,7 @@ export default async function OrgChartPage() {
 
   const chart = await fetchUnitChart(token);
   const roster = await fetchRoster(token);
+  const org = await fetchOrgStructureForSession(token);
 
   if (!chart) {
     return (
@@ -181,6 +184,39 @@ export default async function OrgChartPage() {
             </div>
           </section>
         </Reveal>
+
+        {org?.structure ? (
+          <Reveal delay={0.08} className="mt-6">
+            <section
+              data-tour="org-chart-published"
+              className="rounded-2xl border border-line bg-paper/80 p-5 shadow-lift sm:p-6"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <div>
+                  <p className="eyebrow">Published officer chart</p>
+                  <p className="mt-1 text-[0.875rem] text-body">
+                    {org.structure.termLabel} &middot; revision {org.structure.revision}
+                  </p>
+                </div>
+                <Link
+                  href="/dashboard"
+                  className="text-[0.75rem] font-medium text-brass hover:underline"
+                >
+                  Open the builder
+                </Link>
+              </div>
+              <div className="mt-4">
+                <ChartViewer
+                  doc={org.structure.document}
+                  title={`${org.unit?.name ?? title} officers`}
+                  subtitle={`${org.structure.termLabel} · revision ${org.structure.revision}`}
+                  filename={`${(org.unit?.name ?? title).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-officers`}
+                  maxHeight={560}
+                />
+              </div>
+            </section>
+          </Reveal>
+        ) : null}
 
         <div data-tour="org-chart-units" className="mt-8">
           {children.length === 0 ? (

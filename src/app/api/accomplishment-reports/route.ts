@@ -17,6 +17,30 @@ function statusForReason(reason?: string): number {
   return 400;
 }
 
+/**
+ * An attachment is referred to by the storage path its claim returned. The
+ * database re-checks ownership and confirmation; this only keeps obviously
+ * malformed paths out of the call.
+ */
+function readFilePaths(value: unknown, eventId: string): string[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) return null;
+  if (value.length > 10) return null;
+
+  const out: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string") return null;
+    const path = entry.trim();
+    if (!path || path.length > 512 || path.startsWith("/") || path.includes("\\")) return null;
+    if (path.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
+      return null;
+    }
+    if (!path.includes(`/accomplishments/${eventId}/`)) return null;
+    if (!out.includes(path)) out.push(path);
+  }
+  return out;
+}
+
 export async function GET(req: Request) {
   const token = await readSessionToken();
   if (!token) {
@@ -64,6 +88,7 @@ export async function POST(req: Request) {
     narrative?: unknown;
     highlights?: unknown;
     attachmentSubmissionId?: unknown;
+    files?: unknown;
   };
   try {
     body = await req.json();
@@ -112,12 +137,21 @@ export async function POST(req: Request) {
     }
   }
 
+  const filePaths = readFilePaths(body.files, eventId);
+  if (filePaths === null) {
+    return NextResponse.json(
+      { ok: false, message: messageFor("invalid_request"), reason: "invalid_request" },
+      { status: 400 },
+    );
+  }
+
   try {
     const res = await submitAccomplishmentReport(token, {
       eventId,
       narrative,
       highlights,
       attachmentSubmissionId,
+      filePaths,
     });
     if (!res.ok) {
       return NextResponse.json(

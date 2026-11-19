@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   checkDocument,
   emptyCommittee,
   emptyDocument,
   emptyPosition,
+  normalizeLayout,
 } from "@/components/structure/document";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Reveal } from "@/components/fx/Reveal";
 import { RowReorder } from "@/components/structure/RowReorder";
 import { useReorder, type ReorderRow } from "@/components/structure/reorder";
+import { StructureChartEditor } from "@/components/structure/StructureChartEditor";
+import { ChartViewer } from "@/components/structure/ChartViewer";
 import {
   MAX_PHOTO_BYTES,
   fetchMemberPhoto,
@@ -26,6 +29,7 @@ import {
   type StructureCommittee,
   type StructureDocument,
   type StructureHolder,
+  type StructureLayout,
   type StructurePosition,
   type StructureRenewal,
   type StructureSummary,
@@ -600,7 +604,13 @@ function holderName(holder: StructureHolder | null | undefined): string {
   return name || holder.email;
 }
 
-export function ApprovedViewer({ approved }: { approved: StructureSummary | null | undefined }) {
+export function ApprovedViewer({
+  approved,
+  unitName,
+}: {
+  approved: StructureSummary | null | undefined;
+  unitName?: string;
+}) {
   const [open, setOpen] = useState<string | null>(null);
 
   if (!approved) {
@@ -628,7 +638,17 @@ export function ApprovedViewer({ approved }: { approved: StructureSummary | null
         </span>
       </div>
 
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-4">
+        <ChartViewer
+          doc={approved.document}
+          title={unitName ? `${unitName} officers` : undefined}
+          subtitle={`${approved.termLabel} · revision ${approved.revision}`}
+          filename={`${(unitName ?? "structure").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-officers`}
+          maxHeight={560}
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-2">
         {approved.document.committees.map((c) => (
           <div key={c.key} className="rounded-xl border border-line bg-canvas/40">
             <button
@@ -642,15 +662,22 @@ export function ApprovedViewer({ approved }: { approved: StructureSummary | null
             </button>
             {open === c.key ? (
               <ul className="border-t border-line px-4 py-2">
-                {c.positions.map((p) => (
-                  <li
-                    key={p.key}
-                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line/60 py-2 last:border-b-0"
-                  >
-                    <span className="text-[0.875rem] text-ink">{p.title}</span>
-                    <span className="text-[0.8125rem] text-muted">{holderName(p.holder)}</span>
-                  </li>
-                ))}
+                {c.positions.map((p) => {
+                  const holders = p.holders?.length ? p.holders : p.holder ? [p.holder] : [];
+                  return (
+                    <li
+                      key={p.key}
+                      className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line/60 py-2 last:border-b-0"
+                    >
+                      <span className="text-[0.875rem] text-ink">{p.title}</span>
+                      <span className="text-[0.8125rem] text-muted">
+                        {holders.length > 1
+                          ? `${holderName(holders[0])} +${holders.length - 1} co-holder${holders.length > 2 ? "s" : ""}`
+                          : holderName(holders[0])}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </div>
@@ -686,6 +713,19 @@ export function StructureWorkspace({
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Chart builder state. The document stays the source of truth; `selected` is
+  // only which seat the inspector shows.
+  const [mode, setMode] = useState<"chart" | "form">("chart");
+  const [selected, setSelected] = useState<string | null>(null);
+  const [past, setPast] = useState<StructureDocument[]>([]);
+  const [future, setFuture] = useState<StructureDocument[]>([]);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ updatedAt: string } | null>(null);
+  const [autosave, setAutosave] = useState<"idle" | "saving" | "saved" | "off">("idle");
+  const savingRef = useRef(false);
+
+  const layout = useMemo(() => normalizeLayout(doc.layout), [doc.layout]);
+
   // email -> rosterId, for the photo route. Never part of the document.
   const [rosterByEmail, setRosterByEmail] = useState<Record<string, string>>({});
 
@@ -710,6 +750,8 @@ export function StructureWorkspace({
         setStartsOn(draft.startsOn);
         setEndsOn(draft.endsOn);
         setNote(draft.note ?? "");
+        setUpdatedAt(draft.updatedAt ?? null);
+        setAutosave("idle");
         setStatus(
           draft.status === "returned"
             ? `Returned by your reviewer${draft.decisionRemark ? `: ${draft.decisionRemark}` : "."}`
@@ -762,10 +804,109 @@ export function StructureWorkspace({
   }, [doc, unitId]);
 
   function edit(next: StructureDocument) {
+    setPast((prev) => [...prev.slice(-39), doc]);
+    setFuture([]);
     setDoc(next);
     setDirty(true);
     setSave({ kind: "idle" });
+    setConflict(null);
   }
+
+  function undo() {
+    if (!past.length) return;
+    const restored = past[past.length - 1];
+    setPast(past.slice(0, -1));
+    setFuture([doc, ...future].slice(0, 40));
+    setDoc(restored);
+    setDirty(true);
+    setSave({ kind: "idle" });
+    setSelected(null);
+  }
+
+  function redo() {
+    if (!future.length) return;
+    const [restored, ...later] = future;
+    setFuture(later);
+    setPast([...past.slice(-39), doc]);
+    setDoc(restored);
+    setDirty(true);
+    setSave({ kind: "idle" });
+    setSelected(null);
+  }
+
+  /**
+   * Autosave. It only runs once the draft is publishable-shaped (term set and
+   * the document passes the same checks the database will run), so a half-typed
+   * seat never produces a validation error the author did not ask for.
+   */
+  useEffect(() => {
+    if (!dirty || conflict || !capability.canEdit) return;
+    if (!termLabel.trim() || !startsOn || !endsOn) return;
+    if (checkDocument(doc)) return;
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (savingRef.current) return;
+        savingRef.current = true;
+        setAutosave("saving");
+        try {
+          const res = await saveDraft({
+            unitId,
+            templateKey: templateKey ?? undefined,
+            termLabel: termLabel.trim(),
+            startsOn,
+            endsOn,
+            document: doc,
+            note: note.trim() || undefined,
+            expectedUpdatedAt: updatedAt ?? undefined,
+          });
+          if (!res.ok) {
+            if (res.reason === "conflict") {
+              setConflict({ updatedAt: typeof res.updatedAt === "string" ? res.updatedAt : "" });
+            }
+            setAutosave("off");
+            return;
+          }
+          if (res.structureId) setStructureId(res.structureId);
+          if (res.updatedAt) setUpdatedAt(res.updatedAt);
+          setDirty(false);
+          setAutosave("saved");
+          setSave({ kind: "saved", revision: res.revision ?? 0 });
+        } catch {
+          setAutosave("off");
+        } finally {
+          savingRef.current = false;
+        }
+      })();
+    }, 1600);
+
+    return () => window.clearTimeout(timer);
+    // `updatedAt` is intentionally not a dependency: a save that lands updates it,
+    // and re-running on that change would schedule an identical save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, dirty, conflict, termLabel, startsOn, endsOn, note, templateKey, unitId, capability.canEdit]);
+
+  // Ctrl/Cmd+Z and Ctrl/Cmd+Y, except while typing in a field.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undo();
+      } else if ((key === "z" && event.shiftKey) || key === "y") {
+        event.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   function patchCommittee(index: number, next: StructureCommittee) {
     edit({ committees: doc.committees.map((c, i) => (i === index ? next : c)) });
@@ -811,14 +952,24 @@ export function StructureWorkspace({
         endsOn,
         document: doc,
         note: note.trim() || undefined,
+        expectedUpdatedAt: updatedAt ?? undefined,
       });
 
       if (!res.ok) {
+        if (res.reason === "conflict") {
+          setConflict({ updatedAt: typeof res.updatedAt === "string" ? res.updatedAt : "" });
+          setSave({ kind: "idle" });
+          setAutosave("off");
+          return null;
+        }
         setSave({ kind: "error", message: structureError(res) });
         return null;
       }
 
       if (res.structureId) setStructureId(res.structureId);
+      if (res.updatedAt) setUpdatedAt(res.updatedAt);
+      setConflict(null);
+      setAutosave("saved");
       setSave({ kind: "saved", revision: res.revision ?? 0 });
       setDirty(false);
       setStatus(null);
@@ -913,7 +1064,7 @@ export function StructureWorkspace({
   }
 
   if (!capability.canEdit) {
-    return <ApprovedViewer approved={approved} />;
+    return <ApprovedViewer approved={approved} unitName={unitName} />;
   }
 
   const busy = save.kind === "saving";
@@ -1019,42 +1170,147 @@ export function StructureWorkspace({
         </Panel>
       </Reveal>
 
-      <div className="flex flex-col gap-4">
-        {doc.committees.map((c, ci) => (
-          <CommitteeEditor
-            key={c.key}
-            unitId={unitId}
-            committee={c}
-            index={ci}
-            total={doc.committees.length}
-            drag={committeeReorder.rowProps(c.key, ci)}
-            rosterByEmail={(email) => rosterByEmail[email]}
-            onChange={(next) => patchCommittee(ci, next)}
-            onRemove={() => edit({ committees: doc.committees.filter((_, i) => i !== ci) })}
-            onAddPosition={() => patchCommittee(ci, { ...c, positions: [...c.positions, emptyPosition()] })}
-            onMovePosition={(from, to) => {
-              const next = c.positions.slice();
-              const [moved] = next.splice(from, 1);
-              next.splice(to, 0, moved);
-              patchCommittee(ci, { ...c, positions: next });
-            }}
-            onNudge={(delta) => committeeReorder.nudge(c.key, delta)}
-          />
-        ))}
-      </div>
-
-      <Reveal delay={0.06}>
+      <Reveal delay={0.05}>
         <Panel>
-          <Button
-            type="button"
-            variant="paper"
-            size="sm"
-            onClick={() => edit({ committees: [...doc.committees, emptyCommittee()] })}
-          >
-            Add committee
-          </Button>
+          <div data-tour="structure-mode" className="flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex rounded-full border border-line bg-paper p-1">
+              {(["chart", "form"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  className={`rounded-full px-3.5 py-1.5 text-[0.75rem] font-medium transition-colors ${
+                    mode === value ? "bg-ink text-white" : "text-ink-soft hover:text-ink"
+                  }`}
+                >
+                  {value === "chart" ? "Chart builder" : "Classic form"}
+                </button>
+              ))}
+            </div>
+            <span className="text-[0.75rem] text-muted" aria-live="polite">
+              {conflict
+                ? "A newer version exists."
+                : autosave === "saving"
+                  ? "Saving…"
+                  : autosave === "saved"
+                    ? "Draft saved."
+                    : autosave === "off"
+                      ? "Autosave paused."
+                      : dirty
+                        ? "Unsaved changes."
+                        : "All changes saved."}
+            </span>
+          </div>
+
+          {conflict ? (
+            <div className="mt-3 rounded-xl border border-[#a33a2e]/35 bg-[#a33a2e]/[0.07] px-4 py-3">
+              <p className="text-[0.875rem] leading-relaxed text-[#8c3126]">
+                Someone saved this structure after you opened it. Reload their version,
+                or keep yours and overwrite it.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="paper"
+                  size="sm"
+                  onClick={async () => {
+                    const after = await fetchStructure(unitId);
+                    if (after.draft) {
+                      setDoc(after.draft.document);
+                      setUpdatedAt(after.draft.updatedAt ?? null);
+                      setTermLabel(after.draft.termLabel);
+                      setStartsOn(after.draft.startsOn);
+                      setEndsOn(after.draft.endsOn);
+                      setNote(after.draft.note ?? "");
+                      setStructureId(after.draft.id);
+                      setApproved(after.approved ?? null);
+                    }
+                    setConflict(null);
+                    setDirty(false);
+                    setPast([]);
+                    setFuture([]);
+                    setAutosave("idle");
+                    setSelected(null);
+                  }}
+                >
+                  Reload theirs
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setConflict(null);
+                    setAutosave("idle");
+                    setUpdatedAt(null);
+                  }}
+                >
+                  Keep mine
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </Panel>
       </Reveal>
+
+      {mode === "chart" ? (
+        <Reveal delay={0.06}>
+          <div data-tour="structure-chart" className="contents">
+          <StructureChartEditor
+            doc={doc}
+            onChange={edit}
+            layout={layout}
+            onLayout={(next: StructureLayout) => edit({ ...doc, layout: next })}
+            selectedKey={selected}
+            onSelect={setSelected}
+            canUndo={past.length > 0}
+            canRedo={future.length > 0}
+            onUndo={undo}
+            onRedo={redo}
+            busy={busy}
+          />
+          </div>
+        </Reveal>
+      ) : (
+        <>
+          <div className="flex flex-col gap-4">
+            {doc.committees.map((c, ci) => (
+              <CommitteeEditor
+                key={c.key}
+                unitId={unitId}
+                committee={c}
+                index={ci}
+                total={doc.committees.length}
+                drag={committeeReorder.rowProps(c.key, ci)}
+                rosterByEmail={(email) => rosterByEmail[email]}
+                onChange={(next) => patchCommittee(ci, next)}
+                onRemove={() => edit({ committees: doc.committees.filter((_, i) => i !== ci) })}
+                onAddPosition={() => patchCommittee(ci, { ...c, positions: [...c.positions, emptyPosition()] })}
+                onMovePosition={(from, to) => {
+                  const next = c.positions.slice();
+                  const [moved] = next.splice(from, 1);
+                  next.splice(to, 0, moved);
+                  patchCommittee(ci, { ...c, positions: next });
+                }}
+                onNudge={(delta) => committeeReorder.nudge(c.key, delta)}
+              />
+            ))}
+          </div>
+
+          <Reveal delay={0.06}>
+            <Panel>
+              <Button
+                type="button"
+                variant="paper"
+                size="sm"
+                onClick={() => edit({ committees: [...doc.committees, emptyCommittee()] })}
+              >
+                Add committee
+              </Button>
+            </Panel>
+          </Reveal>
+        </>
+      )}
 
       <Reveal delay={0.08}>
         <Panel>

@@ -150,6 +150,23 @@ const RPC_MESSAGES: Record<string, string> = {
     "A report for this event has already been filed. Wait for it to be returned before revising it.",
   attachment_not_allowed: "That attachment is not one you can use for this report.",
   event_not_available: "That event can no longer take an accomplishment report.",
+  not_assigned:
+    "Only people assigned to this event by the USG can file an accomplishment report.",
+  invalid_assignees: "Choose only active accounts from your organization.",
+
+  // ---- feedback forms (03300)
+  invalid_form_title: "Enter a form title between 3 and 200 characters.",
+  invalid_form_description: "Keep the description under 4,000 characters.",
+  invalid_questions: "Check the questions and try again.",
+  no_questions: "Add at least one question before opening the form.",
+  questions_locked: "Questions cannot change after the first response.",
+  form_locked: "Access, identity, and audience cannot change after the form opens.",
+  form_not_open: "This form is not accepting responses.",
+  invalid_audience: "Choose a valid audience for this form.",
+  invalid_answers: "Check the answers and try again.",
+  invalid_slug: "This feedback link is not valid.",
+  invalid_respondent: "Enter your name and email to continue.",
+  responses_exist: "Forms with responses cannot be deleted.",
 };
 
 export function messageFor(reason?: string): string {

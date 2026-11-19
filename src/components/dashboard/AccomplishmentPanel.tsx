@@ -14,9 +14,19 @@ import {
   type AccomplishmentReportRow,
   type AccomplishmentReportStatus,
 } from "@/lib/accomplishment-reports";
+import { uploadFile } from "@/lib/upload-client";
+import { messageFor } from "@/lib/auth/messages";
+import { MAX_FILE_BYTES } from "@/lib/documents";
 import type { DocumentRow } from "@/lib/document-search";
 
-type EventOption = { id: string; title: string };
+type EventOption = {
+  id: string;
+  title: string;
+  canReport: boolean;
+  eventDate: string | null;
+  status: string | null;
+  honorStatus: string | null;
+};
 
 async function mutate(url: string, init: RequestInit): Promise<Record<string, unknown>> {
   const res = await fetch(url, init);
@@ -45,6 +55,12 @@ function StatusBadge({ status }: { status: AccomplishmentReportStatus }) {
   );
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventId, setEventId] = useState("");
@@ -57,6 +73,8 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
   const [showCreate, setShowCreate] = useState(false);
   const [narrative, setNarrative] = useState("");
   const [highlights, setHighlights] = useState("");
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const loadOptions = useCallback(async () => {
@@ -68,13 +86,25 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
     const documentJson = await documentRes.json().catch(() => ({}));
     if (eventJson.ok && Array.isArray(eventJson.events)) {
       const options = eventJson.events
-        .map((event: { id?: string; title?: string }) => ({
-          id: String(event.id ?? ""),
-          title: String(event.title ?? "Untitled event"),
-        }))
+        .map(
+          (event: {
+            id?: string;
+            title?: string;
+            canReport?: boolean;
+            eventDate?: string | null;
+            status?: string | null;
+            honorStatus?: string | null;
+          }) => ({
+            id: String(event.id ?? ""),
+            title: String(event.title ?? "Untitled event"),
+            canReport: event.canReport === true,
+            eventDate: typeof event.eventDate === "string" ? event.eventDate : null,
+            status: typeof event.status === "string" ? event.status : null,
+            honorStatus: typeof event.honorStatus === "string" ? event.honorStatus : null,
+          }),
+        )
         .filter((event: EventOption) => Boolean(event.id));
       setEvents(options);
-      setEventId((current) => current || options[0]?.id || "");
     }
     if (documentJson.ok && Array.isArray(documentJson.rows)) {
       setDocuments(documentJson.rows as DocumentRow[]);
@@ -84,8 +114,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
   const loadReports = useCallback(async () => {
     setState("loading");
     try {
-      const query = eventId ? `?eventId=${encodeURIComponent(eventId)}` : "";
-      const res = await fetch(`/api/accomplishment-reports${query}`);
+      const res = await fetch("/api/accomplishment-reports");
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
       setRows((json.rows as AccomplishmentReportRow[]) ?? []);
@@ -93,7 +122,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
     } catch {
       setState("error");
     }
-  }, [eventId]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -136,7 +165,29 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
       return;
     }
     setActionError(null);
+
+    const tooLarge = pendingFiles.find((file) => file.size > MAX_FILE_BYTES);
+    if (tooLarge) {
+      setActionError(messageFor("file_too_large"));
+      return;
+    }
+
+    setUploading(true);
     try {
+      const filePaths: string[] = [];
+      for (const file of pendingFiles) {
+        const uploaded = await uploadFile(file, {
+          target: "accomplishment",
+          eventId,
+          nonce: crypto.randomUUID(),
+          version: 1,
+        });
+        if (!uploaded.ok || !uploaded.storagePath) {
+          throw new Error(messageFor(uploaded.reason));
+        }
+        filePaths.push(uploaded.storagePath);
+      }
+
       await mutate("/api/accomplishment-reports", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -145,50 +196,111 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
           narrative,
           highlights,
           attachmentSubmissionId: attachmentSubmissionId || null,
+          files: filePaths,
         }),
       });
       setShowCreate(false);
+      setEventId("");
       setNarrative("");
       setHighlights("");
       setAttachmentSubmissionId("");
+      setPendingFiles([]);
       await loadReports();
     } catch (error) {
       setActionError(actionMessage(error, "We could not file that report."));
+    } finally {
+      setUploading(false);
     }
   };
 
+  const selectedEvent = events.find((event) => event.id === eventId);
+  const sortedEvents = [...events].sort((a, b) => {
+    const reportable = Number(b.canReport) - Number(a.canReport);
+    if (reportable !== 0) return reportable;
+    return (a.eventDate ?? "").localeCompare(b.eventDate ?? "");
+  });
+
   return (
     <div className="grid gap-6">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-56 flex-1">
-          <div className="mb-1 text-sm text-muted">Event</div>
-          <select
-            value={eventId}
-            onChange={(e) => {
-              setEventId(e.target.value);
-              setSelected(null);
-            }}
-            className={selectClass}
-          >
-            {events.length === 0 && <option value="">No events available</option>}
-            {events.map((event) => (
-              <option key={event.id} value={event.id}>
-                {event.title}
-              </option>
-            ))}
-          </select>
-        </div>
-        {!selected && (
-          <Button size="sm" className="ml-auto" onClick={() => setShowCreate(true)}>
-            <IconPencil className="h-4 w-4" /> File report
-          </Button>
-        )}
-      </div>
+      {!selected && (
+        <section>
+          <div className="mb-3">
+            <h2 className="text-lg font-medium">Events</h2>
+            <p className="text-sm text-muted">
+              Tap an event to file its accomplishment report.
+            </p>
+          </div>
+          {events.length === 0 ? (
+            <div className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
+              No events available.
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {sortedEvents.map((event, i) => (
+                <Reveal key={event.id} delay={i * ROW_STAGGER_MS}>
+                  <button
+                    type="button"
+                    disabled={!event.canReport}
+                    title={
+                      event.canReport
+                        ? `File an accomplishment report for ${event.title}`
+                        : "Only people assigned to this event by the USG can file a report."
+                    }
+                    onClick={() => {
+                      setSelected(null);
+                      setEventId(event.id);
+                      setPendingFiles([]);
+                      setActionError(null);
+                      setShowCreate(true);
+                    }}
+                    className={`flex h-full w-full flex-col items-start justify-between gap-4 rounded-2xl border border-line bg-paper p-5 text-left transition ${
+                      event.canReport
+                        ? "hover:border-ink/20 hover:shadow-lift"
+                        : "cursor-not-allowed opacity-60"
+                    }`}
+                  >
+                    <div>
+                      <div className="text-lg font-medium">{event.title}</div>
+                      <div className="mt-1 text-xs text-muted">
+                        {formatAccomplishmentDate(event.eventDate) || "No date"}
+                        {event.status ? ` • ${event.status}` : ""}
+                        {event.honorStatus ? ` • ${event.honorStatus}` : ""}
+                      </div>
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${
+                        event.canReport
+                          ? "border-brass/50 bg-brass-soft/25 text-ink"
+                          : "border-line text-muted"
+                      }`}
+                    >
+                      {event.canReport ? (
+                        <>
+                          <IconPencil className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+                          File report
+                        </>
+                      ) : (
+                        "Not assigned"
+                      )}
+                    </span>
+                  </button>
+                </Reveal>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <ActionError message={actionError} />
 
       {!selected && (
         <>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-medium">Accomplishment reports</h2>
+              <p className="text-sm text-muted">Reports you can view and review.</p>
+            </div>
+          </div>
           {state === "loading" && <div className="text-muted">Loading...</div>}
           {state === "error" && (
             <p role="alert" className="text-sm text-[#a5442c]">
@@ -197,7 +309,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
           )}
           {state === "ready" && rows.length === 0 && (
             <div className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
-              No accomplishment reports for this event yet.
+              No accomplishment reports yet.
             </div>
           )}
           {state === "ready" && (
@@ -253,6 +365,24 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
               Open attachment
             </a>
           )}
+          {(selected.files?.length ?? 0) > 0 && (
+            <div className="mt-3">
+              <div className="mb-1 text-sm font-medium">Uploaded files</div>
+              <ul className="grid gap-1">
+                {selected.files?.map((file) => (
+                  <li key={file.id}>
+                    <a
+                      href={`/api/accomplishment-files/${file.id}`}
+                      className="text-sm underline"
+                    >
+                      {file.name}
+                    </a>{" "}
+                    <span className="text-xs text-muted">{formatBytes(file.sizeBytes)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {selected.decisionRemark && (
             <p className="mt-4 rounded-xl border border-line/60 bg-canvas/40 p-3 text-sm text-muted">
               Note: {selected.decisionRemark}
@@ -298,8 +428,11 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
           <div className="max-h-[90vh] w-full max-w-xl overflow-auto rounded-2xl border border-line bg-paper p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="text-lg font-medium">File accomplishment report</div>
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-lg font-medium">File accomplishment report</div>
+                {selectedEvent && <div className="text-sm text-muted">{selectedEvent.title}</div>}
+              </div>
               <button onClick={() => setShowCreate(false)}>✕</button>
             </div>
             <div className="grid gap-3">
@@ -338,8 +471,33 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
                   </select>
                 </div>
               )}
-              <Button disabled={narrative.trim().length < 10} onClick={() => void submit()}>
-                Submit report
+              <div>
+                <div className="mb-1 text-sm text-muted">Files</div>
+                <input
+                  type="file"
+                  multiple
+                  disabled={uploading}
+                  onChange={(e) => setPendingFiles(Array.from(e.target.files ?? []))}
+                  className="block w-full text-sm text-muted file:mr-3 file:rounded-lg file:border file:border-line file:bg-canvas file:px-3 file:py-1.5 file:text-sm"
+                />
+                {pendingFiles.length > 0 && (
+                  <ul className="mt-2 grid gap-1 text-sm text-muted">
+                    {pendingFiles.map((file, index) => (
+                      <li key={`${file.name}-${index}`}>
+                        {file.name} · {formatBytes(file.size)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-1 text-xs text-muted">
+                  Up to 10 files, 10 MB each.
+                </p>
+              </div>
+              <Button
+                disabled={uploading || narrative.trim().length < 10}
+                onClick={() => void submit()}
+              >
+                {uploading ? "Uploading..." : "Submit report"}
               </Button>
             </div>
           </div>

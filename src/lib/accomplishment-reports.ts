@@ -2,6 +2,13 @@ import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 
 export type AccomplishmentReportStatus = "submitted" | "acknowledged" | "returned";
 
+export type AccomplishmentFile = {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
 export type AccomplishmentReportRow = {
   id: string;
   eventId: string;
@@ -10,6 +17,7 @@ export type AccomplishmentReportRow = {
   status: AccomplishmentReportStatus;
   submittedAt: string;
   canReview?: boolean;
+  files?: AccomplishmentFile[];
 };
 
 export type AccomplishmentReviewEntry = {
@@ -28,6 +36,7 @@ export type AccomplishmentReportDetail = AccomplishmentReportRow & {
   decisionRemark: string | null;
   reviewedAt: string | null;
   timeline: AccomplishmentReviewEntry[];
+  files?: AccomplishmentFile[];
 };
 
 export type AccomplishmentDecision = Extract<
@@ -114,14 +123,16 @@ export async function submitAccomplishmentReport(
     narrative: string;
     highlights: string;
     attachmentSubmissionId?: string | null;
+    filePaths?: string[];
   },
 ): Promise<SubmitAccomplishmentReportResult> {
-  return callRpc<SubmitAccomplishmentReportResult>("submit_accomplishment_report", {
+  return callRpc<SubmitAccomplishmentReportResult>("submit_accomplishment_report_v2", {
     p_session_token: sessionToken,
     p_event_id: input.eventId,
     p_narrative: input.narrative,
     p_highlights: input.highlights,
     p_attachment_submission_id: input.attachmentSubmissionId || null,
+    p_file_paths: input.filePaths ?? [],
   });
 }
 

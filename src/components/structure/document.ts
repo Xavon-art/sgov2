@@ -17,7 +17,14 @@
  *      database refuses anything else, so the UI never offers it.
  */
 
-import type { StructureCommittee, StructureDocument, StructurePosition } from "@/lib/structure";
+import {
+  DEFAULT_LAYOUT,
+  type StructureCommittee,
+  type StructureDocument,
+  type StructureHolder,
+  type StructureLayout,
+  type StructurePosition,
+} from "@/lib/structure";
 
 /**
  * `crypto.randomUUID` is not on `http:` origins, and the app is served over
@@ -25,13 +32,13 @@ import type { StructureCommittee, StructureDocument, StructurePosition } from "@
  * within one document, so a counter seeded from the clock is enough -- but the
  * prefix keeps it from colliding with anything hand-typed into a template.
  */
-function nextKey(prefix: string): string {
+export function nextKey(prefix: string): string {
   const rand = Math.random().toString(36).slice(2, 8);
   return `${prefix}-${Date.now().toString(36)}-${rand}`;
 }
 
-export function emptyPosition(): StructurePosition {
-  return { key: nextKey("pos"), title: "", holder: null };
+export function emptyPosition(tier = 0, order = 0): StructurePosition {
+  return { key: nextKey("pos"), title: "", holder: null, tier, order, maxHolders: 1 };
 }
 
 export function emptyCommittee(): StructureCommittee {
@@ -39,7 +46,141 @@ export function emptyCommittee(): StructureCommittee {
 }
 
 export function emptyDocument(): StructureDocument {
-  return { committees: [emptyCommittee()] };
+  return {
+    schemaVersion: 2,
+    layout: { ...DEFAULT_LAYOUT },
+    committees: [emptyCommittee()],
+  };
+}
+
+/** Unknown or partial layouts fall back field by field, never wholesale. */
+export function normalizeLayout(raw?: Partial<StructureLayout> | null): StructureLayout {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_LAYOUT };
+  const templates = ["hierarchy", "pyramid", "matrix", "columns", "radial", "compact"];
+  const themes = ["parchment", "ink", "brass", "slate"];
+  const sizes = ["sm", "md", "lg"];
+  return {
+    template: templates.includes(raw.template as string)
+      ? (raw.template as StructureLayout["template"])
+      : DEFAULT_LAYOUT.template,
+    orientation: raw.orientation === "horizontal" ? "horizontal" : "vertical",
+    theme: themes.includes(raw.theme as string)
+      ? (raw.theme as StructureLayout["theme"])
+      : DEFAULT_LAYOUT.theme,
+    showPhotos: raw.showPhotos !== false,
+    showTitles: raw.showTitles !== false,
+    tierSpacing:
+      typeof raw.tierSpacing === "number" && Number.isFinite(raw.tierSpacing)
+        ? Math.min(2, Math.max(0.6, raw.tierSpacing))
+        : DEFAULT_LAYOUT.tierSpacing,
+    nodeSize: sizes.includes(raw.nodeSize as string)
+      ? (raw.nodeSize as StructureLayout["nodeSize"])
+      : DEFAULT_LAYOUT.nodeSize,
+  };
+}
+
+export function holderName(holder: StructureHolder | null | undefined): string {
+  if (!holder) return "";
+  const flag = holder.firstName || holder.lastName
+    ? [holder.firstName, holder.middleName, holder.lastName]
+        .map((part) => part?.trim())
+        .filter(Boolean)
+        .join(" ")
+    : "";
+  return (holder.fullName?.trim() || flag || holder.email).trim();
+}
+
+/**
+ * The same upgrade the database performs on read, rewritten for the builder.
+ *
+ * It is deliberately total: a document from before the chart existed (or one
+ * whose layout keys are half written) comes out renderable, and nothing is
+ * dropped. The database is still the authority on validity; this only makes the
+ * fields the renderer needs exist.
+ */
+export function normalizeDocument(
+  doc: StructureDocument | null | undefined,
+): StructureDocument {
+  const committees = Array.isArray(doc?.committees) ? doc!.committees : [];
+  const seen = new Set<string>();
+
+  const next: StructureCommittee[] = committees.map((committee) => {
+    const positions = Array.isArray(committee.positions) ? committee.positions : [];
+    return {
+      ...committee,
+      positions: positions.map((position, pi) => {
+        const raw = position as StructurePosition;
+        const holders = Array.isArray(raw.holders) && raw.holders.length
+          ? raw.holders
+          : raw.holder && typeof raw.holder === "object" && Object.keys(raw.holder).length
+            ? [raw.holder]
+            : [];
+        const holder = holders[0] ?? null;
+        const key = raw.key || nextKey("pos");
+        // A duplicated key would make two nodes unaddressable; re-key the later
+        // one so the builder can still point at it.
+        const uniqueKey = seen.has(key) ? nextKey("pos") : key;
+        seen.add(uniqueKey);
+        return {
+          ...raw,
+          key: uniqueKey,
+          title: raw.title ?? "",
+          tier: Number.isFinite(raw.tier) ? Math.max(0, Math.min(12, raw.tier!)) : committee.isUnit ? 0 : 1,
+          order: Number.isFinite(raw.order) ? Math.max(0, Math.min(999, raw.order!)) : pi,
+          maxHolders: Number.isFinite(raw.maxHolders)
+            ? Math.max(0, Math.min(20, raw.maxHolders!))
+            : 1,
+          holder,
+          ...(holders.length ? { holders } : {}),
+        };
+      }),
+    };
+  });
+
+  return {
+    ...doc,
+    schemaVersion: 2,
+    layout: normalizeLayout(doc?.layout),
+    committees: next,
+  };
+}
+
+/** Every position in the document, flattened, in document order. */
+export function allPositions(
+  doc: StructureDocument,
+): Array<{ committee: StructureCommittee; position: StructurePosition }> {
+  return doc.committees.flatMap((committee) =>
+    committee.positions.map((position) => ({ committee, position })),
+  );
+}
+
+/** Groups the document's positions into tier rows, each sorted by `order`. */
+export function tiersOf(doc: StructureDocument): StructurePosition[][] {
+  const byTier = new Map<number, StructurePosition[]>();
+  for (const { position } of allPositions(doc)) {
+    const tier = position.tier ?? 0;
+    const list = byTier.get(tier) ?? [];
+    list.push(position);
+    byTier.set(tier, list);
+  }
+  return [...byTier.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, list]) => list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+}
+
+export function findPosition(
+  doc: StructureDocument,
+  key: string,
+): { committee: StructureCommittee; position: StructurePosition; ci: number; pi: number } | null {
+  for (let ci = 0; ci < doc.committees.length; ci++) {
+    const committee = doc.committees[ci];
+    for (let pi = 0; pi < committee.positions.length; pi++) {
+      if (committee.positions[pi].key === key) {
+        return { committee, position: committee.positions[pi], ci, pi };
+      }
+    }
+  }
+  return null;
 }
 
 /** A position with a blank title is a row the person started and did not finish. */
@@ -75,7 +216,27 @@ export function checkDocument(doc: StructureDocument): DocumentProblem | null {
   }
 
   const committeeKeys = new Set<string>();
-  const holders = new Set<string>();
+  const positionKeys = new Set<string>();
+  const people = new Set<string>();
+
+  const checkHolder = (
+    holder: StructureHolder,
+    title: string,
+    at: DocumentProblem["at"],
+  ): DocumentProblem | null => {
+    if (!holder.email.trim()) {
+      return { message: `${title} needs the holder's email.`, at };
+    }
+    if (!holder.firstName?.trim() || !holder.lastName?.trim()) {
+      return { message: `${title} needs the holder's first and last name.`, at };
+    }
+    const email = holder.email.trim().toLowerCase();
+    if (people.has(email)) {
+      return { message: `${holder.email.trim()} is already an officer in another position.`, at };
+    }
+    people.add(email);
+    return null;
+  };
 
   for (let ci = 0; ci < doc.committees.length; ci++) {
     const c = doc.committees[ci];
@@ -97,45 +258,82 @@ export function checkDocument(doc: StructureDocument): DocumentProblem | null {
       return { message: `${c.name} has no positions yet.`, at: { committee: ci } };
     }
 
-    const positionKeys = new Set<string>();
     for (let pi = 0; pi < c.positions.length; pi++) {
       const p = c.positions[pi];
+      const at = { committee: ci, position: pi };
+
       if (positionKeys.has(p.key)) {
-        return {
-          message: `${c.name} has two positions sharing the key ${p.key}.`,
-          at: { committee: ci, position: pi },
-        };
+        return { message: `Two positions share the key ${p.key}.`, at };
       }
       positionKeys.add(p.key);
 
       if (!p.title.trim()) {
-        return { message: `${c.name} has a position with no title.`, at: { committee: ci, position: pi } };
+        return { message: `${c.name} has a position with no title.`, at };
       }
 
-      const h = p.holder;
-      if (!h) continue;
+      const tier = p.tier ?? 0;
+      const max = p.maxHolders ?? 1;
+      if (tier < 0 || tier > 12) {
+        return { message: `${p.title} is on a tier the chart cannot draw.`, at };
+      }
+      if ((p.order ?? 0) < 0 || (p.order ?? 0) > 999) {
+        return { message: `${p.title} has an invalid position in its tier.`, at };
+      }
+      if (max < 0 || max > 20) {
+        return { message: `${p.title} cannot allow more than 20 holders.`, at };
+      }
 
-      if (!h.email.trim()) {
+      const holders =
+        p.holders && p.holders.length
+          ? p.holders
+          : p.holder && Object.keys(p.holder).length
+            ? [p.holder]
+            : [];
+
+      if (holders.length > max) {
         return {
-          message: `${p.title} needs the holder's email.`,
+          message: `${p.title} allows ${max} holder(s) but names ${holders.length}.`,
+          at,
+        };
+      }
+
+      for (const holder of holders) {
+        const problem = checkHolder(holder, p.title, at);
+        if (problem) return problem;
+      }
+    }
+  }
+
+  // Parent links are checked after every key is known, and a walk is used so a
+  // cycle is reported where the person is rather than as a save failure.
+  for (let ci = 0; ci < doc.committees.length; ci++) {
+    for (let pi = 0; pi < doc.committees[ci].positions.length; pi++) {
+      const p = doc.committees[ci].positions[pi];
+      if (!p.parentKey) continue;
+      if (!positionKeys.has(p.parentKey)) {
+        return {
+          message: `${p.title} reports to a position that is not in this structure.`,
           at: { committee: ci, position: pi },
         };
       }
-      if (!h.firstName?.trim() || !h.lastName?.trim()) {
-        // Matches `gov_document_valid`: a holder is a person on a roll, and a
-        // person needs a name to go on it.
-        return {
-          message: `${p.title} needs the holder's first and last name.`,
-          at: { committee: ci, position: pi },
-        };
+      let walk: string | null | undefined = p.parentKey;
+      for (let step = 0; walk && step < 14; step++) {
+        if (walk === p.key) {
+          return {
+            message: `${p.title} is in a reporting loop.`,
+            at: { committee: ci, position: pi },
+          };
+        }
+        let parentKey: string | null | undefined = null;
+        for (const c of doc.committees) {
+          const parent = c.positions.find((x) => x.key === walk);
+          if (parent) {
+            parentKey = parent.parentKey;
+            break;
+          }
+        }
+        walk = parentKey;
       }
-      if (holders.has(h.email.trim().toLowerCase())) {
-        return {
-          message: `${h.email.trim()} is already an officer in another position.`,
-          at: { committee: ci, position: pi },
-        };
-      }
-      holders.add(h.email.trim().toLowerCase());
     }
   }
 

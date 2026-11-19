@@ -95,8 +95,16 @@ export async function GET(req: Request) {
       return NextResponse.json(res);
     }
 
-    if (view === "queue") {
-      const res = await callRpc<StructureResult>("list_structure_queue", {
+    if (view === "org") {
+      // The published root structure, addressed without a unit id. Any member
+      // of the organization may read it; the database scopes it by session.
+      const res = await callRpc<StructureResult>("get_org_structure", {
+        p_session_token: token,
+      });
+      return NextResponse.json(res);
+    }
+
+    if (view === "queue") {      const res = await callRpc<StructureResult>("list_structure_queue", {
         p_session_token: token,
       });
       // `no_organization` is an answer, not a failure: an officer with no
@@ -159,7 +167,7 @@ export async function POST(req: Request) {
     switch (body.action) {
       case "save":
         return NextResponse.json(
-          await callRpc<StructureResult>("save_structure_draft", {
+          await callRpc<StructureResult>("save_structure_draft_v2", {
             p_session_token: token,
             p_unit_id: unitId,
             p_template_key: text(body.templateKey),
@@ -168,6 +176,10 @@ export async function POST(req: Request) {
             p_ends_on: date(body.endsOn),
             p_document: body.document ?? {},
             p_note: text(body.note),
+            p_expected_updated_at:
+              typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt
+                ? body.expectedUpdatedAt
+                : null,
           }),
         );
 

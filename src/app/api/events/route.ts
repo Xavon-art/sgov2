@@ -23,6 +23,11 @@ type EventRow = {
   supportFiles: unknown;
   files: Array<{ id: string; name: string; url: string | null; mimeType: string | null; sizeBytes: number | null }>;
   scopes: Array<{ unitType: string | null; unitId: string | null }>;
+  assignees: Array<{ accountId: string; displayName: string }>;
+  assigneeCount: number;
+  canAssign: boolean;
+  isAssignedToMe: boolean;
+  canReport: boolean;
   claimNote: string | null;
   decisionNote: string | null;
   linkedRequest: string | null;

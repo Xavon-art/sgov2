@@ -93,7 +93,7 @@ const CASTS = {
     "integer", "integer", "text", "text", "integer", "jsonb",
   ],
   "smartgov.publish_survey": ["text", "uuid"],
-  "smartgov.submit_survey_response": ["text", "uuid", "text", "jsonb"],
+  "smartgov.submit_survey_response": ["text", "uuid", "text", "jsonb", "text"],
   "smartgov.file_personal_request": [
     "text", "uuid", "text", "text", "text", "date", "time", "text",
     "text", "text", "text", "text", "bigint",
@@ -660,6 +660,7 @@ async function main() {
         [questionIds[1]]: 4,
         [questionIds[2]]: "Longer laboratory hours during finals week.",
       }),
+      null,
     ]),
     "submit_survey_response",
   );
@@ -707,6 +708,7 @@ async function main() {
       JSON.stringify({
         [lsgQuestion.questionId ?? lsgQuestion.id]: "More study spaces and later library hours.",
       }),
+      null,
     ]),
     "submit_survey_response(member)",
   );
@@ -788,38 +790,147 @@ async function main() {
   log("chat", "coordination thread with 2 messages");
 
   // ---------------------------------------------------------------- structure (best effort)
+  //
+  // Two charts, because the product shows two: the Engineering council's chart,
+  // which is submitted for review, and the USG's own chart, which its author can
+  // approve and which is what `/org-chart` renders for every member.
+  const holder = (firstName, lastName, local) => ({
+    email: `${local}@${EMAIL_DOMAIN}`,
+    firstName,
+    lastName,
+    fullName: `${firstName} ${lastName}`,
+  });
+
+  const chartLayout = {
+    template: "pyramid",
+    orientation: "vertical",
+    theme: "parchment",
+    showPhotos: true,
+    showTitles: true,
+    tierSpacing: 1,
+    nodeSize: "md",
+  };
+
+  const engineeringDoc = {
+    schemaVersion: 2,
+    layout: chartLayout,
+    committees: [
+      {
+        key: "exec",
+        isUnit: true,
+        name: "Executive Board",
+        description: "The council's officers.",
+        positions: [
+          { key: "president", title: "President", tier: 0, order: 0, maxHolders: 1, parentKey: null,
+            holder: holder("Pedro", "Aquino", "pedro.engineering") },
+          { key: "vp", title: "Vice President", tier: 1, order: 0, maxHolders: 1, parentKey: "president",
+            holder: holder("Marco", "Villanueva", "marco.engineering") },
+          { key: "secretary", title: "Secretary", tier: 1, order: 1, maxHolders: 1, parentKey: "president",
+            holder: holder("Liza", "Fernandez", "liza.engineering") },
+          { key: "treasurer", title: "Treasurer", tier: 2, order: 0, maxHolders: 1, parentKey: "vp",
+            holder: holder("Teresa", "Lim", "teresa.engineering") },
+          { key: "auditor", title: "Auditor", tier: 2, order: 1, maxHolders: 1, parentKey: "vp",
+            holder: holder("Andres", "Bautista", "andres.engineering") },
+          { key: "pro", title: "Public Relations Officer", tier: 2, order: 2, maxHolders: 1, parentKey: "secretary",
+            holder: holder("Kim", "Soriano", "kim.engineering") },
+        ],
+      },
+      {
+        key: "finance",
+        name: "Finance Committee",
+        description: "Budget, liquidation, and audit responses.",
+        positions: [
+          { key: "finance-chair", title: "Chairperson", tier: 1, order: 2, maxHolders: 1, parentKey: "president", holder: null },
+        ],
+      },
+      {
+        key: "academics",
+        name: "Academic Affairs Committee",
+        description: "Curriculum, tutoring, and student welfare.",
+        positions: [
+          { key: "academics-chair", title: "Chairperson", tier: 1, order: 3, maxHolders: 1, parentKey: "president", holder: null },
+        ],
+      },
+    ],
+  };
+
+  const usgDoc = {
+    schemaVersion: 2,
+    layout: { ...chartLayout, template: "hierarchy" },
+    committees: [
+      {
+        key: "usg-exec",
+        isUnit: true,
+        name: "University Student Government",
+        description: "The officers of the USG.",
+        positions: [
+          { key: "usg-president", title: "President", tier: 0, order: 0, maxHolders: 1, parentKey: null,
+            holder: holder("Juan", "Dela Cruz", "juan.president") },
+          { key: "usg-vp", title: "Vice President", tier: 1, order: 0, maxHolders: 1, parentKey: "usg-president",
+            holder: holder("Maria", "Santos", "maria.vicepresident") },
+          { key: "usg-secretary", title: "Secretary", tier: 1, order: 1, maxHolders: 1, parentKey: "usg-president",
+            holder: holder("Ana", "Reyes", "ana.secretary") },
+          { key: "usg-treasurer", title: "Treasurer", tier: 1, order: 2, maxHolders: 1, parentKey: "usg-president",
+            holder: holder("Miguel", "Bautista", "miguel.treasurer") },
+          { key: "usg-auditor", title: "Auditor", tier: 1, order: 3, maxHolders: 1, parentKey: "usg-president",
+            holder: holder("Rosa", "Villanueva", "rosa.auditor") },
+          { key: "usg-pro", title: "Public Relations Officer", tier: 2, order: 0, maxHolders: 1, parentKey: "usg-secretary",
+            holder: null },
+        ],
+      },
+    ],
+  };
+
   let structureSubmitted = false;
   try {
-    const { rows: templates } = await sql(
-      `select key, document from smartgov.gov_structure_templates where is_builtin order by key limit 1`,
-    );
-    if (templates.length > 0) {
-      const draft = await call("smartgov.save_structure_draft", [
-        engToken,
-        college("College of Engineering"),
-        templates[0].key,
-        "Second Semester 2026-2027",
-        future(-30),
-        future(150),
-        templates[0].document,
-        "Council chart submitted for review.",
-      ]);
-      const structureId = draft.structureId ?? draft.id;
-      if (structureId) {
-        expect(
-          await call("smartgov.submit_structure", [engToken, structureId, "For USG review."]),
-          "submit_structure",
-        );
-        log("structure", "Engineering council chart submitted");
-        structureSubmitted = true;
-      } else {
-        log("structure", `draft saved but no id returned: ${JSON.stringify(draft)}`);
-      }
+    const draft = await call("smartgov.save_structure_draft", [
+      engToken,
+      college("College of Engineering"),
+      "standard-council",
+      "Second Semester 2026-2027",
+      future(-30),
+      future(150),
+      engineeringDoc,
+      "Council chart submitted for review.",
+    ]);
+    const structureId = draft.structureId ?? draft.id;
+    if (structureId) {
+      expect(
+        await call("smartgov.submit_structure", [engToken, structureId, "For USG review."]),
+        "submit_structure",
+      );
+      log("structure", "Engineering officer chart submitted for review");
+      structureSubmitted = true;
     } else {
-      log("structure", "skipped (no built-in templates in the database)");
+      log("structure", `draft saved but no id returned: ${JSON.stringify(draft)}`);
     }
   } catch (error) {
-    log("structure", `skipped (${error.message})`);
+    log("structure", `Engineering chart skipped (${error.message})`);
+  }
+
+  try {
+    const usgDraft = await call("smartgov.save_structure_draft", [
+      ownerToken,
+      usg.id,
+      "standard-council",
+      `A.Y. ${ACADEMIC_YEAR}`,
+      future(-30),
+      future(300),
+      usgDoc,
+      "USG chart for the current academic year.",
+    ]);
+    const usgId = usgDraft.structureId ?? usgDraft.id;
+    if (usgId) {
+      const decided = await call("smartgov.submit_structure", [ownerToken, usgId, "Publishing the USG chart."]);
+      log(
+        "structure",
+        decided.status === "approved" || decided.autoApproved
+          ? "USG chart approved and published"
+          : "USG chart submitted",
+      );
+    }
+  } catch (error) {
+    log("structure", `USG chart skipped (${error.message})`);
   }
 
   // ---------------------------------------------------------------- member response

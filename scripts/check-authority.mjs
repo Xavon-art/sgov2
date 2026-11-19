@@ -1610,6 +1610,7 @@ async function main() {
   const feedbackClient = new pg.Client({ connectionString: env.DATABASE_URL });
   await feedbackClient.connect();
   const createdFeedbackIds = [];
+  const otherOrgIds = new Set();
   try {
     const accountRows = await feedbackClient.query(
       `select id, email, organization_id from smartgov.accounts where email = any($1::text[])`,
@@ -1630,7 +1631,25 @@ async function main() {
       `select id from public.organizations where id <> $1 order by created_at asc nulls last limit 1`,
       [orgId],
     );
-    const otherOrgId = otherOrg.rows[0]?.id;
+    let otherOrgId = otherOrg.rows[0]?.id;
+    if (!otherOrgId) {
+      const stamp = Date.now();
+      otherOrgId = (
+        await feedbackClient.query(
+          `insert into public.organizations (
+             slug, name, governance_model, charter_number, academic_year, university_name
+           ) values ($1, $2, 'federated', $3, '2026-2027', $4)
+           returning id`,
+          [
+            `authority-check-${stamp}`,
+            "Authority Check University",
+            `AUTH-CHECK-${stamp}`,
+            "Authority Check University",
+          ],
+        )
+      ).rows[0].id;
+      otherOrgIds.add(otherOrgId);
+    }
     check("feedback fixture second organization resolves", Boolean(otherOrgId));
 
     const marker = `Authority feedback ${Date.now()}`;
@@ -1797,6 +1816,11 @@ async function main() {
         .query("delete from smartgov.feedback_entries where id = any($1::uuid[])", [
           createdFeedbackIds,
         ])
+        .catch(() => {});
+    }
+    if (otherOrgIds.size) {
+      await feedbackClient
+        .query("delete from public.organizations where id = any($1::uuid[])", [[...otherOrgIds]])
         .catch(() => {});
     }
     await feedbackClient.end();
