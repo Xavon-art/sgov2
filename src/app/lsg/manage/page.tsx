@@ -6,8 +6,12 @@ import { useAccount } from "@/components/dashboard/dashboard-context";
 import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
+import { DocumentLibraryPanel } from "@/components/dashboard/DocumentLibraryPanel";
+import { DocumentSearchPanel } from "@/components/dashboard/DocumentSearchPanel";
+import { BudgetPanel } from "@/components/dashboard/BudgetPanel";
+import { FeedbackPanel } from "@/components/dashboard/FeedbackPanel";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
-import { IconBuilding, IconLayers, IconUser } from "@/components/ui/Icons";
+import { IconArchive, IconBudget, IconBuilding, IconEye, IconLayers, IconMail, IconUser } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,10 +27,18 @@ import { cn } from "@/lib/utils";
  * there is no id to name here.
  */
 
-type Tab = "usg" | "profile" | "structure";
+type Tab = "usg" | "profile" | "structure" | "documents" | "search" | "budget" | "feedback";
 
 function isTab(value: string | null): value is Tab {
-  return value === "usg" || value === "profile" || value === "structure";
+  return (
+    value === "usg" ||
+    value === "profile" ||
+    value === "structure" ||
+    value === "documents" ||
+    value === "search" ||
+    value === "budget" ||
+    value === "feedback"
+  );
 }
 
 export default function LsgManagePage() {
@@ -68,6 +80,10 @@ export default function LsgManagePage() {
           { id: "usg" as const, label: "My USG", icon: IconBuilding },
           { id: "profile" as const, label: "Profile", icon: IconUser },
           { id: "structure" as const, label: "Government structure", icon: IconLayers },
+          { id: "documents" as const, label: "Documents", icon: IconArchive },
+          { id: "search" as const, label: "Search", icon: IconEye },
+          { id: "budget" as const, label: "Budget", icon: IconBudget },
+          { id: "feedback" as const, label: "Feedback", icon: IconMail },
         ]).map((t) => (
           <button
             key={t.id}
@@ -93,6 +109,11 @@ export default function LsgManagePage() {
       ) : null}
 
       {tab === "profile" ? <ProfileSection allowCustomisation={false} /> : null}
+
+      {tab === "documents" ? <DocumentLibraryPanel /> : null}
+      {tab === "search" ? <DocumentSearchPanel /> : null}
+      {tab === "budget" ? <BudgetPanel /> : null}
+      {tab === "feedback" ? <FeedbackPanel mode="submit" /> : null}
 
       {tab === "structure" ? (
         <div className="rounded-2xl border border-line bg-paper/70 p-4 sm:p-5">

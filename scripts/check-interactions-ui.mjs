@@ -25,9 +25,10 @@ function fixture() {
     const email = line.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
     if (!email) continue;
     if (/^\s*Owner\s*\/\s*Founder/i.test(line)) emails.usg = email;
+    else if (/^\s*President\s+Juan/i.test(line)) emails.reviewer = email;
     else if (/^\s*President\s+Pedro/i.test(line)) emails.lsg = email;
   }
-  if (!password || !emails.usg || !emails.lsg) {
+  if (!password || !emails.usg || !emails.lsg || !emails.reviewer) {
     throw new Error("Fixture credentials are missing expected accounts.");
   }
   return { password, emails };
@@ -291,8 +292,69 @@ async function eventCancelProbes(page, email, password) {
   await signOut(page);
 }
 
-async function main() {
-  const { password, emails } = fixture();
+async function documentReviewProbe(page, email, password) {
+  const documentPattern = "**/api/documents?limit=100";
+  await page.route(documentPattern, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        canApprove: true,
+        rows: [
+          {
+            submissionId: "55555555-5555-4555-8555-555555555555",
+            title: "QA Reviewer Document",
+            description: "Pending document for the reviewer probe",
+            keywords: "qa, reviewer",
+            groupKind: "requirement",
+            groupLabel: null,
+            type: "file",
+            unitName: "QA Unit",
+            status: "pending",
+            submittedAt: new Date().toISOString(),
+            canEdit: true,
+            approvalRemark: null,
+          },
+        ],
+      }),
+    }),
+  );
+
+  await signIn(page, email, password);
+  await nav(page, "Manage", /\/usg\/manage/);
+
+  const documentsTab = page.getByRole("tab", { name: "Documents", exact: true });
+  const searchTab = page.getByRole("tab", { name: "Search", exact: true });
+  check(
+    "non-owner USG reviewer sees the Documents and Search tabs",
+    (await documentsTab.count()) === 1 && (await searchTab.count()) === 1,
+  );
+  check(
+    "non-owner USG reviewer does not see owner-only management tabs",
+    (await page.getByRole("tab", { name: "Umbrella", exact: true }).count()) === 0 &&
+      (await page.getByRole("tab", { name: "Invites", exact: true }).count()) === 0 &&
+      (await page
+        .getByRole("tab", { name: "Government structure", exact: true })
+        .count()) === 0,
+  );
+
+  await documentsTab.click();
+  await page.getByText("QA Reviewer Document").waitFor();
+  const reviewButton = page.getByRole("button", { name: "Review", exact: true });
+  check("document review control renders for an org reviewer", await reviewButton.isVisible());
+  await reviewButton.click();
+  check(
+    "document approve and reject controls render for an org reviewer",
+    (await page.getByRole("button", { name: "Approve", exact: true }).isVisible()) &&
+      (await page.getByRole("button", { name: "Reject", exact: true }).isVisible()),
+  );
+
+  await page.unroute(documentPattern);
+  await signOut(page);
+}
+
+async function main() {  const { password, emails } = fixture();
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.setDefaultTimeout(10000);
@@ -354,6 +416,7 @@ async function main() {
     await requestFailureProbe(page, emails.lsg, password);
     await surveyDuplicateFailureProbe(page, emails.lsg, password);
     await eventCancelProbes(page, emails.usg, password);
+    await documentReviewProbe(page, emails.reviewer, password);
     check("no unexpected browser console errors", consoleErrors.length === 0, consoleErrors.join(" | "));
   } catch (error) {
     check("browser interaction run completed", false, error.message);

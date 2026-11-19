@@ -12,6 +12,31 @@ const VIEWPORTS = [
   { name: "desktop", width: 1440, height: 900 },
 ];
 
+const FEDERATED_TABS = {
+  usg: [
+    { parent: "Request", path: "/usg/request", href: "/usg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
+    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+  ],
+  lsg: [
+    { parent: "Request", path: "/lsg/request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
+    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+  ],
+};
+
 let checks = 0;
 let failures = 0;
 
@@ -73,6 +98,129 @@ async function nav(page, label, expectedPath) {
   await page.locator("h1").first().waitFor({ timeout: 30000 });
 }
 
+async function openFederatedTab(page, role, tab) {
+  await nav(page, tab.parent, new RegExp(`${tab.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+  const wide = (page.viewportSize()?.width ?? 1440) >= 1024;
+  if (!wide) {
+    const openMenu = page.getByRole("button", { name: /open menu/i });
+    if (await openMenu.count()) await openMenu.click();
+  }
+  const scope = wide
+    ? page
+    : page.getByRole("dialog", { name: /workspace menu/i });
+  await scope.locator(`a[href="${tab.href}"]`).first().click();
+  await page.waitForURL(
+    (url) => url.pathname === tab.path && url.searchParams.get("tab") === tab.tab,
+    { timeout: 30000 },
+  );
+  await page.locator("h1").first().waitFor({ timeout: 30000 });
+}
+
+async function federatedTabsPass(page, role) {
+  for (const tab of FEDERATED_TABS[role]) {
+    try {
+      await openFederatedTab(page, role, tab);
+      const crumb = page.locator('[data-tour="workspace-breadcrumbs"]').first();
+      const crumbText = (await crumb.textContent()) ?? "";
+      const selected =
+        tab.kind === "role"
+          ? await page
+              .getByRole("tab", { name: new RegExp(`^${tab.label}$`, "i") })
+              .first()
+              .getAttribute("aria-selected")
+          : await page
+              .locator(`[data-tour="${tab.anchor}"] button`)
+              .filter({ hasText: tab.label })
+              .first()
+              .evaluate((el) => el.className.includes("bg-ink"));
+      const selectedOk = tab.kind === "role" ? selected === "true" : selected === true;
+      check(
+        `${role} opens ${tab.label} through the ${tab.parent} navigation`,
+        crumbText.includes(tab.crumb) && selectedOk,
+        JSON.stringify({ crumbText, selected }),
+      );
+    } catch (error) {
+      check(`${role} opens ${tab.label} through the ${tab.parent} navigation`, false, error.message);
+    }
+  }
+
+  const otherRole = role === "usg" ? "lsg" : "usg";
+  for (const tab of FEDERATED_TABS[otherRole]) {
+    try {
+      const pushed = await page.evaluate((nextHref) => {
+        const router = window.next?.router;
+        if (!router || typeof router.push !== "function") return false;
+        router.push(nextHref);
+        return true;
+      }, tab.href);
+      if (!pushed) throw new Error("client router unavailable for the wrong-side probe");
+      await page
+        .waitForURL((url) => url.pathname.startsWith(`/${role}`), { timeout: 30000 })
+        .catch(() => {});
+      const url = new URL(page.url());
+      check(
+        `${role} cannot open ${otherRole} ${tab.label}`,
+        url.pathname.startsWith(`/${role}`),
+        page.url(),
+      );
+    } catch (error) {
+      check(`${role} cannot open ${otherRole} ${tab.label}`, false, error.message);
+    }
+  }
+}
+
+async function federatedUiStatesPass(page, role) {
+  if (role === "usg") {
+    const searchTab = FEDERATED_TABS.usg.find((tab) => tab.tab === "search");
+    try {
+      await openFederatedTab(page, role, searchTab);
+      await page.locator("#document-search-q").first().fill("no-such-federation-document-2026");
+      await page.getByRole("button", { name: /search catalog/i }).first().click();
+      await page.getByText(/no documents match this search/i).first().waitFor({ timeout: 15000 });
+      check("USG document search shows its empty state", true);
+    } catch (error) {
+      check("USG document search shows its empty state", false, error.message);
+    }
+    return;
+  }
+
+  const feedbackTab = FEDERATED_TABS.lsg.find((tab) => tab.tab === "feedback");
+  const handler = async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: false, message: "Forced submission failure." }),
+      });
+      return;
+    }
+    await route.continue();
+  };
+  try {
+    await openFederatedTab(page, role, feedbackTab);
+    await page.route("**/api/feedback", handler);
+    await page.getByLabel("Subject", { exact: true }).first().fill("Federation failure state");
+    await page
+      .getByLabel("Message", { exact: true })
+      .first()
+      .fill("This submission is forced to fail in the browser gate.");
+    const submit = page.getByRole("button", { name: /send feedback/i }).first();
+    await submit.click();
+    await page
+      .getByRole("alert")
+      .filter({ hasText: "Forced submission failure." })
+      .first()
+      .waitFor({ timeout: 15000 });
+    check("LSG feedback submission shows a visible failure", true);
+    check("LSG feedback submit stays usable after failure", await submit.isEnabled());
+  } catch (error) {
+    check("LSG feedback submission shows a visible failure", false, error.message);
+    check("LSG feedback submit stays usable after failure", false, error.message);
+  } finally {
+    await page.unroute("**/api/feedback", handler).catch(() => {});
+  }
+}
+
 async function rolePass(page, role, email, password, consoleErrors) {
   console.log(`${role.toUpperCase()} browser pass`);
   await signIn(page, email, password);
@@ -94,6 +242,9 @@ async function rolePass(page, role, email, password, consoleErrors) {
       check(`${role} reaches ${label} through client navigation`, false, error.message);
     }
   }
+
+  await federatedTabsPass(page, role);
+  await federatedUiStatesPass(page, role);
 
   try {
     await page.getByRole("button", { name: /sign out/i }).first().evaluate((el) => el.click());

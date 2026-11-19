@@ -12,7 +12,9 @@ import {
   IconPencil,
   IconSubmission,
   IconUser,
+  IconVerification,
 } from "@/components/ui/Icons";
+import { ResolutionPanel } from "@/components/dashboard/ResolutionPanel";
 import { FieldShell, TextArea, TextField } from "@/components/ui/Field";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
@@ -119,11 +121,16 @@ function fmtTime(s: string) {
 export function RequestSection({ isUsg }: { isUsg: boolean }) {
   useDashboard();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<"tasks" | "personal">(
-    searchParams.get("tab") === "personal" ? "personal" : "tasks",
+  const [tab, setTab] = useState<"tasks" | "personal" | "resolutions">(
+    searchParams.get("tab") === "personal"
+      ? "personal"
+      : searchParams.get("tab") === "resolutions"
+        ? "resolutions"
+        : "tasks",
   );
   useEffect(() => {
-    const next = searchParams.get("tab") === "personal" ? "personal" : "tasks";
+    const raw = searchParams.get("tab");
+    const next = raw === "personal" ? "personal" : raw === "resolutions" ? "resolutions" : "tasks";
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTab(next);
   }, [searchParams]);
@@ -283,6 +290,13 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
         >
           <IconUser className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           Personal requests
+        </button>
+        <button
+          onClick={() => setTab("resolutions")}
+          className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "resolutions" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
+        >
+          <IconVerification className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          Resolutions
         </button>
         {!isUsg && (
           <Button data-tour="request-file-personal" size="sm" className="ml-auto" onClick={() => setShowPR(true)}>
@@ -467,6 +481,8 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
           ))}
         </div>
       )}
+
+      {tab === "resolutions" && <ResolutionPanel isUsg={isUsg} />}
 
       {showPR && !isUsg && <PersonalRequestModal onClose={() => setShowPR(false)} onDone={loadPersonal} />}
     </div>

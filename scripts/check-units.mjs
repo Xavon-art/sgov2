@@ -56,6 +56,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  extractWidgetWhitelistIds,
+  STABLE_WIDGET_IDS,
+} from "./check-federated-features.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -1757,7 +1761,11 @@ check(
 
 check(
   "the calendar API refuses a window it cannot use",
-  /ISO_DATE\.test/.test(feedRoute) && /n > 400/.test(feedRoute),
+  /ISO_DATE\.test/.test(feedRoute) &&
+    /value\.split\("-"\)/.test(feedRoute) &&
+    /isCalendarMonth\(month\)/.test(feedRoute) &&
+    /getUTCDate\(\) === 1/.test(feedRoute) &&
+    /n > 400/.test(feedRoute),
   "a bad month or an oversized window is forwarded to SQL unchecked",
 );
 
@@ -2670,6 +2678,57 @@ check(
     /x-survey-access-proof/i.test(publicSurveyPage) &&
     /proofToken/i.test(publicSurveyPage) &&
     /accessProof: accessProof/i.test(publicSurveyPage),
+);
+
+const widgetPreferenceMigration = readPendingMigration(
+  "20260101003194_dashboard_widget_preferences.sql",
+);
+const widgetWhitelistIds = extractWidgetWhitelistIds(widgetPreferenceMigration);
+check(
+  "03194 still whitelists the unchanged dashboard widget ids",
+  widgetWhitelistIds.length === STABLE_WIDGET_IDS.length &&
+    STABLE_WIDGET_IDS.every((id, index) => id === widgetWhitelistIds[index]),
+  `got [${widgetWhitelistIds.join(", ")}], expected [${STABLE_WIDGET_IDS.join(", ")}]`,
+);
+
+const finalFixMigration = readPendingMigration("20260101003280_final_review_fixes.sql");
+const finalFixFlat = flat(finalFixMigration);
+check(
+  "03280 documents derive campus from the requirement's proposal chain",
+  /item_submissions dis on dis\.id = d\.submission_id/i.test(finalFixFlat) &&
+    /proposal_versions dpv on dpv\.id = dis\.version_id/i.test(finalFixFlat) &&
+    /proposals dp on dp\.id = dpv\.proposal_id/i.test(finalFixFlat) &&
+    /coalesce\(dp\.unit_id, de\.unit_id, dr\.unit_id\)/i.test(finalFixFlat) &&
+    !/d\.group_id = dp\.id/i.test(finalFixFlat),
+  "a requirement document's group id is not its proposal id",
+);
+
+check(
+  "03280 metadata edits preserve an existing resolution or event linkage",
+  /v_existing\.group_kind/i.test(finalFixFlat) &&
+    /v_existing\.group_id/i.test(finalFixFlat) &&
+    /nullif\(btrim\(coalesce\(p_group_kind/i.test(finalFixFlat),
+  "a metadata edit still clears the linkage the filing officer chose",
+);
+
+const documentPatchRoute = readPendingSource("src/app/api/documents/[submissionId]/route.ts");
+check(
+  "document metadata edits keep an omitted group kind null",
+  /groupKind === "string" \? body\.groupKind\.trim\(\) : ""/.test(documentPatchRoute) &&
+    /p_group_kind: groupKind \|\| null/.test(documentPatchRoute) &&
+    !/: "requirement"/.test(documentPatchRoute),
+  "an omitted kind becomes requirement before SQL can preserve the stored linkage",
+);
+
+const resolutionDetailRoute = readPendingSource("src/app/api/resolutions/[id]/route.ts");
+const resolutionReviewRoute = readPendingSource("src/app/api/resolutions/[id]/review/route.ts");
+check(
+  "resolution routes refuse malformed ids before calling SQL",
+  /UUID_RE\.test\(id\)/.test(resolutionDetailRoute) &&
+    /UUID_RE\.test\(id\)/.test(resolutionReviewRoute) &&
+    /status: 400/.test(resolutionDetailRoute) &&
+    /status: 400/.test(resolutionReviewRoute),
+  "a malformed id reaches Postgres and becomes a 500",
 );
 
 console.log(

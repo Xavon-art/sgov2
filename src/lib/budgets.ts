@@ -24,6 +24,9 @@ export type BudgetRow = {
   id: string;
   proposalId: string | null;
   proposalTitle: string | null;
+  eventId: string | null;
+  eventTitle: string | null;
+  eventDate: string | null;
   title: string;
   status: BudgetStatus;
   unitId: string | null;
@@ -38,6 +41,9 @@ export type BudgetRow = {
 export type BudgetDetail = {
   id: string;
   proposalId: string | null;
+  eventId: string | null;
+  eventTitle: string | null;
+  eventDate: string | null;
   title: string;
   justification: string | null;
   status: BudgetStatus;

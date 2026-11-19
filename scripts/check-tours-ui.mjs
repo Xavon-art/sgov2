@@ -72,6 +72,31 @@ const NAV_LABELS = {
 
 const AWAY_ROUTES = { usg: "/usg/structure", lsg: "/lsg/request" };
 
+const FEDERATED_TABS = {
+  usg: [
+    { parent: "Request", href: "/usg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
+    { parent: "Events and Acts", href: "/usg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+  ],
+  lsg: [
+    { parent: "Request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
+    { parent: "Events and Acts", href: "/lsg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+  ],
+};
+
 let checks = 0;
 let failures = 0;
 let secrets = [];
@@ -357,7 +382,8 @@ async function runTour(page, info) {
 
 async function clientNavigate(page, href) {
   const target = new URL(href, BASE);
-  if (new URL(page.url()).pathname === target.pathname) return true;
+  const arrivedAt = (url) => url.pathname === target.pathname && url.search === target.search;
+  if (arrivedAt(new URL(page.url()))) return true;
 
   const pushed = await page.evaluate((nextHref) => {
     const router = window.next?.router;
@@ -367,7 +393,7 @@ async function clientNavigate(page, href) {
   }, href);
   if (pushed) {
     const arrived = await page
-      .waitForURL((url) => url.pathname === target.pathname, { timeout: 15000 })
+      .waitForURL(arrivedAt, { timeout: 15000 })
       .then(() => true)
       .catch(() => false);
     if (arrived) return true;
@@ -388,9 +414,63 @@ async function clientNavigate(page, href) {
   if (!(await link.count())) return false;
   await link.click();
   return page
-    .waitForURL((url) => url.pathname === target.pathname, { timeout: 15000 })
+    .waitForURL(arrivedAt, { timeout: 15000 })
     .then(() => true)
     .catch(() => false);
+}
+
+async function federatedTabPass(page, role) {
+  for (const tab of FEDERATED_TABS[role]) {
+    try {
+      const navigated = await clientNavigate(page, tab.href);
+      check(`${role} ${tab.label} tab client navigation reaches its view`, navigated, tab.href);
+      if (!navigated) continue;
+      const crumbText = (await page.locator('[data-tour="workspace-breadcrumbs"]').first().textContent()) ?? "";
+      const selected =
+        tab.kind === "role"
+          ? await page
+              .getByRole("tab", { name: new RegExp(`^${tab.label}$`, "i") })
+              .first()
+              .getAttribute("aria-selected")
+          : await page
+              .locator(`[data-tour="${tab.anchor}"] button`)
+              .filter({ hasText: tab.label })
+              .first()
+              .evaluate((el) => el.className.includes("bg-ink"));
+      const selectedOk = tab.kind === "role" ? selected === "true" : selected === true;
+      check(
+        `${role} ${tab.label} tab shows breadcrumb and selection`,
+        crumbText.includes(tab.crumb) && selectedOk,
+        JSON.stringify({ crumbText, selected }),
+      );
+    } catch (error) {
+      check(`${role} ${tab.label} tab pass completed`, false, error.message);
+    }
+  }
+
+  const otherRole = role === "usg" ? "lsg" : "usg";
+  for (const tab of FEDERATED_TABS[otherRole]) {
+    try {
+      const pushed = await page.evaluate((nextHref) => {
+        const router = window.next?.router;
+        if (!router || typeof router.push !== "function") return false;
+        router.push(nextHref);
+        return true;
+      }, tab.href);
+      if (!pushed) throw new Error("client router unavailable for the wrong-side probe");
+      await page
+        .waitForURL((url) => url.pathname.startsWith(`/${role}`), { timeout: 30000 })
+        .catch(() => {});
+      const url = new URL(page.url());
+      check(
+        `${role} cannot open ${otherRole} ${tab.label} tab`,
+        url.pathname.startsWith(`/${role}`),
+        page.url(),
+      );
+    } catch (error) {
+      check(`${role} cannot open ${otherRole} ${tab.label} tab`, false, error.message);
+    }
+  }
 }
 
 async function findSurveyHref(page) {
@@ -632,6 +712,7 @@ async function rolePass(browser, role, email, password) {
       }
     }
 
+    await federatedTabPass(page, role);
     await specialPasses(page, role);
   } finally {
     await context.close();

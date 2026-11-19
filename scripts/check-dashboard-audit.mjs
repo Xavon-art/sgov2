@@ -1,5 +1,8 @@
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { assertNavIdsStable, STABLE_NAV_IDS } from "./check-federated-features.mjs";
+
+export const DASHBOARD_AUDIT_TARGET = 25;
 
 const BASE = process.env.DASHBOARD_AUDIT_BASE_URL ?? "http://localhost:3000";
 const CREDENTIALS =
@@ -157,12 +160,16 @@ async function overviewCheck(page) {
 
 async function lsgRequestTourCheck(page) {
   await signIn(page, account(17));
-  await visit(page, "/lsg/request");
+  await page.evaluate(() => window.next.router.push("/lsg/request"));
+  await page.locator('[data-tour="request-tabs"]').first().waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
+  await dismissTour(page);
   check("LSG Request tour can find the File request control", (await page.locator('[data-tour="request-file-personal"]').count()) > 0);
   check("LSG Request tour can find the Task list", (await page.locator('[data-tour="request-task-list"]').count()) > 0);
 }
 
 async function main() {
+  assertNavIdsStable("usg", STABLE_NAV_IDS);
+  assertNavIdsStable("lsg", STABLE_NAV_IDS);
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.setDefaultTimeout(15000);
@@ -177,6 +184,15 @@ async function main() {
     await browser.close();
   }
   console.log(`\n${checks - failures}/${checks} checks passed.`);
+  if (
+    checks !== DASHBOARD_AUDIT_TARGET ||
+    checks - failures !== DASHBOARD_AUDIT_TARGET
+  ) {
+    console.error(
+      `dashboard audit target changed: expected ${DASHBOARD_AUDIT_TARGET}/${DASHBOARD_AUDIT_TARGET}, got ${checks - failures}/${checks}`,
+    );
+    process.exitCode = 1;
+  }
   if (failures > 0) process.exitCode = 1;
 }
 

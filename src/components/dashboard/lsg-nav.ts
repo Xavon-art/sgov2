@@ -35,6 +35,10 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
         { label: "My USG", href: "/lsg/manage?tab=usg" },
         { label: "Government structure", href: "/lsg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
+        { label: "Documents", href: "/lsg/manage?tab=documents" },
+        { label: "Search", href: "/lsg/manage?tab=search" },
+        { label: "Budget", href: "/lsg/manage?tab=budget" },
+        { label: "Feedback", href: "/lsg/manage?tab=feedback" },
       ],
     },
     {
@@ -46,6 +50,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       children: [
         { label: "Tasks and Inbox", href: "/lsg/request" },
         { label: "My Personal Requests", href: "/lsg/personal-requests" },
+        { label: "Resolutions", href: "/lsg/request?tab=resolutions" },
       ],
     },
     {
@@ -54,6 +59,11 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       hint: "Your calendar and its standing",
       href: "/lsg/events",
       icon: "events",
+      children: [
+        { label: "Calendar", href: "/lsg/events?tab=calendar" },
+        { label: "Future Events", href: "/lsg/events?tab=future" },
+        { label: "Accomplishment", href: "/lsg/events?tab=accomplishment" },
+      ],
     },
     {
       id: "survey",

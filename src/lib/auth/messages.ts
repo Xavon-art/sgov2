@@ -120,6 +120,9 @@ const RPC_MESSAGES: Record<string, string> = {
   logo_too_large: "That logo is too large. Choose an image under about 150 KB.",
   missing_start: "Choose the date the deactivation starts.",
   end_before_start: "The end date has to be after the start date.",
+  immutable_field:
+    "Email and role cannot be changed here. Use the existing account actions for those.",
+  invalid_officer_field: "Keep each profile field under 200 characters.",
 
   // ---- request module (03110-03115)
   //
@@ -133,11 +136,20 @@ const RPC_MESSAGES: Record<string, string> = {
   task_closed: "This task is closed, so it no longer takes answers or messages.",
   already_closed: "This task has already been closed.",
   already_done: "The office has already marked this unit done.",
+  invalid_body: "Write a short paragraph of at least 10 characters for the resolution.",
   invalid_subject: "Give the request a subject of 4 to 160 characters.",
+  invalid_feedback_subject: "Give the feedback a subject of 3 to 160 characters.",
+  invalid_message: "Write feedback of at least 10 characters.",
   invalid_cover_letter: "Write a cover letter of at least 10 characters.",
   message_empty: "Write something before sending.",
   message_too_long: "That message is too long. Keep it under 4000 characters.",
   invalid_reaction: "That reaction is not one of the four available.",
+  invalid_narrative: "Write what was accomplished in at least 10 characters.",
+  invalid_highlights: "Keep the highlights under 2000 characters.",
+  duplicate_report:
+    "A report for this event has already been filed. Wait for it to be returned before revising it.",
+  attachment_not_allowed: "That attachment is not one you can use for this report.",
+  event_not_available: "That event can no longer take an accomplishment report.",
 };
 
 export function messageFor(reason?: string): string {

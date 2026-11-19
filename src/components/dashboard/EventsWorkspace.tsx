@@ -1,12 +1,15 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { useAccount } from "@/components/dashboard/dashboard-context";
 import { SectionIcon, selectClass } from "@/components/dashboard/workspace-shared";
 import { IconCheckCircle, IconClose, IconEvents, IconPencil, IconShield } from "@/components/ui/Icons";
+import { toDraftPayload, type DraftItem } from "@/lib/budgets";
+import { CalendarPanel } from "@/components/dashboard/CalendarPanel";
+import { AccomplishmentPanel } from "@/components/dashboard/AccomplishmentPanel";
 
 type EvFile = { id: string; name: string; url: string | null; mimeType: string | null; sizeBytes: number | null };
 type EvScope = { unitType: string | null; unitId: string | null };
@@ -51,7 +54,26 @@ const SCOPE_OPTIONS = [
 const UNIT_TYPES = ["usg", "lsg", "department", "council", "committee"];
 
 export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
-  const account = useAccount();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const view: "list" | "calendar" | "future" | "accomplishment" =
+    tabParam === "calendar"
+      ? "calendar"
+      : tabParam === "future"
+        ? "future"
+        : tabParam === "accomplishment"
+          ? "accomplishment"
+          : "list";
+  const setView = (next: "list" | "calendar" | "future" | "accomplishment") => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "list") params.delete("tab");
+    else params.set("tab", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
   const [events, setEvents] = useState<Ev[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,14 +81,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [filter, setFilter] = useState("all");
-  const [view, setView] = useState<"list" | "calendar">("list");
-  const [month, setMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
 
   const [showCreate, setShowCreate] = useState(false);
-  const [selected, setSelected] = useState<Ev | null>(null);
 
   // create form
   const [title, setTitle] = useState("");
@@ -93,6 +109,16 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   const [claimTarget, setClaimTarget] = useState<Ev | null>(null);
   const [claimNoteInput, setClaimNoteInput] = useState("");
 
+  // budget
+  const [budgetTarget, setBudgetTarget] = useState<Ev | null>(null);
+  const [budgetTitle, setBudgetTitle] = useState("");
+  const [budgetJustification, setBudgetJustification] = useState("");
+  const [budgetItems, setBudgetItems] = useState<DraftItem[]>([
+    { label: "", quantity: "1", unitCost: "" },
+  ]);
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -109,8 +135,10 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
+    const t = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(t);
   }, [load]);
 
   useEffect(() => {
@@ -245,6 +273,50 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     }
   };
 
+  const openBudget = (ev: Ev) => {
+    setBudgetTarget(ev);
+    setBudgetTitle(`${ev.title} budget`.slice(0, 140));
+    setBudgetJustification("");
+    setBudgetItems([{ label: "", quantity: "1", unitCost: "" }]);
+    setBudgetError(null);
+  };
+
+  const submitBudget = async () => {
+    if (!budgetTarget) return;
+    if (budgetTitle.trim().length < 4) {
+      setBudgetError("Give the budget a name of at least 4 characters.");
+      return;
+    }
+    const payload = toDraftPayload(budgetItems);
+    if (!payload.ok) {
+      setBudgetError(payload.message);
+      return;
+    }
+
+    setBudgetSaving(true);
+    setBudgetError(null);
+    try {
+      const res = await fetch("/api/budgets", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          eventId: budgetTarget.id,
+          title: budgetTitle.trim(),
+          justification: budgetJustification.trim(),
+          items: payload.items,
+        }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.message);
+      setBudgetTarget(null);
+      setNote("Budget request submitted.");
+    } catch (e) {
+      setBudgetError(e instanceof Error ? e.message : "Could not submit the budget.");
+    } finally {
+      setBudgetSaving(false);
+    }
+  };
+
   const cancel = async (ev: Ev) => {
     if (saving) return;
     if (!window.confirm("Cancel this event?")) return;
@@ -263,20 +335,6 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   };
 
   // calendar grouping
-  const daysInMonth = (() => {
-    const [y, m] = month.split("-").map(Number);
-    return new Date(y, m, 0).getDate();
-  })();
-  const firstWeekday = (() => {
-    const [y, m] = month.split("-").map(Number);
-    return new Date(y, m - 1, 1).getDay();
-  })();
-  const eventsByDate = new Map<string, Ev[]>();
-  for (const e of filtered) {
-    const arr = eventsByDate.get(e.eventDate) ?? [];
-    arr.push(e);
-    eventsByDate.set(e.eventDate, arr);
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-[110rem] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-10">
@@ -309,6 +367,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
         <div className="flex gap-1">
           <button onClick={() => setView("list")} className={`rounded-full px-3 py-1 text-sm ${view === "list" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>List</button>
           <button onClick={() => setView("calendar")} className={`rounded-full px-3 py-1 text-sm ${view === "calendar" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Calendar</button>
+          <button onClick={() => setView("future")} className={`rounded-full px-3 py-1 text-sm ${view === "future" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Future Events</button>
+          <button onClick={() => setView("accomplishment")} className={`rounded-full px-3 py-1 text-sm ${view === "accomplishment" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Accomplishment</button>
         </div>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-line px-3 py-1.5 text-sm">
           <option value="all">All</option>
@@ -318,9 +378,6 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
           <option value="not_honored">Not honoured</option>
           <option value="cancelled">Cancelled</option>
         </select>
-        {view === "calendar" && (
-          <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-xl border border-line px-3 py-1.5 text-sm" />
-        )}
       </div>
 
       {loading && <p className="text-muted">Loading…</p>}
@@ -337,11 +394,11 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                     {e.eventDate}
                     {e.eventTime ? ` ${e.eventTime}` : ""}
                     {e.timezone ? ` (${e.timezone})` : ""}
-                    {e.venue ? ` · ${e.venue}` : ""}
+                    {e.venue ? ` • ${e.venue}` : ""}
                   </div>
                   <div className="text-xs text-muted mt-1">
-                    Scope: {e.scope} · Status: {e.status} · Honour: {e.honorStatus}
-                    {e.source ? ` · Source: ${e.source}` : ""}
+                    Scope: {e.scope} • Status: {e.status} • Honour: {e.honorStatus}
+                    {e.source ? ` • Source: ${e.source}` : ""}
                   </div>
                   {e.description && <p className="mt-2 text-sm text-body whitespace-pre-wrap">{e.description}</p>}
                   {e.files.length > 0 && (
@@ -367,6 +424,11 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                       Claim
                     </Button>
                   )}
+                  {!e.cancelledAt && (
+                    <Button size="sm" onClick={() => openBudget(e)}>
+                      Submit budget
+                    </Button>
+                  )}
                   {e.canEdit && !e.cancelledAt && (
                     <button disabled={saving} onClick={() => void cancel(e)} className="inline-flex items-center justify-end gap-1.5 text-xs text-[#a5442c] underline disabled:opacity-50">
                       <IconClose className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
@@ -389,42 +451,18 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
         </div>
       )}
 
-      {view === "calendar" && !loading && (
-        <div className="rounded-2xl border border-line bg-paper p-4">
-          <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <div key={d}>{d}</div>
-            ))}
-          </div>
-          <div className="mt-2 grid grid-cols-7 gap-1">
-            {Array.from({ length: firstWeekday }).map((_, i) => (
-              <div key={`pad-${i}`} />
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1;
-              const dateStr = `${month}-${String(day).padStart(2, "0")}`;
-              const dayEvents = eventsByDate.get(dateStr) ?? [];
-              return (
-                <div key={day} className="min-h-[4rem] rounded-lg border border-line p-1 text-xs">
-                  <div className="font-medium text-muted">{day}</div>
-                  {dayEvents.map((e) => (
-                    <div key={e.id} className="mt-0.5 truncate rounded bg-brass-soft/40 px-1 text-[0.65rem] text-ink">
-                      {e.title}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {(view === "calendar" || view === "future") && !loading && (
+        <CalendarPanel variant={view === "future" ? "future" : "calendar"} />
       )}
+
+      {view === "accomplishment" && !loading && <AccomplishmentPanel isUsg={isUsg} />}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-line bg-paper p-6">
             <div className="mb-4 flex items-center justify-between">
               <div className="text-lg font-medium">Create event</div>
-              <button onClick={() => setShowCreate(false)}>✕</button>
+              <button onClick={() => setShowCreate(false)}>×</button>
             </div>
             <div className="grid gap-3">
               <div>
@@ -531,7 +569,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                       className="flex-1 rounded-lg border border-line px-2 py-1 text-sm"
                     />
                     <button onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))} className="text-xs text-muted">
-                      ✕
+                      ×
                     </button>
                   </div>
                 ))}
@@ -621,6 +659,120 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
             setClaimNoteInput("");
           }}
         />
+      )}
+
+      {budgetTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-line bg-paper p-6">
+            <div className="mb-1 flex items-center justify-between gap-4">
+              <div className="text-lg font-medium">Submit budget</div>
+              <button
+                type="button"
+                onClick={() => setBudgetTarget(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-muted">
+              {budgetTarget.title}
+              {budgetTarget.eventDate ? ` • ${budgetTarget.eventDate}` : ""}
+            </p>
+
+            <div className="grid gap-3">
+              <div>
+                <div className="mb-1 text-sm text-muted">Request name</div>
+                <input
+                  value={budgetTitle}
+                  onChange={(e) => setBudgetTitle(e.target.value)}
+                  className={selectClass}
+                />
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-muted">Justification</div>
+                <textarea
+                  value={budgetJustification}
+                  onChange={(e) => setBudgetJustification(e.target.value)}
+                  rows={2}
+                  className={selectClass}
+                />
+              </div>
+
+              <div>
+                <div className="mb-1 text-sm text-muted">Lines</div>
+                {budgetItems.map((row, i) => (
+                  <div key={i} className="mb-2 grid gap-2 sm:grid-cols-[1fr_6rem_7rem_auto]">
+                    <input
+                      placeholder="Item"
+                      value={row.label}
+                      onChange={(e) =>
+                        setBudgetItems((prev) =>
+                          prev.map((item, j) =>
+                            j === i ? { ...item, label: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      className="rounded-lg border border-line px-2 py-1 text-sm"
+                    />
+                    <input
+                      placeholder="Qty"
+                      inputMode="decimal"
+                      value={row.quantity}
+                      onChange={(e) =>
+                        setBudgetItems((prev) =>
+                          prev.map((item, j) =>
+                            j === i ? { ...item, quantity: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      className="rounded-lg border border-line px-2 py-1 text-sm"
+                    />
+                    <input
+                      placeholder="Unit cost"
+                      inputMode="decimal"
+                      value={row.unitCost}
+                      onChange={(e) =>
+                        setBudgetItems((prev) =>
+                          prev.map((item, j) =>
+                            j === i ? { ...item, unitCost: e.target.value } : item,
+                          ),
+                        )
+                      }
+                      className="rounded-lg border border-line px-2 py-1 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setBudgetItems((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-xs text-muted"
+                      disabled={budgetItems.length === 1}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBudgetItems((prev) => [...prev, { label: "", quantity: "1", unitCost: "" }])
+                  }
+                  className="text-sm text-muted"
+                >
+                  + Add line
+                </button>
+              </div>
+
+              {budgetError && (
+                <p className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-sm font-medium text-[#a5442c]">
+                  {budgetError}
+                </p>
+              )}
+
+              <Button disabled={budgetSaving} onClick={() => void submitBudget()}>
+                {budgetSaving ? "Submitting…" : "Submit budget"}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

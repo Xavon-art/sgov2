@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Seal, Wordmark } from "@/components/ui/Seal";
@@ -139,7 +139,7 @@ function WorkspaceUserCard({
   );
 }
 
-export function AppShell({
+function AppShellInner({
   nav,
   orgName,
   badge,
@@ -733,5 +733,13 @@ export function AppShell({
         </button>
       </nav>
     </div>
+  );
+}
+
+export function AppShell(props: Parameters<typeof AppShellInner>[0]) {
+  return (
+    <Suspense fallback={<div className="min-h-dvh px-4 py-6 sm:px-8">{props.children}</div>}>
+      <AppShellInner {...props} />
+    </Suspense>
   );
 }

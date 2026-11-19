@@ -20,6 +20,12 @@ export const lsgRequestTour: PageTour = {
       placement: "bottom",
     },
     {
+      target: "request-tabs",
+      title: "Resolutions",
+      body: "The new Resolutions tab shows the decisions your council filed and the ones your office approved.",
+      placement: "bottom",
+    },
+    {
       target: "request-file-personal",
       title: "File personal request",
       body: "Use this button to submit a personal request to your council.",

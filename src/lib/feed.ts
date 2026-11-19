@@ -22,10 +22,17 @@ export type FeedPost = {
 
 export type CalendarEvent = {
   id: string;
+  itemId: string;
+  source: "event" | "proposal" | string;
   title: string;
+  date: string;
+  time: string | null;
+  timezone: string | null;
   venue: string | null;
-  activityType: string;
+  activityType: string | null;
   unitName: string | null;
+  status: string | null;
+  honorStatus: string | null;
 };
 
 /** Days with something on them. A date absent from the map is a day with nothing. */

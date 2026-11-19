@@ -23,12 +23,31 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  */
 export function buildUsgNav(role: WorkspaceRole): NavItem[] {
   const canManage = role.accountScope === "owner";
+  // The workspace side is resolved by the database: every USG-side account is
+  // the owner or an org reviewer, which is exactly the pair the document SQL
+  // allows to read pending rows and approve them.
+  const canReviewDocuments = role.side === "usg";
   const manageChildren = [
     { label: "Your Umbrella", href: "/usg/manage?tab=umbrella" },
     { label: "Invites", href: "/usg/manage?tab=invites" },
     { label: "Government structure", href: "/usg/manage?tab=structure" },
     { label: "Profile and Customization", href: "/usg/manage?tab=profile" },
-  ].filter((_, index) => canManage || index === 3);
+    { label: "Documents", href: "/usg/manage?tab=documents" },
+    { label: "Search", href: "/usg/manage?tab=search" },
+    { label: "Budget", href: "/usg/manage?tab=budget" },
+  ].filter(
+    (_, index) =>
+      canManage || index === 3 ||
+      (canReviewDocuments && (index === 4 || index === 5)) ||
+      (canReviewDocuments && index === 6),
+  );
+  if (canReviewDocuments) {
+    manageChildren.push({ label: "Monitoring", href: "/usg/manage?tab=monitoring" });
+    manageChildren.push({ label: "Feedback", href: "/usg/manage?tab=feedback" });
+  }
+  if (canManage) {
+    manageChildren.push({ label: "Accounts", href: "/usg/manage?tab=accounts" });
+  }
 
   return [
     {
@@ -41,7 +60,11 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "manage",
       label: "Manage",
-      hint: canManage ? "Your umbrella, invitations, and profile" : "Your profile",
+      hint: canManage
+        ? "Your umbrella, invitations, and profile"
+        : canReviewDocuments
+          ? "Documents, search, and your profile"
+          : "Your profile",
       href: "/usg/manage",
       icon: "layers",
       children: manageChildren,
@@ -56,6 +79,7 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
         { label: "Tasks", href: "/usg/request" },
         { label: "Inbox", href: "/usg/messages" },
         { label: "Personal Requests", href: "/usg/personal-requests" },
+        { label: "Resolutions", href: "/usg/request?tab=resolutions" },
       ],
     },
     {
@@ -64,6 +88,11 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
       hint: "The calendar, and what was honoured",
       href: "/usg/events",
       icon: "events",
+      children: [
+        { label: "Calendar", href: "/usg/events?tab=calendar" },
+        { label: "Future Events", href: "/usg/events?tab=future" },
+        { label: "Accomplishment", href: "/usg/events?tab=accomplishment" },
+      ],
     },
     {
       id: "survey",

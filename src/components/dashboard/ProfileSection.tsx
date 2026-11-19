@@ -5,6 +5,7 @@ import { Reveal } from "@/components/fx/Reveal";
 import { Button } from "@/components/ui/Button";
 import { PasswordField, TextField } from "@/components/ui/Field";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
+import { OfficerProfileFields } from "@/components/dashboard/OfficerProfileFields";
 
 /**
  * Profile and dashboard customisation, shared by both workspaces.
@@ -245,6 +246,22 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
                 {notice(nameNote)}
               </div>
             </form>
+          </div>
+        </Reveal>
+      </section>
+
+      <section id="officer-profile" className="scroll-mt-24">
+        <Reveal delay={0.02}>
+          <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <p className="eyebrow">Officer details</p>
+            <h2 className="mt-1 text-[1.25rem] leading-tight">Profile fields</h2>
+            <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+              These describe the officer behind the account. Your sign-in email and role are
+              managed separately and cannot be changed here.
+            </p>
+            <div className="mt-5">
+              <OfficerProfileFields />
+            </div>
           </div>
         </Reveal>
       </section>
