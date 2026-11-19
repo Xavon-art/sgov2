@@ -115,7 +115,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
 
   useEffect(() => {
     if (isUsg) {
-      fetch("/api/umbrella")
+      fetch("/api/units")
         .then((r) => r.json())
         .then((j) => {
           if (j.ok && Array.isArray(j.units)) {

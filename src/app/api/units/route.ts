@@ -34,7 +34,7 @@ function toUnitOption(unit: UnitOption): UnitOption {
 }
 
 /**
- * The owner's unit list for the dashboard — one scoped read through
+ * The caller's scoped unit list for the dashboard — one read through
  * `unit_chart`, which is what the org chart already renders. The client drops
  * the root; this endpoint returns it alongside every child, projected down to
  * the three fields the dropdown needs.
@@ -43,13 +43,6 @@ export async function GET() {
   const account = await currentAccount();
   if (!account) {
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
-  }
-
-  if (!canManageChart(account)) {
-    return NextResponse.json(
-      { ok: false, reason: "forbidden", message: messageFor("forbidden") },
-      { status: 403 },
-    );
   }
 
   const token = await readSessionToken();

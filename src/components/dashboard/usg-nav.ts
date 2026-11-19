@@ -22,6 +22,14 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  * client boundary here.
  */
 export function buildUsgNav(role: WorkspaceRole): NavItem[] {
+  const canManage = role.accountScope === "owner";
+  const manageChildren = [
+    { label: "Your Umbrella", href: "/usg/manage?tab=umbrella" },
+    { label: "Invites", href: "/usg/manage?tab=invites" },
+    { label: "Government structure", href: "/usg/manage?tab=structure" },
+    { label: "Profile and Customization", href: "/usg/manage?tab=profile" },
+  ].filter((_, index) => canManage || index === 3);
+
   return [
     {
       id: "overview",
@@ -33,15 +41,10 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "manage",
       label: "Manage",
-      hint: "Your umbrella, invitations, and profile",
+      hint: canManage ? "Your umbrella, invitations, and profile" : "Your profile",
       href: "/usg/manage",
       icon: "layers",
-      children: [
-        { label: "Your Umbrella", href: "/usg/manage?tab=umbrella" },
-        { label: "Invites", href: "/usg/manage?tab=invites" },
-        { label: "Government structure", href: "/usg/manage?tab=structure" },
-        { label: "Profile and Customization", href: "/usg/manage?tab=profile" },
-      ],
+      children: manageChildren,
     },
     {
       id: "request",

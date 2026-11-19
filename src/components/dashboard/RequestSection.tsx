@@ -284,7 +284,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
           <IconUser className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           Personal requests
         </button>
-        {!isUsg && tab === "personal" && (
+        {!isUsg && (
           <Button data-tour="request-file-personal" size="sm" className="ml-auto" onClick={() => setShowPR(true)}>
             <IconPencil className="h-4 w-4" /> File request
           </Button>
@@ -491,7 +491,7 @@ function CreateTaskButton({ onCreated }: { onCreated: () => void }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/umbrella");
+        const res = await fetch("/api/units");
         const json = await res.json();
         if (json.ok && Array.isArray(json.units)) {
           const us = json.units

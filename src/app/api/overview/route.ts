@@ -19,22 +19,37 @@ export const runtime = "nodejs";
  *   * tasks the USG pushed down and this side still has to answer, and
  *   * tasks this side pushed up (or had pushed at it) that are waiting.
  *
- * Until the Request module lands in the next phase those counters come back
- * zero rather than pretending. The shape is stable so the screen does not have
- * to change when the numbers become real.
+ * Each module is read best-effort so one unavailable section cannot blank the
+ * whole desk; the response also carries status breakdowns for the report and
+ * chart widgets.
  */
+type Counts = {
+  tasksOpen: number;
+  tasksOverdue: number;
+  requestsOpen: number;
+  eventsPending: number;
+  surveysOpen: number;
+};
+
+type Breakdown = {
+  tasks: Record<string, number>;
+  requests: Record<string, number>;
+  events: Record<string, number>;
+  surveys: Record<string, number>;
+};
+
 type ApiResponse = RpcResult & {
   account?: Record<string, unknown>;
   organization?: Record<string, unknown> | null;
   canCustomise?: boolean;
-  counts?: {
-    tasksOpen: number;
-    tasksOverdue: number;
-    requestsOpen: number;
-    eventsPending: number;
-    surveysOpen: number;
-  };
+  counts?: Counts;
+  breakdown?: Breakdown;
 };
+
+function bump(bucket: Record<string, number>, key: string) {
+  const normalized = key || "unknown";
+  bucket[normalized] = (bucket[normalized] ?? 0) + 1;
+}
 
 export async function GET() {
   const token = await readSessionToken();
@@ -63,20 +78,25 @@ export async function GET() {
     // Real counts from the modules that already exist. Each read is best-effort:
     // a failure on one leaves that counter at zero rather than failing the whole
     // overview.
-    const counts = { tasksOpen: 0, tasksOverdue: 0, requestsOpen: 0, eventsPending: 0, surveysOpen: 0 };
+    const counts: Counts = { tasksOpen: 0, tasksOverdue: 0, requestsOpen: 0, eventsPending: 0, surveysOpen: 0 };
+    const breakdown: Breakdown = { tasks: {}, requests: {}, events: {}, surveys: {} };
 
     try {
-      const tasks = await callRpc<RpcResult & { tasks?: { status?: string; deadline?: string }[] }>(
-        "list_my_tasks",
-        { p_session_token: token },
-      );
+      const tasks = await callRpc<
+        RpcResult & {
+          tasks?: Array<{
+            closed?: boolean;
+            overdue?: boolean;
+            myStatus?: string | null;
+          }>;
+        }
+      >("list_my_tasks", { p_session_token: token, p_status: "" });
       if (tasks.ok && Array.isArray(tasks.tasks)) {
-        const now = Date.now();
-        for (const t of tasks.tasks) {
-          const st = String(t.status ?? "").toLowerCase();
-          if (st !== "closed" && st !== "completed" && st !== "done") counts.tasksOpen += 1;
-          if (t.deadline && new Date(t.deadline).getTime() < now && st !== "closed" && st !== "completed" && st !== "done")
-            counts.tasksOverdue += 1;
+        for (const task of tasks.tasks) {
+          const closed = task.closed === true;
+          if (!closed) counts.tasksOpen += 1;
+          if (task.overdue === true) counts.tasksOverdue += 1;
+          bump(breakdown.tasks, closed ? "closed" : task.overdue ? "overdue" : task.myStatus ?? "in progress");
         }
       }
     } catch {
@@ -84,40 +104,50 @@ export async function GET() {
     }
 
     try {
-      const reqs = await callRpc<RpcResult & { requests?: { status?: string }[] }>(
+      const reqs = await callRpc<RpcResult & { requests?: Array<{ status?: string }> }>(
         "list_personal_requests",
-        { p_session_token: token },
+        { p_session_token: token, p_status: "" },
       );
       if (reqs.ok && Array.isArray(reqs.requests)) {
-        counts.requestsOpen = reqs.requests.filter((r) => {
-          const st = String(r.status ?? "").toLowerCase();
-          return st === "pending" || st === "returned";
-        }).length;
+        for (const request of reqs.requests) {
+          const status = String(request.status ?? "").toLowerCase();
+          if (status === "submitted") counts.requestsOpen += 1;
+          bump(breakdown.requests, status);
+        }
       }
     } catch {
       // ignore
     }
 
     try {
-      const evs = await callRpc<RpcResult & { events?: { status?: string }[] }>("list_events", {
-        p_session_token: token,
-      });
+      const evs = await callRpc<
+        RpcResult & {
+          events?: Array<{ status?: string; honorStatus?: string; cancelledAt?: string | null }>;
+        }
+      >("list_events", { p_session_token: token });
       if (evs.ok && Array.isArray(evs.events)) {
-        counts.eventsPending = evs.events.filter((e) => {
-          const st = String(e.status ?? "").toLowerCase();
-          return st === "claimed" || st === "upcoming";
-        }).length;
+        for (const event of evs.events) {
+          const status = String(event.status ?? "").toLowerCase();
+          if (status === "claimed" || status === "upcoming") counts.eventsPending += 1;
+          bump(breakdown.events, status);
+          if (event.honorStatus) bump(breakdown.events, `honor:${String(event.honorStatus).toLowerCase()}`);
+          if (event.cancelledAt) bump(breakdown.events, "cancelled");
+        }
       }
     } catch {
       // ignore
     }
 
     try {
-      const survs = await callRpc<RpcResult & { surveys?: { status?: string }[] }>("list_surveys", {
+      const survs = await callRpc<RpcResult & { surveys?: Array<{ status?: string }> }>("list_surveys", {
         p_session_token: token,
       });
       if (survs.ok && Array.isArray(survs.surveys)) {
-        counts.surveysOpen = survs.surveys.filter((s) => String(s.status ?? "").toLowerCase() === "open").length;
+        for (const survey of survs.surveys) {
+          const status = String(survey.status ?? "").toLowerCase();
+          if (status === "open") counts.surveysOpen += 1;
+          bump(breakdown.surveys, status);
+        }
       }
     } catch {
       // ignore
@@ -129,6 +159,7 @@ export async function GET() {
       organization: profile.organization ?? null,
       canCustomise: Boolean(profile.canCustomise),
       counts,
+      breakdown,
     });
   } catch (error) {
     console.error("[overview:read]", error);

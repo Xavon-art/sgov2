@@ -59,7 +59,7 @@
 - The committed checks are `npm run check:smoke` (read-only boundaries), `npm run test:authority` (RPC/HTTP boundaries including org-chart), `npm run test:e2e` (role navigation, validation, cancellation, responsive screenshots), `npm run check:interactions` (high-risk interaction source contracts), and `npm run check:interactions:ui` (browser fault injection). Deep create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
 - OTP DB-side per-email and per-IP throttling is still advisory; application rate limits remain process-local.
 - `definer_without_search_path 11` remains after migration 03192; an optional future migration can pin `search_path` without touching applied migrations.
-- 70 foreign keys still lack a leading index; `orphan_fk_rows 0` was verified.
+- 71 foreign keys still lack a leading index; `orphan_fk_rows 0` was verified.
 - `check:federated` create-flow items (unitary model gating) pre-existing.
 
 ## Dashboard customisation + demo environment
@@ -68,6 +68,17 @@
 - Demo accounts and the one shared password live in `C:\Users\Julius M. Matro\Desktop\sir tonie projects\credentials\smartgov-test-accounts.txt` (test-only; rotate or delete before real use).
 - Pre-change database backup: `C:\Users\Julius M. Matro\Desktop\sir tonie projects\backups\smartgov-backup-20261117-142618.sql`.
 - Seed guard: `truncate ... cascade` empties `gov_structure_templates` through its organization foreign key, so the seeder snapshots and restores the 10 built-in blueprints around the purge.
+
+## Dashboard audit and overview widgets
+- Added `npm run check:dashboard` (`scripts/check-dashboard-audit.mjs`) as a repeatable real-browser/API gate for the dashboard role audit; it is self-resetting and does not expose account content.
+- Owner keeps the Umbrella/Invites/Structure child links; USG officers see only their own profile path because `src/components/dashboard/usg-nav.ts` gates those children on `role.accountScope === "owner"`.
+- `GET /api/units` is now available to scoped non-owners; authorization remains in `unit_chart` SQL. Write operations and `/api/umbrella` stay owner-only.
+- USG officer Request and Events sections no longer produce 403 responses: both read units through `/api/units` instead of the owner-only umbrella endpoint.
+- LSG officers can file a personal request from either Request tab; the File request control is no longer limited to the personal tab.
+- `/api/overview` calls `list_my_tasks` and `list_personal_requests` with the current two-argument SQL contract, reads the fields those RPCs actually return, and exposes a `breakdown` object for tasks, requests, events, and surveys.
+- Added per-user overview widgets under `[data-tour="workspace-widgets"]`: At a glance, Report summary, Task status, Request status, and Workflow. Summaries and charts are CSS/SVG only; no chart dependency was added.
+- Widget visibility persists through `supabase/migrations/20260101003194_dashboard_widget_preferences.sql`, `get_dashboard_preferences`, `save_dashboard_preferences`, and the existing `GET/PUT /api/dashboard/layout` surface. No direct table grants or RLS policies were introduced.
+- The USG and LSG overview tours now include the widget area and were bumped to version `2`.
 
 ## Interactive control hardening
 - Added `npm run check:interactions` (`scripts/check-interactions.mjs`) as a failing-first source-contract gate for high-risk controls; 22/22 pass.
@@ -102,9 +113,10 @@
 ## Verification
 - `npx tsc --noEmit`: clean.
 - `npm run lint`: 0 errors; 11 warnings (unused variables/imports).
-- `npm run build`: success after the final tour visual fixes.
-- `npm run check:tours`: 310/310 pass after the final tour visual fixes.
-- `npm run check:tours:ui`: final rerun 2840/2840 pass (2 skips: live invite token, live survey id); public home step 4 passes at all three viewports.
+- `npm run build`: success after the dashboard audit and widget work.
+- `npm run check:dashboard`: 25/25 pass against the production `next start` build (role links, scoped units, no forbidden Request/Events responses, LSG file control, overview totals and breakdown, all five widgets, hide/save/navigation persistence, reset).
+- `npm run check:tours`: 312/312 pass after adding the `workspace-widgets` tour steps.
+- `npm run check:tours:ui`: final rerun 2894/2894 pass; public home step 4 passes at all three viewports.
 - `git diff --check`: clean after the final tour visual fixes.
 - `npm run check:compliance`: ALL PASS.
 - `npm run check:units`: 291/291 pass.
