@@ -50,6 +50,24 @@ function check(label, condition, detail = "") {
   }
 }
 
+async function hideTourPrompts(page) {
+  await page.addInitScript(() => {
+    const install = () => {
+      if (document.getElementById("e2e-hide-tours")) return;
+      const style = document.createElement("style");
+      style.id = "e2e-hide-tours";
+      style.textContent =
+        ".tour-prompt,.tour-floating-help,[data-testid='tour-prompt']{display:none!important}";
+      document.head.appendChild(style);
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", install, { once: true });
+    } else {
+      install();
+    }
+  });
+}
+
 function fixture() {
   const text = readFileSync(CREDENTIALS, "utf8");
   const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
@@ -198,6 +216,8 @@ async function federatedUiStatesPass(page, role) {
   };
   try {
     await openFederatedTab(page, role, feedbackTab);
+    await page.getByRole("tab", { name: "Direct messages", exact: true }).click();
+    await page.getByText("Send feedback", { exact: true }).first().waitFor({ timeout: 15000 });
     await page.route("**/api/feedback", handler);
     await page.getByLabel("Subject", { exact: true }).first().fill("Federation failure state");
     await page
@@ -218,6 +238,108 @@ async function federatedUiStatesPass(page, role) {
     check("LSG feedback submit stays usable after failure", false, error.message);
   } finally {
     await page.unroute("**/api/feedback", handler).catch(() => {});
+  }
+}
+
+async function feedbackPass(page, role, consoleErrors) {
+  const tab = FEDERATED_TABS[role].find((item) => item.tab === "feedback");
+  const title = `E2E feedback ${role} ${Date.now()}`;
+  let publicPage = null;
+  try {
+    await openFederatedTab(page, role, tab);
+    await page.getByTestId("feedback-workspace").waitFor({ timeout: 30000 });
+
+    const tabs = page.getByTestId("feedback-workspace");
+    const labels = ["Forms", "Responses", "Answer", "Direct messages"];
+    const visible = await Promise.all(
+      labels.map(async (label) => (await tabs.getByRole("tab", { name: label, exact: true }).count()) === 1),
+    );
+    check(`${role} feedback workspace shows four sub-tabs`, visible.every(Boolean), JSON.stringify(visible));
+
+    for (const [label, marker] of [
+      ["Responses", "feedback-responses-panel"],
+      ["Answer", "feedback-answer-panel"],
+    ]) {
+      await tabs.getByRole("tab", { name: label, exact: true }).click();
+      await page.getByTestId(marker).waitFor({ timeout: 20000 });
+      check(`${role} feedback ${label} tab renders`, true);
+    }
+
+    await tabs.getByRole("tab", { name: "Direct messages", exact: true }).click();
+    await page
+      .getByText(role === "usg" ? "Feedback from your units" : "Send feedback", { exact: true })
+      .first()
+      .waitFor({ timeout: 20000 });
+    check(`${role} feedback Direct messages tab renders`, true);
+
+    await tabs.getByRole("tab", { name: "Forms", exact: true }).click();
+    await page.getByTestId("feedback-form-new").click();
+    await page.getByTestId("feedback-form-builder").waitFor({ timeout: 20000 });
+    await page.waitForTimeout(1200);
+
+    await page.getByLabel("Title", { exact: true }).fill(title);
+    await page.getByRole("radio", { name: /^Public link\b/i }).first().check();
+    await page.getByTestId("feedback-quick-add-full_name").click();
+    check(
+      `${role} quick-add appends a feedback question`,
+      (await page.getByTestId("feedback-question").count()) === 1,
+    );
+
+    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    await page.getByText("Saved.", { exact: true }).first().waitFor({ timeout: 20000 });
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll("button")].some(
+          (button) => button.textContent?.trim() === "Open form" && !button.disabled,
+        ),
+      null,
+      { timeout: 20000 },
+    );
+    await page.getByRole("button", { name: "Open form", exact: true }).click();
+    await page.getByText("Form opened.", { exact: true }).first().waitFor({ timeout: 20000 });
+
+    const linkText = await page
+      .getByText(/\/feedback\/f\/[A-Za-z0-9_-]{32}/)
+      .first()
+      .textContent({ timeout: 20000 });
+    const publicUrl = linkText?.trim() ?? "";
+    check(
+      `${role} opened feedback form exposes its public link`,
+      /^https?:\/\/.+\/feedback\/f\/[A-Za-z0-9_-]{32}$/.test(publicUrl),
+      publicUrl,
+    );
+
+    publicPage = await page.context().newPage();
+    await hideTourPrompts(publicPage);
+    publicPage.setDefaultTimeout(10000);
+    publicPage.setDefaultNavigationTimeout(30000);
+    publicPage.on("console", (message) => {
+      if (message.type() === "error" && !message.text().includes("script tag")) {
+        consoleErrors.push(`public: ${message.text()}`);
+      }
+    });
+    publicPage.on("pageerror", (error) => consoleErrors.push(`public pageerror: ${error.message}`));
+    await publicPage.goto(publicUrl, { waitUntil: "domcontentloaded" });
+    await publicPage.getByTestId("public-feedback-form").waitFor({ timeout: 30000 });
+    const heading = (await publicPage.locator("h1").first().textContent()) ?? "";
+    check(`${role} public feedback page renders the opened form`, heading.includes(title));
+    await publicPage.close();
+    publicPage = null;
+
+    await page.getByRole("button", { name: "Close form", exact: true }).click();
+    await page.getByText("Form closed.", { exact: true }).first().waitFor({ timeout: 20000 });
+
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Delete form", exact: true }).click();
+    await page.getByTestId("feedback-form-new").waitFor({ timeout: 20000 });
+    check(
+      `${role} deletes the e2e feedback form`,
+      (await page.getByText(title, { exact: true }).count()) === 0,
+    );
+  } catch (error) {
+    check(`${role} feedback form lifecycle completes`, false, error.message);
+  } finally {
+    if (publicPage) await publicPage.close().catch(() => {});
   }
 }
 
@@ -245,6 +367,7 @@ async function rolePass(page, role, email, password, consoleErrors) {
 
   await federatedTabsPass(page, role);
   await federatedUiStatesPass(page, role);
+  await feedbackPass(page, role, consoleErrors);
 
   try {
     await page.getByRole("button", { name: /sign out/i }).first().evaluate((el) => el.click());
@@ -297,7 +420,9 @@ async function main() {
   mkdirSync(SHOTS, { recursive: true });
   const { password, emails } = fixture();
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: VIEWPORTS[2] });
+  const context = await browser.newContext({ viewport: VIEWPORTS[2] });
+  const page = await context.newPage();
+  await hideTourPrompts(page);
   page.setDefaultTimeout(10000);
   page.setDefaultNavigationTimeout(30000);
   const consoleErrors = [];

@@ -91,6 +91,17 @@ async function post(pathname, cookie, body) {
   });
 }
 
+async function del(pathname, cookie, body) {
+  return fetch(`${BASE}${pathname}`, {
+    method: "DELETE",
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie: `sgov_session=${cookie}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
 async function main() {
   const env = parseEnv();
   const { password, emails } = parseCredentials();
@@ -2117,6 +2128,384 @@ async function main() {
         .catch(() => {});
     }
     await matrixClient.end();
+  }
+
+  {
+    console.log("Feedback form authority boundaries");
+    const feedbackClient = new pg.Client({ connectionString: env.DATABASE_URL });
+  await feedbackClient.connect();
+  const feedbackForms = [];
+  let crossUnitGranted = false;
+  const feedbackQuestion = (title) => ({
+    qtype: "short_text",
+    fieldKey: null,
+    title,
+    description: null,
+    required: true,
+    options: [],
+    scaleMin: null,
+    scaleMax: null,
+    scaleLabelLow: null,
+    scaleLabelHigh: null,
+  });
+  const createForm = async (cookie, body) => {
+    const res = await post("/api/feedback/forms", cookie, body);
+    const json = await res.json().catch(() => ({}));
+    if (typeof json.formId === "string") feedbackForms.push(json.formId);
+    return { res, json };
+  };
+  const saveQuestion = async (cookie, formId, title) =>
+    post(`/api/feedback/forms/${formId}/questions`, cookie, {
+      questions: [feedbackQuestion(title)],
+    });
+  const detailQuestion = async (cookie, formId) => {
+    const res = await get(`/api/feedback/forms/${formId}`, cookie);
+    const json = await res.json().catch(() => ({}));
+    return json.questions?.[0]?.id ?? "";
+  };
+  const openForm = async (cookie, formId) =>
+    post(`/api/feedback/forms/${formId}/status`, cookie, { status: "open" });
+  const respond = async (cookie, formId, questionId, answer) =>
+    post(`/api/feedback/forms/${formId}/respond`, cookie, {
+      answers: { [questionId]: answer },
+      respondentName: "Ignored Name",
+      respondentEmail: "ignored@example.test",
+    });
+  try {
+    const orgRow = await feedbackClient.query(
+      `select a.id as owner_id, a.organization_id
+         from smartgov.accounts a
+        where a.email = $1`,
+      [emails.owner],
+    );
+    const orgId = orgRow.rows[0]?.organization_id ?? "";
+    const unitTypeRow = await feedbackClient.query(
+      `select distinct gu.unit_type::text as unit_type
+         from public.governance_units gu
+        where gu.organization_id = $1
+        order by 1
+        limit 1`,
+      [orgId],
+    );
+    const unitType = unitTypeRow.rows[0]?.unit_type ?? "";
+    check("feedback fixture unit type resolves", Boolean(orgId && unitType));
+
+    const university = await createForm(owner, {
+      title: "Authority feedback university",
+      description: null,
+      scope: "university",
+      unitIds: [],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "anonymous",
+    });
+    check(
+      "USG can create a university form",
+      university.res.ok && university.json.ok === true && Boolean(university.json.formId),
+      JSON.stringify(university.json),
+    );
+    const universityId = university.json.formId ?? "";
+
+    const unitTypeForm = await createForm(owner, {
+      title: "Authority feedback unit type",
+      description: null,
+      scope: "unit_type",
+      unitIds: [],
+      unitTypes: unitType ? [unitType] : [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    check(
+      "USG can create a unit-type form",
+      unitTypeForm.res.ok && unitTypeForm.json.ok === true,
+      JSON.stringify(unitTypeForm.json),
+    );
+
+    const pedroOwn = await createForm(pedro, {
+      title: "Authority feedback engineering",
+      description: null,
+      scope: "unit",
+      unitIds: [engineering],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    check(
+      "Pedro can target his own unit",
+      pedroOwn.res.ok && pedroOwn.json.ok === true,
+      JSON.stringify(pedroOwn.json),
+    );
+
+    const pedroCross = await createForm(pedro, {
+      title: "Authority feedback cross unit denied",
+      description: null,
+      scope: "units",
+      unitIds: [education],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    check(
+      "Pedro cannot target another unit without can_target_units",
+      pedroCross.res.status === 400 && pedroCross.json.reason === "invalid_audience",
+      JSON.stringify({ status: pedroCross.res.status, json: pedroCross.json }),
+    );
+
+    const usgEducation = await createForm(owner, {
+      title: "Authority feedback education",
+      description: null,
+      scope: "unit",
+      unitIds: [education],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    check(
+      "USG can create a single-unit form",
+      usgEducation.res.ok && usgEducation.json.ok === true,
+      JSON.stringify(usgEducation.json),
+    );
+    const usgEducationId = usgEducation.json.formId ?? "";
+    const carloTargetRead = await get(
+      `/api/feedback/forms/${usgEducationId}/responses`,
+      carlo,
+    );
+    check(
+      "target-unit LSG who is not creator cannot read responses",
+      carloTargetRead.status === 403 || carloTargetRead.status === 404,
+      `got ${carloTargetRead.status}`,
+    );
+
+    const noQuestions = await createForm(owner, {
+      title: "Authority feedback no questions",
+      description: null,
+      scope: "university",
+      unitIds: [],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    const noQuestionsId = noQuestions.json.formId ?? "";
+    const noQuestionsOpen = await openForm(owner, noQuestionsId);
+    const noQuestionsJson = await noQuestionsOpen.json().catch(() => ({}));
+    check(
+      "opening with zero questions returns no_questions",
+      noQuestionsOpen.status === 400 && noQuestionsJson.reason === "no_questions",
+      JSON.stringify({ status: noQuestionsOpen.status, json: noQuestionsJson }),
+    );
+    await del(`/api/feedback/forms/${noQuestionsId}`, owner);
+
+    const grant = await post("/api/permissions", owner, {
+      email: emails.pedro,
+      permission: "can_target_units",
+    });
+    const grantJson = await grant.json().catch(() => ({}));
+    crossUnitGranted = grant.ok && grantJson.ok === true;
+    check(
+      "USG grants Pedro can_target_units",
+      crossUnitGranted,
+      JSON.stringify({ status: grant.status, json: grantJson }),
+    );
+
+    const pedroCrossGranted = await createForm(pedro, {
+      title: "Authority feedback cross unit granted",
+      description: null,
+      scope: "units",
+      unitIds: [education],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    check(
+      "Pedro can target Carlo's unit after the grant",
+      pedroCrossGranted.res.ok && pedroCrossGranted.json.ok === true,
+      JSON.stringify(pedroCrossGranted.json),
+    );
+
+    const revoke = await del("/api/permissions", owner, {
+      email: emails.pedro,
+      permission: "can_target_units",
+    });
+    const revokeJson = await revoke.json().catch(() => ({}));
+    crossUnitGranted = !(revoke.ok && revokeJson.ok === true);
+    check(
+      "USG revokes Pedro can_target_units",
+      revoke.ok && revokeJson.ok === true,
+      JSON.stringify({ status: revoke.status, json: revokeJson }),
+    );
+
+    const pedroCrossRevoked = await createForm(pedro, {
+      title: "Authority feedback cross unit revoked",
+      description: null,
+      scope: "units",
+      unitIds: [education],
+      unitTypes: [],
+      accessMode: "signed_in",
+      identityMode: "identified",
+    });
+    check(
+      "Pedro loses cross-unit targeting after revoke",
+      pedroCrossRevoked.res.status === 400 &&
+        pedroCrossRevoked.json.reason === "invalid_audience",
+      JSON.stringify({
+        status: pedroCrossRevoked.res.status,
+        json: pedroCrossRevoked.json,
+      }),
+    );
+
+    await saveQuestion(owner, universityId, "Authority feedback question");
+    const universityQuestionId = await detailQuestion(owner, universityId);
+    const universityOpen = await openForm(owner, universityId);
+    const universityOpenJson = await universityOpen.json().catch(() => ({}));
+    check(
+      "USG opens the university form",
+      universityOpen.ok && universityOpenJson.status === "open",
+      JSON.stringify(universityOpenJson),
+    );
+
+    const pedroReadsUsg = await get(
+      `/api/feedback/forms/${universityId}/responses`,
+      pedro,
+    );
+    check(
+      "LSG cannot read a USG-created form's responses",
+      pedroReadsUsg.status === 403 || pedroReadsUsg.status === 404,
+      `got ${pedroReadsUsg.status}`,
+    );
+
+    const first = await respond(member, universityId, universityQuestionId, "first");
+    check("member submits a signed-in response", first.ok, `got ${first.status}`);
+    const identityRow = await feedbackClient.query(
+      `select submitted_by, respondent_name, respondent_email
+         from smartgov.feedback_responses
+        where form_id = $1
+        order by submitted_at, id
+        limit 1`,
+      [universityId],
+    );
+    const identity = identityRow.rows[0] ?? {};
+    check(
+      "anonymous signed-in response stores null identity fields",
+      identity.submitted_by === null &&
+        identity.respondent_name === null &&
+        identity.respondent_email === null,
+      JSON.stringify(identity),
+    );
+
+    const lockedQuestions = await saveQuestion(
+      owner,
+      universityId,
+      "Authority feedback question changed",
+    );
+    const lockedQuestionsJson = await lockedQuestions.json().catch(() => ({}));
+    check(
+      "changing questions after a response returns questions_locked",
+      lockedQuestions.status === 409 &&
+        lockedQuestionsJson.reason === "questions_locked",
+      JSON.stringify({ status: lockedQuestions.status, json: lockedQuestionsJson }),
+    );
+
+    const lockedForm = await patch(`/api/feedback/forms/${universityId}`, owner, {
+      title: "Authority feedback university",
+      description: null,
+      scope: "university",
+      unitIds: [],
+      unitTypes: [],
+      accessMode: "public_link",
+      identityMode: "anonymous",
+    });
+    const lockedFormJson = await lockedForm.json().catch(() => ({}));
+    check(
+      "changing access after open returns form_locked",
+      lockedForm.status === 409 && lockedFormJson.reason === "form_locked",
+      JSON.stringify({ status: lockedForm.status, json: lockedFormJson }),
+    );
+
+    const deleteWithResponses = await del(
+      `/api/feedback/forms/${universityId}`,
+      owner,
+    );
+    const deleteWithResponsesJson = await deleteWithResponses.json().catch(() => ({}));
+    check(
+      "delete with responses returns responses_exist",
+      deleteWithResponses.status === 409 &&
+        deleteWithResponsesJson.reason === "responses_exist",
+      JSON.stringify({
+        status: deleteWithResponses.status,
+        json: deleteWithResponsesJson,
+      }),
+    );
+
+    let tenth = null;
+    for (let index = 2; index <= 10; index += 1) {
+      tenth = await respond(
+        member,
+        universityId,
+        universityQuestionId,
+        `response ${index}`,
+      );
+      if (!tenth.ok) break;
+    }
+    check("signed-in submit allows ten responses", tenth?.status === 200, `got ${tenth?.status}`);
+    const eleventh = await respond(
+      member,
+      universityId,
+      universityQuestionId,
+      "response 11",
+    );
+    const eleventhJson = await eleventh.json().catch(() => ({}));
+    check(
+      "signed-in submit over 10 per 10 minutes returns 429",
+      eleventh.status === 429 && eleventhJson.reason === "rate_limited",
+      JSON.stringify({ status: eleventh.status, json: eleventhJson }),
+    );
+  } finally {
+    if (crossUnitGranted) {
+      await feedbackClient
+        .query(
+          `delete from smartgov.account_permissions p
+            using smartgov.accounts a
+            where p.account_id = a.id
+              and a.email = $1
+              and p.permission = 'can_target_units'`,
+          [emails.pedro],
+        )
+        .catch(() => {});
+    }
+    if (feedbackForms.length) {
+      await feedbackClient
+        .query("delete from smartgov.feedback_responses where form_id = any($1::uuid[])", [
+          feedbackForms,
+        ])
+        .catch(() => {});
+      await feedbackClient
+        .query("delete from smartgov.feedback_questions where form_id = any($1::uuid[])", [
+          feedbackForms,
+        ])
+        .catch(() => {});
+      await feedbackClient
+        .query("delete from smartgov.feedback_form_scopes where form_id = any($1::uuid[])", [
+          feedbackForms,
+        ])
+        .catch(() => {});
+      await feedbackClient
+        .query("delete from smartgov.feedback_forms where id = any($1::uuid[])", [
+          feedbackForms,
+        ])
+        .catch(() => {});
+      for (const formId of feedbackForms) {
+        await feedbackClient
+          .query(
+            `delete from smartgov.rate_limits
+              where bucket like 'feedback:submit:%'
+                and bucket like '%' || $1::text || '#%'`,
+            [formId],
+          )
+          .catch(() => {});
+      }
+    }
+    await feedbackClient.end();
+  }
   }
 
   console.log(`\n${checks - failures}/${checks} checks passed.`);

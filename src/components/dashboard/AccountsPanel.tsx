@@ -30,6 +30,11 @@ type Row = OfficerRow & {
   accountKind: string;
 };
 
+type PermissionGrant = {
+  email?: string;
+  permission?: string;
+};
+
 export function AccountsPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,12 +43,16 @@ export function AccountsPanel() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  const [grants, setGrants] = useState<Map<string, Set<string>>>(new Map());
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [accountRes, profileRes] = await Promise.all([
+      const [accountRes, profileRes, permissionRes] = await Promise.all([
         fetch("/api/org-accounts", { cache: "no-store" }),
         fetch("/api/profile/officer?scope=all", { cache: "no-store" }),
+        fetch("/api/permissions", { cache: "no-store" }).catch(() => null),
       ]);
       const accountBody = (await accountRes.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -55,12 +64,37 @@ export function AccountsPanel() {
         rows?: OfficerRow[];
         message?: string;
       };
+      const permissionBody = permissionRes
+        ? ((await permissionRes.json().catch(() => ({}))) as {
+            ok?: boolean;
+            grants?: PermissionGrant[];
+            message?: string;
+          })
+        : null;
 
       if (!accountRes.ok || !accountBody.ok || !profileRes.ok || !profileBody.ok) {
         setError(
           profileBody.message ?? accountBody.message ?? "We could not load the account roster.",
         );
         return;
+      }
+
+      if (permissionRes?.ok && permissionBody?.ok) {
+        const nextGrants = new Map<string, Set<string>>();
+        for (const grant of permissionBody.grants ?? []) {
+          const email = grant.email?.trim().toLowerCase();
+          const permission = grant.permission?.trim();
+          if (!email || !permission) continue;
+          const held = nextGrants.get(email) ?? new Set<string>();
+          held.add(permission);
+          nextGrants.set(email, held);
+        }
+        setGrants(nextGrants);
+        setPermissionError(null);
+      } else {
+        setPermissionError(
+          permissionBody?.message ?? "We could not load cross-unit feedback permissions.",
+        );
       }
 
       const accounts = accountBody.accounts ?? [];
@@ -124,6 +158,41 @@ export function AccountsPanel() {
     }
   }
 
+  async function toggleCrossUnit(email: string, allowed: boolean) {
+    const key = email.trim().toLowerCase();
+    setPermissionBusy(email);
+    setPermissionError(null);
+    try {
+      const res = await fetch("/api/permissions", {
+        method: allowed ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, permission: "can_target_units" }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        message?: string;
+      };
+      if (!res.ok || !body.ok) {
+        setPermissionError(body.message ?? "We could not update that permission.");
+        return;
+      }
+      setGrants((current) => {
+        const next = new Map(current);
+        const held = new Set(next.get(key) ?? []);
+        if (allowed) held.add("can_target_units");
+        else held.delete("can_target_units");
+        if (held.size) next.set(key, held);
+        else next.delete(key);
+        return next;
+      });
+      await load();
+    } catch {
+      setPermissionError("We could not reach the server. Check your connection.");
+    } finally {
+      setPermissionBusy(null);
+    }
+  }
+
   const sorted = useMemo(
     () => [...rows].sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [rows],
@@ -172,13 +241,19 @@ export function AccountsPanel() {
         </p>
       ) : null}
 
+      {permissionError ? (
+        <p role="alert" className="text-[0.8125rem] text-[#8a3b2f]">
+          {permissionError}
+        </p>
+      ) : null}
+
       {sorted.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line-strong bg-canvas/40 px-5 py-6 text-[0.9375rem] text-body">
           No officer accounts in this federation yet.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-line bg-paper/70">
-          <table className="w-full min-w-[960px] text-left text-[0.875rem]">
+          <table className="w-full min-w-[1080px] text-left text-[0.875rem]">
             <thead>
               <tr className="border-b border-line/70 text-[0.75rem] uppercase tracking-[0.08em] text-muted">
                 <th className="px-4 py-3 font-medium">Full name</th>
@@ -188,6 +263,7 @@ export function AccountsPanel() {
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Cross-unit feedback</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
@@ -204,6 +280,22 @@ export function AccountsPanel() {
                   <td className="px-4 py-3 align-top text-body">{row.email}</td>
                   <td className="px-4 py-3 align-top text-body">{row.role}</td>
                   <td className="px-4 py-3 align-top text-body">{row.status}</td>
+                  <td className="px-4 py-3 align-top">
+                    <input
+                      type="checkbox"
+                      data-testid="feedback-cross-unit-toggle"
+                      aria-label={`Cross-unit feedback for ${row.email}`}
+                      className="size-4 accent-ink"
+                      checked={
+                        grants.get(row.email.trim().toLowerCase())?.has("can_target_units") ??
+                        false
+                      }
+                      disabled={permissionBusy === row.email}
+                      onChange={(event) =>
+                        void toggleCrossUnit(row.email, event.target.checked)
+                      }
+                    />
+                  </td>
                   <td className="px-4 py-3 align-top">
                     {deactivatingId === row.accountId ? (
                       <div className="flex flex-col gap-2">
@@ -254,6 +346,10 @@ export function AccountsPanel() {
           </table>
         </div>
       )}
+      <p className="text-[0.75rem] leading-relaxed text-muted">
+        Cross-unit feedback lets this LSG officer target other LSG units in feedback
+        forms. USG-wide targeting stays USG-only.
+      </p>
     </Reveal>
   );
 }

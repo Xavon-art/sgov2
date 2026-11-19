@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
+import pg from "pg";
 import { assertNavIdsStable, STABLE_NAV_IDS } from "./check-federated-features.mjs";
 
-export const DASHBOARD_AUDIT_TARGET = 25;
+export const DASHBOARD_AUDIT_TARGET = 30;
 
 const BASE = process.env.DASHBOARD_AUDIT_BASE_URL ?? "http://localhost:3000";
 const CREDENTIALS =
@@ -28,6 +29,107 @@ function account(lineNumber) {
   const email = lines[lineNumber - 1].match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
   if (!email || !password) throw new Error("Fixture credentials are missing expected accounts.");
   return email;
+}
+
+function loadEnv(source) {
+  const values = {};
+  let file;
+  try {
+    file = readFileSync(source, "utf8");
+  } catch {
+    return values;
+  }
+  for (const line of file.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match) continue;
+    let value = match[2];
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    values[match[1]] = value;
+  }
+  return values;
+}
+
+function withParam(url, key, value) {
+  if (new RegExp(`[?&]${key}=`, "i").test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}${key}=${value}`;
+}
+
+const ORPHAN_LABELS = [
+  "feedback_form_scopes.form_id",
+  "feedback_questions.form_id",
+  "feedback_responses.form_id",
+  "feedback_responses.acknowledged_by",
+  "feedback_forms.created_by",
+];
+
+async function feedbackOrphanChecks() {
+  const env = loadEnv(new URL("../.env.local", import.meta.url));
+  const rawUrl = process.env.DATABASE_URL || env.DATABASE_URL;
+  if (!rawUrl) {
+    for (const label of ORPHAN_LABELS) {
+      check(`${label} has no orphaned rows`, false, "DATABASE_URL is not set");
+    }
+    return;
+  }
+
+  const pool = new pg.Pool({
+    connectionString: withParam(withParam(rawUrl, "sslmode", "require"), "uselibpqcompat", "true"),
+    max: 1,
+    application_name: "smartgov_dashboard_audit",
+    connectionTimeoutMillis: 5000,
+    query_timeout: 15000,
+    statement_timeout: 8000,
+  });
+
+  try {
+    const { rows } = await pool.query(`
+      select 'feedback_form_scopes.form_id' as name, count(*)::int as orphans
+        from smartgov.feedback_form_scopes s
+        left join smartgov.feedback_forms f on f.id = s.form_id
+       where f.id is null
+      union all
+      select 'feedback_questions.form_id', count(*)::int
+        from smartgov.feedback_questions q
+        left join smartgov.feedback_forms f on f.id = q.form_id
+       where f.id is null
+      union all
+      select 'feedback_responses.form_id', count(*)::int
+        from smartgov.feedback_responses r
+        left join smartgov.feedback_forms f on f.id = r.form_id
+       where f.id is null
+      union all
+      select 'feedback_responses.acknowledged_by', count(*)::int
+        from smartgov.feedback_responses r
+        left join smartgov.accounts a on a.id = r.acknowledged_by
+       where r.acknowledged_by is not null and a.id is null
+      union all
+      select 'feedback_forms.created_by', count(*)::int
+        from smartgov.feedback_forms f
+        left join smartgov.accounts a on a.id = f.created_by
+       where a.id is null
+    `);
+    const counts = new Map(rows.map((row) => [row.name, Number(row.orphans)]));
+    for (const label of ORPHAN_LABELS) {
+      const orphans = counts.get(label);
+      check(
+        `${label} has no orphaned rows`,
+        orphans === 0,
+        `orphans=${orphans ?? "missing"}`,
+      );
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.slice(0, 240) : String(error);
+    for (const label of ORPHAN_LABELS) {
+      check(`${label} has no orphaned rows`, false, detail);
+    }
+  } finally {
+    await pool.end().catch(() => {});
+  }
 }
 
 async function dismissTour(page) {
@@ -142,6 +244,16 @@ async function overviewCheck(page) {
   await page.waitForTimeout(800);
   await visit(page, "/lsg/manage");
   await visit(page, "/lsg");
+  await page
+    .waitForFunction(
+      () => {
+        if (!document.querySelector('[data-tour="workspace-widgets"]')) return false;
+        return !document.querySelector('[data-widget="reports"]');
+      },
+      null,
+      { timeout: 8000 },
+    )
+    .catch(() => {});
   const hiddenState = await page.evaluate(async () => ({
     prefs: await (await fetch("/api/dashboard/layout")).json(),
     cards: document.querySelectorAll('[data-widget="reports"]').length,
@@ -170,6 +282,7 @@ async function lsgRequestTourCheck(page) {
 async function main() {
   assertNavIdsStable("usg", STABLE_NAV_IDS);
   assertNavIdsStable("lsg", STABLE_NAV_IDS);
+  await feedbackOrphanChecks();
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.setDefaultTimeout(15000);

@@ -27,7 +27,9 @@ export type ChartNode = {
   holders: StructureHolder[];
   primary: StructureHolder | null;
   name: string;
-  /** Photo key for the loader: a roster id when known, else the email. */
+  /** Roster id for the photo route, when the read path marked the holder. */
+  photoId: string | null;
+  /** Stable identity for the loader: a roster id when known, else the email. */
   photoKey: string | null;
   parentKey: string | null;
   x: number;
@@ -77,6 +79,16 @@ function sizeFor(layout: StructureLayout): { w: number; h: number } {
   return base;
 }
 
+/**
+ * The read path marks a holder with the roster row behind it, but that id is
+ * never persisted. Reading it here keeps the stored `StructureHolder` clean.
+ */
+type PhotoHolder = StructureHolder & { rosterId?: string | null };
+
+function rosterIdOf(holder: StructureHolder | null | undefined): string | null {
+  return (holder as PhotoHolder | null | undefined)?.rosterId ?? null;
+}
+
 function collect(doc: StructureDocument): ChartNode[] {
   const nodes: ChartNode[] = [];
   for (const committee of doc.committees) {
@@ -98,7 +110,8 @@ function collect(doc: StructureDocument): ChartNode[] {
         holders,
         primary,
         name: holderName(primary),
-        photoKey: primary?.rosterId ?? primary?.email?.trim().toLowerCase() ?? null,
+        photoId: rosterIdOf(primary),
+        photoKey: rosterIdOf(primary) ?? primary?.email?.trim().toLowerCase() ?? null,
         parentKey: position.parentKey ?? null,
         x: 0,
         y: 0,
@@ -347,7 +360,7 @@ export function computeChart(
 
 export function holderPhotoKey(holder: StructureHolder | null | undefined): string | null {
   if (!holder) return null;
-  return holder.rosterId ?? holder.email?.trim().toLowerCase() ?? null;
+  return rosterIdOf(holder) ?? holder.email?.trim().toLowerCase() ?? null;
 }
 
 export function positionIsEmpty(position: StructurePosition): boolean {

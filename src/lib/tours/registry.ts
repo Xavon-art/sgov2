@@ -2,6 +2,7 @@ import type { PageTour } from "./types";
 import publicHomeTour from "./pages/public-home";
 import publicLoginTour from "./pages/public-login";
 import publicSurveyTour from "./pages/public-survey";
+import publicFeedbackTour from "./pages/public-feedback";
 import inviteSetupTour from "./pages/invite-setup";
 import inviteVerifyTour from "./pages/invite-verify";
 import createStartTour from "./pages/create-start";
@@ -69,6 +70,7 @@ export const TOURS: PageTour[] = [
   inviteVerifyTour,
   inviteSetupTour,
   publicSurveyTour,
+  publicFeedbackTour,
   usgSurveyDetailTour,
   lsgSurveyDetailTour,
 ];

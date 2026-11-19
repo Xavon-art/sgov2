@@ -9,7 +9,7 @@ import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPane
 import { DocumentLibraryPanel } from "@/components/dashboard/DocumentLibraryPanel";
 import { DocumentSearchPanel } from "@/components/dashboard/DocumentSearchPanel";
 import { BudgetPanel } from "@/components/dashboard/BudgetPanel";
-import { FeedbackPanel } from "@/components/dashboard/FeedbackPanel";
+import { FeedbackWorkspace } from "@/components/dashboard/FeedbackWorkspace";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
 import { IconArchive, IconBudget, IconBuilding, IconEye, IconLayers, IconMail, IconUser } from "@/components/ui/Icons";
 import { cn } from "@/lib/utils";
@@ -113,7 +113,7 @@ export default function LsgManagePage() {
       {tab === "documents" ? <DocumentLibraryPanel /> : null}
       {tab === "search" ? <DocumentSearchPanel /> : null}
       {tab === "budget" ? <BudgetPanel /> : null}
-      {tab === "feedback" ? <FeedbackPanel mode="submit" /> : null}
+      {tab === "feedback" ? <FeedbackWorkspace side="lsg" /> : null}
 
       {tab === "structure" ? (
         <div className="rounded-2xl border border-line bg-paper/70 p-4 sm:p-5">

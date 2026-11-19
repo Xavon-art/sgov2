@@ -59,7 +59,7 @@
 - The committed checks are `npm run check:smoke` (read-only boundaries), `npm run test:authority` (RPC/HTTP boundaries including org-chart), `npm run test:e2e` (role navigation, validation, cancellation, responsive screenshots), `npm run check:interactions` (high-risk interaction source contracts), and `npm run check:interactions:ui` (browser fault injection). Deep create/invite/lifecycle scripts were run ad hoc against the demo and are not kept in the repository.
 - OTP DB-side per-email and per-IP throttling is still advisory; application rate limits remain process-local.
 - `definer_without_search_path 11` remains after migration 03192; an optional future migration can pin `search_path` without touching applied migrations.
-- The final Task 11 audit reports `fks_without_leading_index 82` (the earlier 71 figure is superseded) with `orphan_fk_rows 0` verified.
+- The Task 13 audit reports `foreign_keys 154` and `fks_without_leading_index 90` (the earlier 71 and 82 figures are superseded) with `orphan_fk_rows 0` verified.
 - `check:federated` create-flow items (unitary model gating) remain pre-existing and accepted.
 
 ## Dashboard customisation + demo environment
@@ -113,7 +113,7 @@
 
 ## Federated government modules (Tasks 1–11)
 - Scope: Tasks 1–11 on branch `feature/federated-government-modules` in `C:\Users\Julius~1.MAT\AppData\Local\Temp\opencode\smartgov-worktrees\federated-government-modules`. This final run created no commit, no push, no stash, and no branch switch. Task reports 1–10 are present; the controller-owned `.superpowers\sdd\2026-11-18-federated-government-modules\progress.md` exists and shows Tasks 1–11 complete. It was reviewed and reconciled by the controller.
-- Dashboard stability: the dashboard arrangement, card order, widget ids/defaults/order, hidden/wide values, and saved-layout behavior were not changed. The real locked ids are `stats,reports,task-chart,request-chart,flow`; no new top-level tile or nav id was added. `npm run check:dashboard` remains 25/25. No new `page.tsx` route was added.
+- Dashboard stability: the dashboard arrangement, card order, widget ids/defaults/order, hidden/wide values, and saved-layout behavior were not changed. The real locked ids are `stats,reports,task-chart,request-chart,flow`; no new top-level tile or nav id was added. `npm run check:dashboard` is now 30/30: the original 25 checks plus five feedback FK orphan checks. No new `page.tsx` route was added.
 
 ### Contract gate and Next.js doc conformance
 - `scripts/check-federated-features.mjs` is the additive static contract gate for routes, nav, migrations, status vocabulary, and module files; final result 137/137. Dynamic route params use the installed Next.js awaited-params convention, route handlers use Web Request/Response APIs, and new dynamic API routes do not collide with `page.tsx` siblings. No `driver.js`/`react-joyride` or chart dependency was added.
@@ -210,9 +210,43 @@
 ### Deferred findings rollup
 - Accepted (43): all 43 `accept` items from `.superpowers\sdd\2026-11-18-federated-government-modules\team-deferred-triage.md` are disclosed and accepted, not silently omitted. They include, by task: Task 1 gate helper blind spots (`readFileSync`, labels, `page.tsx`-only collision check, comment/string stripping, lowercase `request.json()`, hardcoded nav path, historical RED scaffolding); Task 2 duplicate nav-stability helper, load-bearing dashboard guard, real widget ids `stats,reports,task-chart,request-chart,flow`; Task 3 awaited `Promise<{ id: string }>` params and static-token limits covered by HTTP/UI gates; Task 4 HTTP 400 for missing file, `groupId` edit-modal caveat, inaccurate fallback comment, owner-only "More" tools, cosmetic checker formatting, POSTGRES alias history; Task 5 event-budget source predicates, cancelled-event direct API, no unmount abort, approved-total "Expenses", USG `Standalone`, no LSG standalone; Task 6 Future Events split and lint-warning-only result; Task 7 RSC-payload normalization, broader Suspense refactor, CSV formula caveat, count/copy caveats, monitoring edge cases; Task 8 legacy `scope='org'` rejection and no review status guard; Task 9 unused feedback label, re-acknowledge RPC, cosmetic formatting, `large-objects.ts` alias, shared test DB migrations; Task 10 Accounts active-only/caller-excluded roster, raw `account_scope`, stale doc comment; cross-task Turbopack fallback and stale-port caveats. Full per-item wording remains in the triage artifact.
 - Final cleanup (15): `.server-3101.log` and `temp_fix.txt` were removed in the final review-fix wave; the remaining handoff-only items were not executed. These are `tsconfig.tsbuildinfo`, `.next/`, 30 review snapshot directories, 15 review-diff packages, six Task 1 scratch files, and the stale-count/claim reconciliations C8–C15. The stale counts in this report are reconciled from the captured final evidence; no other cleanup candidate was deleted or moved before sign-off.
-- Out-of-scope (7): disclosed, not fixed in this workstream: the pre-existing `personal_requests` migration id conflict (`20260101003070` vs `20260101003110`), process-local advisory OTP throttling, `definer_without_search_path 11`, `fks_without_leading_index 82` with `orphan_fk_rows 0` (the earlier 71 figure is superseded), prior navigation/UX audit follow-ups, real email delivery not exercised locally, and deliberately untracked `paperworks/` plus pre-existing uncommitted dashboard/widget work.
+- Out-of-scope (7): disclosed, not fixed in this workstream: the pre-existing `personal_requests` migration id conflict (`20260101003070` vs `20260101003110`), process-local advisory OTP throttling, `definer_without_search_path 11`, `fks_without_leading_index 90` with `orphan_fk_rows 0` (the earlier 71 and 82 figures are superseded), prior navigation/UX audit follow-ups, real email delivery not exercised locally, and deliberately untracked `paperworks/` plus pre-existing uncommitted dashboard/widget work.
 - New Task 11 disclosures: brief/base figures `171/171`, `2894/2894`, `25/25` smoke, and `31/31` E2E were treated as reconciliation baselines, not targets; captured results are 200/200, 3074/3074, 52/52, and 70/70. The controller-owned `progress.md` exists and shows Task 11 complete; it was reviewed and reconciled by the controller. No credential/test-account contents were read or printed, and `paperworks/` was not read or modified. No new product-level finding required a source change during the original final run; Fix round 1 in the Task 11 report records the later review-driven corrections.
 - Final review-fix disclosures: findings 1–6 required source, SQL, and test changes; finding 7 remains parked by the controller ruling. The final rerun supersedes `check:units 292/292`, `test:authority 200/200`, lint warnings `329`, and compliance `2727ms` with `296/296`, `208/208`, `361`, and `4841ms`. New migration `20260101003280_final_review_fixes.sql` was applied to the shared test database; no applied migration was edited. The first `check:tours:ui` attempt hit the tool timeout at 10 minutes, but a full rerun completed 3074/3074 with exit 0. No credentials or test-account contents were read or printed.
+
+## Feedback form builder (Tasks 12-13)
+
+- Added the shared feedback form builder used by USG and LSG Manage: forms list/create, metadata, audience/access/identity, lifecycle (`draft -> open -> closed`, reopen allowed), public slug links, question editor, shared question renderer, responses list/detail, acknowledge, CSV export, and the signed-in answer flow.
+- Server-enforced rules: audience, access, and identity lock after opening (`form_locked`, 409); questions lock after the first response (`questions_locked`, 409); opening with zero questions returns `no_questions` (400); non-USG audience targeting requires `can_target_units` and otherwise returns `invalid_audience` (400); delete with responses returns `responses_exist` (409).
+- Signed-in identified submissions use the account display name/email; anonymous submissions null `submitted_by`, `respondent_name`, and `respondent_email`. CSV export neutralizes leading spreadsheet-formula characters.
+- Added migration `20260101003300_feedback_forms.sql` and the applied fix `20260101003340_feedback_status_transition_fix.sql`, which restores `status = v_status` in `smartgov.set_feedback_form_status`. The fix was applied to the test database and verified with `pg_get_functiondef`.
+- Added the public feedback tour `src/lib/tours/pages/public-feedback.ts` with anchors `public-feedback-intro`, `public-feedback-questions`, and `public-feedback-submit`; registered it in `src/lib/tours/registry.ts`.
+- Fixed the `StructureHolder` regression exposed by the units guard: `StructureHolder` no longer declares `rosterId`; the chart read path uses `PhotoHolder`/`rosterIdOf()` and `ChartNode.photoId`, preserving photo behavior without widening the persisted structure contract.
+- Fixed the dashboard hidden-widget gate race: the check now waits for `[data-tour="workspace-widgets"]` to exist and `[data-widget="reports"]` to be absent, instead of resolving immediately on an unmounted element during page load.
+
+| Order | Command | Captured result | Exit |
+|---|---|---|---|
+| 1 | `npx tsc --noEmit` | clean, no diagnostics | 0 |
+| 2 | `npm run check:features` | 137/137 checks passed; dashboard target asserted as 30 | 0 |
+| 3 | `npm run check:reveal` | 21/21 checks passed | 0 |
+| 4 | `npm run check:tours` | 325/325 tour checks passed | 0 |
+| 5 | `npm run check:interactions` | 27/27 checks passed | 0 |
+| 6 | `npm run check:federated` | 20/20 checks passed | 0 |
+| 7 | `npm run check:units` | 296/296 checks passed | 0 |
+| 8 | `npm run check:compliance` | ALL PASS (7 items in 3191ms) | 0 |
+| 9 | `npm run check:smoke` | 56/56 checks passed | 0 |
+| 10 | `npm run test:authority` | 229/229 checks passed | 0 |
+| 11 | `npm run test:e2e` | 86/86 checks passed | 0 |
+| 12 | `npm run check:interactions:ui` | 30/30 interaction browser checks passed | 0 |
+| 13 | `npm run check:tours:ui` | 3158/3158 tour browser checks passed | 0 |
+| 14 | `npm run check:dashboard` | 30/30 checks passed | 0 |
+| 15 | `npm run audit:connections` | PASS; `foreign_keys 154`, `fks_without_leading_index 90`, `missing_fk_candidates 13`, `rls_tables_without_policies 37`, `orphan_fk_rows 0`, `direct_untrusted_table_grants 0` | 0 |
+| 16 | `npx next build --webpack` | compiled successfully in 25.8s, TypeScript in 11.4s, 76/76 static pages generated in 3.4s | 0 |
+| 17 | authenticated Requirements smoke (ad hoc, not committed) | USG and LSG each signed in through `/login`, opened Request -> Requirements, rendered the heading and both source sections, returned 200 from `/api/tasks` and `/api/proposals`, and produced no browser console errors; 18/18 checks passed | 0 |
+
+- The earlier Task 11 verification table is retained as history; the Task 13 counts above supersede it where they differ.
+- The production build was served on port 3000 after the rebuild; `check:smoke` and `test:authority` were rerun against that rebuilt server and passed at 56/56 and 229/229.
+- Pending before sign-off: any commit, push, or deploy action, which requires explicit authorization.
 
 ## Ambiguity decisions
 - Public wrapper grants were left as the PostgREST entry surface because removing `anon`/`authenticated` would break the custom-auth transport. The DB functions still derive identity from the session token.

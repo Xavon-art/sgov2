@@ -42,8 +42,6 @@ export type StructureHolder = {
   photo?: string;
   /** Read-only. True when the person already has a stored photo. */
   hasPhoto?: boolean;
-  /** Read-only. The roster row the photo route takes. */
-  rosterId?: string;
 };
 
 export type StructurePosition = {

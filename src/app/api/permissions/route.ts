@@ -15,8 +15,8 @@ type Grant = {
 type ListPayload = RpcResult & { scope?: string; grants?: Grant[] };
 type WritePayload = RpcResult & { email?: string; permission?: string };
 
-/** The only permission that exists today. Widened by migration, not by input. */
-const PERMISSIONS = new Set(["can_invite"]);
+/** Grantable permissions are widened by migration, not by input. */
+const PERMISSIONS = new Set(["can_invite", "can_target_units"]);
 
 function emailLooksValid(value: unknown): value is string {
   return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());

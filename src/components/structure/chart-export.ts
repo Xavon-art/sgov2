@@ -86,7 +86,7 @@ export function chartToSvg({
 
   const defs = geometry.nodes
     .map((n) => {
-      const url = n.primary?.rosterId ? photos[n.primary.rosterId] : null;
+      const url = n.photoId ? photos[n.photoId] : null;
       return url ? `<clipPath id="clip-${esc(n.key)}"><circle cx="${leader / 2}" cy="${leader / 2}" r="${leader / 2}"/></clipPath>` : "";
     })
     .join("");
@@ -128,7 +128,7 @@ export function chartToSvg({
   const nodes = geometry.nodes
     .map((n) => {
       const y = n.y + header;
-      const url = n.primary?.rosterId ? photos[n.primary.rosterId] : null;
+      const url = n.photoId ? photos[n.photoId] : null;
       const name = clip(n.name || (n.primary ? "Unnamed" : "Vacant"), compact ? 18 : 22);
       const role = clip(n.title, compact ? 24 : 30);
       const avatar = layout.showPhotos

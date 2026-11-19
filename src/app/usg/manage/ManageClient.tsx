@@ -11,7 +11,7 @@ import { DocumentLibraryPanel } from "@/components/dashboard/DocumentLibraryPane
 import { DocumentSearchPanel } from "@/components/dashboard/DocumentSearchPanel";
 import { BudgetPanel } from "@/components/dashboard/BudgetPanel";
 import { MonitoringPanel } from "@/components/dashboard/MonitoringPanel";
-import { FeedbackPanel } from "@/components/dashboard/FeedbackPanel";
+import { FeedbackWorkspace } from "@/components/dashboard/FeedbackWorkspace";
 import { AccountsPanel } from "@/components/dashboard/AccountsPanel";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
 import {
@@ -147,7 +147,7 @@ export function ManageClient({ requestedTab }: { requestedTab?: string }) {
       {tab === "search" && canReviewDocuments ? <DocumentSearchPanel /> : null}
       {tab === "budget" && canReviewDocuments ? <BudgetPanel /> : null}
       {tab === "monitoring" && canReviewDocuments ? <MonitoringPanel /> : null}
-      {tab === "feedback" && canReviewDocuments ? <FeedbackPanel mode="review" /> : null}
+      {tab === "feedback" && canReviewDocuments ? <FeedbackWorkspace side="usg" /> : null}
       {tab === "accounts" && canManage ? <AccountsPanel /> : null}
 
       {tab === "structure" && canManage ? (

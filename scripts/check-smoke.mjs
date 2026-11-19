@@ -67,6 +67,9 @@ async function main() {
     "/api/monitoring",
     "/api/accomplishment-reports",
     "/api/feedback",
+    "/api/feedback/forms",
+    "/api/feedback/available",
+    "/api/feedback/forms/00000000-0000-0000-0000-000000000000/responses",
     "/api/profile/officer",
   ]) {
     const res = await get(path);
@@ -76,6 +79,12 @@ async function main() {
     const res = await get(path);
     check(`${path} redirects to /login`, res.status === 307 && res.headers.get("location") === "/login", `got ${res.status} ${res.headers.get("location") ?? ""}`);
   }
+  const invalidPublic = await get("/api/feedback/public/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  check(
+    "invalid public feedback slug answers 404 without a login redirect",
+    invalidPublic.status === 404 && !invalidPublic.headers.get("location")?.includes("/login"),
+    `got ${invalidPublic.status} ${invalidPublic.headers.get("location") ?? ""}`,
+  );
 
   console.log("USG owner session");
   const owner = await login(OWNER);

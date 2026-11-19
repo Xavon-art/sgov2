@@ -242,6 +242,11 @@ async function eventCancelProbes(page, email, password) {
     supportFiles: null,
     files: [],
     scopes: [],
+    assignees: [],
+    assigneeCount: 0,
+    canAssign: true,
+    isAssignedToMe: false,
+    canReport: true,
     claimNote: null,
     decisionNote: null,
     linkedRequest: null,
@@ -354,6 +359,195 @@ async function documentReviewProbe(page, email, password) {
   await signOut(page);
 }
 
+async function feedbackWorkspaceInteractionProbes(page, email, password) {
+  const formId = "66666666-6666-4666-8666-666666666666";
+  const now = new Date().toISOString();
+  const publicPath = `/feedback/f/${"c".repeat(32)}`;
+  const summary = {
+    id: formId,
+    title: "QA Feedback Form",
+    description: null,
+    status: "draft",
+    scope: "university",
+    accessMode: "public_link",
+    identityMode: "identified",
+    audienceSummary: "University-wide",
+    responseCount: 0,
+    questionCount: 0,
+    canManage: true,
+    canReview: true,
+    publicPath,
+    createdAt: now,
+    openedAt: null,
+    closedAt: null,
+  };
+  const detail = {
+    ...summary,
+    updatedAt: now,
+    questionsLocked: false,
+  };
+  const questions = [
+    {
+      id: "77777777-7777-4777-8777-777777777777",
+      fieldKey: null,
+      title: "Full name",
+      description: null,
+      qtype: "short_text",
+      required: false,
+      options: [],
+      scaleMin: null,
+      scaleMax: null,
+      scaleLabelLow: null,
+      scaleLabelHigh: null,
+      orderIndex: 0,
+    },
+  ];
+  const responses = [
+    {
+      id: "88888888-8888-4888-8888-888888888888",
+      status: "new",
+      submittedAt: now,
+      acknowledgedAt: null,
+      answers: { "77777777-7777-4777-8777-777777777777": "New Respondent" },
+      submittedBy: null,
+      respondentName: "New Respondent",
+      respondentEmail: "new@example.com",
+    },
+    {
+      id: "99999999-9999-4999-8999-999999999999",
+      status: "acknowledged",
+      submittedAt: now,
+      acknowledgedAt: now,
+      answers: { "77777777-7777-4777-8777-777777777777": "Acknowledged Respondent" },
+      submittedBy: null,
+      respondentName: "Acknowledged Respondent",
+      respondentEmail: "ack@example.com",
+    },
+  ];
+
+  const listPattern = /\/api\/feedback\/forms$/;
+  const detailPattern = /\/api\/feedback\/forms\/[^/]+$/;
+  const responsesPattern = /\/api\/feedback\/forms\/[^/]+\/responses$/;
+
+  await page.route(listPattern, (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, rows: [summary] }),
+    });
+  });
+  await page.route(detailPattern, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, form: detail, scopes: [], questions: [] }),
+    }),
+  );
+  await page.route(responsesPattern, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        form: {
+          id: formId,
+          title: "QA Feedback Form",
+          status: "open",
+          identityMode: "identified",
+          responseCount: responses.length,
+        },
+        questions,
+        responses,
+      }),
+    }),
+  );
+
+  await signIn(page, email, password);
+  await nav(page, "Manage", /\/usg\/manage/);
+  await page.getByRole("tab", { name: "Feedback", exact: true }).click();
+  await page.getByTestId("feedback-workspace").waitFor({ timeout: 20000 });
+
+  const workspace = page.getByTestId("feedback-workspace");
+  const labels = ["Forms", "Responses", "Answer", "Direct messages"];
+  const tabsVisible = await Promise.all(
+    labels.map(async (label) => (await workspace.getByRole("tab", { name: label, exact: true }).count()) === 1),
+  );
+  check("feedback workspace exposes Forms, Responses, Answer, and Direct messages", tabsVisible.every(Boolean));
+
+  await workspace.getByRole("tab", { name: "Responses", exact: true }).click();
+  await page.getByTestId("feedback-responses-panel").waitFor({ timeout: 20000 });
+  await page.getByTestId("feedback-response-row").first().waitFor({ timeout: 20000 });
+  check(
+    "feedback responses all filter shows both mocked rows",
+    (await page.getByTestId("feedback-response-row").count()) === 2,
+  );
+  await page.getByRole("button", { name: "New", exact: true }).click();
+  await page.waitForTimeout(50);
+  check(
+    "feedback responses new filter narrows the table",
+    (await page.getByTestId("feedback-response-row").count()) === 1,
+  );
+  await page.getByRole("button", { name: "Acknowledged", exact: true }).click();
+  await page.waitForTimeout(50);
+  check(
+    "feedback responses acknowledged filter narrows the table",
+    (await page.getByTestId("feedback-response-row").count()) === 1,
+  );
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.waitForTimeout(50);
+  check(
+    "feedback responses all filter restores both rows",
+    (await page.getByTestId("feedback-response-row").count()) === 2,
+  );
+
+  await workspace.getByRole("tab", { name: "Answer", exact: true }).click();
+  await page.getByTestId("feedback-answer-panel").waitFor({ timeout: 20000 });
+  check("feedback Answer tab opens its panel", true);
+
+  await workspace.getByRole("tab", { name: "Direct messages", exact: true }).click();
+  await page.getByText("Feedback from your units", { exact: true }).first().waitFor({ timeout: 20000 });
+  check("feedback Direct messages tab opens its panel", true);
+
+  await workspace.getByRole("tab", { name: "Forms", exact: true }).click();
+  await page.getByText("QA Feedback Form", { exact: true }).waitFor({ timeout: 20000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByTestId("feedback-form-builder").waitFor({ timeout: 20000 });
+  await page.getByLabel("Title", { exact: true }).waitFor({ timeout: 20000 });
+  await page.waitForTimeout(300);
+
+  const save = page.getByRole("button", { name: "Save", exact: true }).first();
+  check("feedback builder disables save with zero questions", await save.isDisabled());
+  await page.getByTestId("feedback-quick-add-full_name").click();
+  check(
+    "feedback builder quick-add appends one question",
+    (await page.getByTestId("feedback-question").count()) === 1,
+  );
+  check("feedback builder enables save after quick-add", await save.isEnabled());
+
+  await page.getByRole("button", { name: "Copy link", exact: true }).click();
+  await page.getByText("Public link copied.", { exact: true }).waitFor({ timeout: 10000 });
+  const clipboardWrites = await page.evaluate(() => window.__clipboardWrites ?? []);
+  check(
+    "feedback builder copies the public link without throwing",
+    clipboardWrites.length === 1 && String(clipboardWrites[0]).endsWith(publicPath),
+    JSON.stringify(clipboardWrites),
+  );
+
+  await page.getByRole("button", { name: "Back to forms", exact: true }).click();
+  await page.getByText("QA Feedback Form", { exact: true }).waitFor({ timeout: 20000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByTestId("feedback-form-builder").waitFor({ timeout: 20000 });
+  await page.getByRole("button", { name: "Back to forms", exact: true }).click();
+  await page.getByText("QA Feedback Form", { exact: true }).waitFor({ timeout: 20000 });
+  check("feedback builder opens and closes back to the forms list", true);
+
+  await page.unroute(responsesPattern);
+  await page.unroute(detailPattern);
+  await page.unroute(listPattern);
+  await signOut(page);
+}
+
 async function main() {  const { password, emails } = fixture();
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -374,10 +568,38 @@ async function main() {  const { password, emails } = fixture();
 
   await page.addInitScript(() => {
     window.__openCalls = [];
+    window.__clipboardWrites = [];
     window.open = (...args) => {
       window.__openCalls.push(args);
       return null;
     };
+    try {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (text) => {
+            window.__clipboardWrites.push(String(text));
+          },
+        },
+      });
+    } catch {
+      navigator.clipboard.writeText = async (text) => {
+        window.__clipboardWrites.push(String(text));
+      };
+    }
+    const install = () => {
+      if (document.getElementById("interactions-hide-tours")) return;
+      const style = document.createElement("style");
+      style.id = "interactions-hide-tours";
+      style.textContent =
+        ".tour-prompt,.tour-floating-help,[data-testid='tour-prompt']{display:none!important}";
+      document.head.appendChild(style);
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", install, { once: true });
+    } else {
+      install();
+    }
   });
 
   await page.route(/\/api\/notifications\/unread$/, (route) =>
@@ -417,6 +639,7 @@ async function main() {  const { password, emails } = fixture();
     await surveyDuplicateFailureProbe(page, emails.lsg, password);
     await eventCancelProbes(page, emails.usg, password);
     await documentReviewProbe(page, emails.reviewer, password);
+    await feedbackWorkspaceInteractionProbes(page, emails.usg, password);
     check("no unexpected browser console errors", consoleErrors.length === 0, consoleErrors.join(" | "));
   } catch (error) {
     check("browser interaction run completed", false, error.message);

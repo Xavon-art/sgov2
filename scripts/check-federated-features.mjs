@@ -317,8 +317,8 @@ export function assertDashboardAuditTargetStable() {
     ? entry.source.slice(declaration.index + declaration[0].length)
     : "";
   check(
-    "check-dashboard-audit.mjs keeps the 25-check target",
-    declaration?.[1] === "25" && /DASHBOARD_AUDIT_TARGET/.test(afterDeclaration),
+    "check-dashboard-audit.mjs keeps the 30-check target",
+    declaration?.[1] === "30" && /DASHBOARD_AUDIT_TARGET/.test(afterDeclaration),
   );
 }
 
@@ -622,12 +622,12 @@ if (isMainEntry) {
     "No feedback has been submitted yet.",
   ]);
   assertIncludes("src/app/usg/manage/ManageClient.tsx", [
-    "FeedbackPanel",
+    "FeedbackWorkspace",
     'id: "feedback"',
     "tab === \"feedback\"",
   ]);
   assertIncludes("src/app/lsg/manage/page.tsx", [
-    "FeedbackPanel",
+    "FeedbackWorkspace",
     'id: "feedback"',
     "tab === \"feedback\"",
   ]);

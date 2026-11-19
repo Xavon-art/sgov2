@@ -105,14 +105,14 @@ async function loadPhoto(rosterId: string): Promise<string | null> {
 export function useChartPhotos(nodes: ChartNode[], enabled: boolean) {
   const [photos, setPhotos] = useState<Record<string, string | null>>({});
   const signature = nodes
-    .map((node) => `${node.primary?.rosterId ?? ""}:${node.primary?.hasPhoto ? 1 : 0}`)
+    .map((node) => `${node.photoId ?? ""}:${node.primary?.hasPhoto ? 1 : 0}`)
     .join("|");
 
   useEffect(() => {
     if (!enabled) return;
     const wanted = new Set<string>();
     for (const node of nodes) {
-      const rosterId = node.primary?.rosterId;
+      const rosterId = node.photoId;
       if (rosterId && node.primary?.hasPhoto) wanted.add(rosterId);
     }
     if (!wanted.size) return;
@@ -392,7 +392,7 @@ export function ChartCanvas({
       <ChartEdges geometry={geometry} layout={layout} />
       <ChartBands geometry={geometry} layout={layout} />
       {geometry.nodes.map((node) => {
-        const photo = node.primary?.rosterId ? photos[node.primary.rosterId] : null;
+        const photo = node.photoId ? photos[node.photoId] : null;
         return (
           <ChartNodeCard
             key={node.key}
