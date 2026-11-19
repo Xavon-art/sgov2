@@ -84,7 +84,7 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
   const badge = role.unitName ? `${role.unitName} LSG` : "LSG workspace";
 
   return (
-    <DashboardProvider value={{ account, meta }}>
+    <DashboardProvider value={{ account, meta, role }}>
       <script
         dangerouslySetInnerHTML={{
           __html: `document.documentElement.classList.toggle("dark", ${JSON.stringify(data.theme === "dark")});`,

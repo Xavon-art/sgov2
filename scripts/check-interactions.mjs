@@ -201,5 +201,53 @@ check(
   orgChartPage.includes('if (chart.scope === "unit") redirect("/my-council");'),
 );
 
+const usgNav = src("src/components/dashboard/usg-nav.ts");
+const usgNavChildren = between(usgNav, "const manageChildren = [", "];");
+check(
+  "USG nav gives document tabs to the server-resolved reviewer side",
+  usgNav.includes('const canReviewDocuments = role.side === "usg";') &&
+    usgNavChildren.includes('{ label: "Documents", href: "/usg/manage?tab=documents" }') &&
+    usgNavChildren.includes('{ label: "Search", href: "/usg/manage?tab=search" }') &&
+    usgNav.includes("canReviewDocuments && (index === 4 || index === 5)"),
+);
+check(
+  "USG nav keeps owner-only children owner-only",
+  usgNavChildren.indexOf('label: "Your Umbrella"') <
+    usgNavChildren.indexOf('label: "Profile and Customization"') &&
+    usgNavChildren.indexOf('label: "Profile and Customization"') <
+      usgNavChildren.indexOf('label: "Documents"') &&
+    usgNavChildren.indexOf('label: "Documents"') <
+      usgNavChildren.indexOf('label: "Search"') &&
+    usgNav.includes("canManage || index === 3"),
+);
+
+const usgManage = src("src/app/usg/manage/ManageClient.tsx");
+check(
+  "USG manage derives document access from the server-resolved workspace role",
+  usgManage.includes('const { account, role } = useDashboard();') &&
+    usgManage.includes('const canReviewDocuments = role.side === "usg";') &&
+    usgManage.includes('{ id: "documents", label: "Documents", access: "reviewer"') &&
+    usgManage.includes('{ id: "search", label: "Search", access: "reviewer"') &&
+    usgManage.includes('tab === "documents" && canReviewDocuments') &&
+    usgManage.includes('tab === "search" && canReviewDocuments'),
+);
+check(
+  "USG manage keeps umbrella, invites, and structure owner-only",
+  ['umbrella', 'invites', 'structure'].every((id) =>
+    usgManage.includes(`{ id: "${id}", label:`),
+  ) &&
+    usgManage.includes('access: "owner"') &&
+    usgManage.includes('t.access === "owner" ? canManage : canReviewDocuments'),
+);
+
+const documentLibrary = src("src/components/dashboard/DocumentLibraryPanel.tsx");
+check(
+  "document approve controls are driven by the server canApprove flag",
+  documentLibrary.includes("setCanApprove(json.canApprove === true);") &&
+    documentLibrary.includes("{canApprove && (") &&
+    documentLibrary.includes("Approve") &&
+    documentLibrary.includes("Reject"),
+);
+
 console.log(`\n${passed}/${total} interaction checks passed.`);
 if (passed !== total) process.exitCode = 1;

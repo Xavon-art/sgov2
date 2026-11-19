@@ -20,6 +20,12 @@ export const usgRequestTour: PageTour = {
       placement: "bottom",
     },
     {
+      target: "request-tabs",
+      title: "Resolutions",
+      body: "The new Resolutions tab collects decisions from your office and the units below you.",
+      placement: "bottom",
+    },
+    {
       target: "request-create-task",
       title: "Create task",
       body: "Use this button to assign a new task to a member or team.",

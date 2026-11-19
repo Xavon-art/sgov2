@@ -14,6 +14,12 @@ export const lsgManageTour: PageTour = {
       placement: "bottom",
     },
     {
+      target: "manage-tabs",
+      title: "Federated tabs",
+      body: "Documents, Search, Budget, and Feedback now live beside the old council tabs.",
+      placement: "bottom",
+    },
+    {
       target: "manage-usg",
       title: "USG details",
       body: "This section shows information about the undergraduate student government you belong to.",

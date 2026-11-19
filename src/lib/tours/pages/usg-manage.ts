@@ -14,6 +14,12 @@ export const usgManageTour: PageTour = {
       placement: "bottom",
     },
     {
+      target: "manage-tabs",
+      title: "Federated tabs",
+      body: "Documents, Search, Budget, Monitoring, Feedback, and Accounts now live beside the old tabs.",
+      placement: "bottom",
+    },
+    {
       target: "manage-umbrella",
       title: "Umbrella organization",
       body: "This section shows the larger organization your council belongs to.",

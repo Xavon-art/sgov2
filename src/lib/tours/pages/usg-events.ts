@@ -20,6 +20,12 @@ export const usgEventsTour: PageTour = {
       placement: "bottom",
     },
     {
+      target: "events-toolbar",
+      title: "Event views",
+      body: "The toolbar also opens the Calendar, Future Events, and Accomplishment tabs.",
+      placement: "bottom",
+    },
+    {
       target: "events-create",
       title: "Create event",
       body: "Select this button to add a new event to the council calendar.",

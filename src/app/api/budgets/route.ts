@@ -89,6 +89,7 @@ export async function POST(req: Request) {
     title?: unknown;
     justification?: unknown;
     proposalId?: unknown;
+    eventId?: unknown;
     items?: unknown;
   };
   try {
@@ -119,6 +120,28 @@ export async function POST(req: Request) {
     }
   }
 
+  let eventId: string | null = null;
+  if (typeof body.eventId === "string" && body.eventId.trim()) {
+    eventId = body.eventId.trim();
+    if (!UUID.test(eventId)) {
+      return NextResponse.json(
+        { ok: false, message: "That event reference is not valid." },
+        { status: 400 },
+      );
+    }
+  }
+
+  if (proposalId && eventId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "A budget can link to a proposal or an event, not both.",
+        reason: "invalid_request",
+      },
+      { status: 400 },
+    );
+  }
+
   if (!Array.isArray(body.items)) {
     return NextResponse.json(
       { ok: false, message: messageFor("invalid_items"), reason: "invalid_items" },
@@ -126,17 +149,40 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
-    const res = await callRpc<RpcResult & { budgetId?: string; requestedTotal?: number }>(
-      "submit_budget",
+  // Totals are the server's to compute. A client-sent subtotal is either a bug
+  // or an attempt to choose the number the reviewer sees, so refuse it instead
+  // of silently ignoring it.
+  const sendsSubtotal = body.items.some(
+    (item) =>
+      item !== null &&
+      typeof item === "object" &&
+      Object.prototype.hasOwnProperty.call(item, "subtotal"),
+  );
+  if (sendsSubtotal) {
+    return NextResponse.json(
       {
-        p_session_token: token,
-        p_proposal_id: proposalId,
-        p_title: title,
-        p_justification: typeof body.justification === "string" ? body.justification.trim() : "",
-        p_items: body.items,
+        ok: false,
+        message: "Send each line's label, quantity, and unit cost; totals are calculated on the server.",
+        reason: "invalid_items",
       },
+      { status: 400 },
     );
+  }
+
+  try {
+    const rpc = eventId ? "submit_event_budget" : "submit_budget";
+    const args: Record<string, unknown> = {
+      p_session_token: token,
+      p_title: title,
+      p_justification: typeof body.justification === "string" ? body.justification.trim() : "",
+      p_items: body.items,
+    };
+    if (eventId) args.p_event_id = eventId;
+    else args.p_proposal_id = proposalId;
+
+    const res = await callRpc<
+      RpcResult & { budgetId?: string; requestedTotal?: number; eventId?: string }
+    >(rpc, args);
 
     if (!res.ok) {
       return NextResponse.json(
@@ -149,6 +195,7 @@ export async function POST(req: Request) {
       ok: true,
       budgetId: res.budgetId,
       requestedTotal: res.requestedTotal,
+      eventId: res.eventId ?? eventId,
     });
   } catch (error) {
     console.error("[budgets:submit]", error);

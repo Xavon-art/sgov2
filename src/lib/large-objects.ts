@@ -18,11 +18,11 @@ import { Pool } from "pg";
 let pool: Pool | null = null;
 
 function db(): Pool {
-  const url = process.env.POSTGRES_URL;
+  const url = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 
   if (!url) {
     throw new Error(
-      "POSTGRES_URL is not set, so document bytes cannot be read. Check .env.local.",
+      "POSTGRES_URL or DATABASE_URL is not set, so document bytes cannot be read. Check .env.local.",
     );
   }
 

@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runComplianceCheck } from "../src/lib/compliance/engine";
 import type { EngineInput } from "../src/lib/compliance/engine";
+import { emptyStatusCounts, monitoringCsv } from "../src/lib/monitoring";
+import type { MonitoringPayload } from "../src/lib/monitoring";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fx = (name: string) => readFileSync(join(here, "fixtures", name));
@@ -171,6 +173,36 @@ for (const item of report.items) {
 }
 check("every item carries an actionable recommendation",
   report.items.every((it) => it.recommendation.length >= 5));
+
+const csvEmpty = emptyStatusCounts();
+const csvPayload: MonitoringPayload = {
+  ok: true,
+  totals: { ...csvEmpty },
+  campuses: [
+    {
+      unitId: "unit-1",
+      unitName: "=SUM(1+1)",
+      totals: { ...csvEmpty },
+      modules: [{ key: "documents", label: "+CMD", total: 1, statuses: { ...csvEmpty, pending: 1 } }],
+    },
+    {
+      unitId: "unit-2",
+      unitName: "@SUM(A1)",
+      totals: { ...csvEmpty },
+      modules: [{ key: "tasks", label: "-CMD", total: 1, statuses: { ...csvEmpty, pending: 1 } }],
+    },
+  ],
+};
+const csv = monitoringCsv(csvPayload);
+check(
+  "CSV export neutralizes leading spreadsheet formulas",
+  csv.includes("'=SUM(1+1)") &&
+    csv.includes("'+CMD") &&
+    csv.includes("'@SUM(A1)") &&
+    csv.includes("'-CMD") &&
+    !csv.split("\r\n").some((row) => /^[=+@-]/.test(row)),
+  csv,
+);
 
 // -- Timing: the heavy path (three parsed office documents) stays under 5s cold.
 check("runs fast (cold, < 5000ms)", report.durationMs < 5000);

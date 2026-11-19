@@ -2,7 +2,7 @@ import type { PageTour } from "../types";
 
 export const lsgOverviewTour: PageTour = {
   id: "lsg-overview",
-  version: "1",
+  version: "2",
   route: "/lsg",
   label: "LSG workspace overview",
   roles: ["lsg"],
@@ -25,6 +25,12 @@ export const lsgOverviewTour: PageTour = {
       title: "Customize workspace",
       body: "Use this control to arrange the tiles so the tools you use most are easy to find.",
       placement: "left",
+    },
+    {
+      target: "workspace-widgets",
+      title: "Reports and signals",
+      body: "These widgets summarize what your unit owes the USG and what you have sent back. Use Customize to hide the ones you do not need.",
+      placement: "top",
     },
     {
       target: "workspace-shortcuts",

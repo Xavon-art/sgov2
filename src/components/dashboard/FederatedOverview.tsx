@@ -34,21 +34,35 @@ import {
  * a preference about presentation, never a second route table.
  */
 
+type Counts = {
+  tasksOpen: number;
+  tasksOverdue: number;
+  requestsOpen: number;
+  eventsPending: number;
+  surveysOpen: number;
+};
+
 type OverviewPayload = {
   ok: boolean;
-  counts?: {
-    tasksOpen: number;
-    tasksOverdue: number;
-    requestsOpen: number;
-    eventsPending: number;
-    surveysOpen: number;
-  };
+  counts?: Counts;
+  breakdown?: Record<"tasks" | "requests" | "events" | "surveys", Record<string, number>>;
   message?: string;
 };
 
 type TileLayout = { id: string; hidden: boolean; wide: boolean };
 
-type LayoutPayload = { ok: boolean; layout?: unknown; message?: string };
+type LayoutPayload = { ok: boolean; layout?: unknown; widgets?: unknown; message?: string };
+
+const WIDGETS = [
+  { id: "stats", label: "At a glance" },
+  { id: "reports", label: "Report summary" },
+  { id: "task-chart", label: "Task status" },
+  { id: "request-chart", label: "Request status" },
+  { id: "flow", label: "Workflow" },
+] as const;
+
+const DEFAULT_WIDGETS: string[] = WIDGETS.map((widget) => widget.id);
+const WIDGET_IDS = new Set<string>(DEFAULT_WIDGETS);
 
 /** Which counter belongs to which nav section, so a card can badge itself. */
 function countFor(id: string, c: NonNullable<OverviewPayload["counts"]>): number | null {
@@ -72,6 +86,14 @@ function isTileLayout(value: unknown): value is TileLayout {
     typeof tile.hidden === "boolean" &&
     typeof tile.wide === "boolean"
   );
+}
+
+function isWidgetList(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((id) => typeof id === "string" && WIDGET_IDS.has(id));
+}
+
+function ranked(bucket: Record<string, number> | undefined): Array<[string, number]> {
+  return Object.entries(bucket ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
 /**
@@ -105,11 +127,14 @@ export function FederatedOverview({
   side: "usg" | "lsg";
 }) {
   const { account, meta } = useDashboard();
-  const [counts, setCounts] = useState<OverviewPayload["counts"] | null>(null);
+  const [counts, setCounts] = useState<Counts | null>(null);
+  const [breakdown, setBreakdown] = useState<NonNullable<OverviewPayload["breakdown"]> | null>(null);
   const [error, setError] = useState("");
 
   const [saved, setSaved] = useState<TileLayout[]>([]);
   const [draft, setDraft] = useState<TileLayout[] | null>(null);
+  const [savedWidgets, setSavedWidgets] = useState<string[]>(DEFAULT_WIDGETS);
+  const [widgetDraft, setWidgetDraft] = useState<string[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [layoutNotice, setLayoutNotice] = useState("");
@@ -123,6 +148,7 @@ export function FederatedOverview({
         if (!alive) return;
         if (res.ok && body.ok) {
           setCounts(body.counts ?? null);
+          setBreakdown(body.breakdown ?? null);
           setError("");
         } else {
           setError(body.message ?? "We could not load your overview.");
@@ -144,6 +170,7 @@ export function FederatedOverview({
         const body = (await res.json().catch(() => ({}))) as LayoutPayload;
         if (!alive || !res.ok || !body.ok || !Array.isArray(body.layout)) return;
         setSaved(body.layout.filter(isTileLayout));
+        if (isWidgetList(body.widgets)) setSavedWidgets(body.widgets);
       } catch {
         // A layout that cannot be read is not worth an alert: the nav order is
         // a perfectly good dashboard, and the next save will repair the row.
@@ -162,15 +189,19 @@ export function FederatedOverview({
   const byId = useMemo(() => new Map(nav.map((item) => [item.id, item])), [nav]);
 
   const visibleTiles = activeLayout.filter((tile) => editing || !tile.hidden);
+  const activeWidgetIds = widgetDraft ?? savedWidgets;
+  const visibleWidgets = WIDGETS.filter((widget) => activeWidgetIds.includes(widget.id));
 
   function beginEditing() {
     setDraft(mergeLayout(nav, saved));
+    setWidgetDraft(savedWidgets.slice());
     setEditing(true);
     setLayoutNotice("");
   }
 
   function cancelEditing() {
     setDraft(null);
+    setWidgetDraft(null);
     setEditing(false);
     setLayoutNotice("");
   }
@@ -192,14 +223,21 @@ export function FederatedOverview({
     );
   }
 
-  async function persist(next: TileLayout[]) {
+  function toggleWidget(id: string) {
+    setWidgetDraft((current) => {
+      const base = current ?? savedWidgets;
+      return base.includes(id) ? base.filter((entry) => entry !== id) : [...base, id];
+    });
+  }
+
+  async function persist(next: TileLayout[], nextWidgets: string[]) {
     setSaving(true);
     setLayoutNotice("");
     try {
       const res = await fetch("/api/dashboard/layout", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ layout: next }),
+        body: JSON.stringify({ layout: next, widgets: nextWidgets }),
       });
       const body = (await res.json().catch(() => ({}))) as LayoutPayload;
       if (!res.ok || !body.ok) {
@@ -207,6 +245,7 @@ export function FederatedOverview({
         return false;
       }
       setSaved(next);
+      setSavedWidgets(nextWidgets.slice());
       return true;
     } catch {
       setLayoutNotice("We could not save your dashboard. Try again.");
@@ -218,9 +257,10 @@ export function FederatedOverview({
 
   async function saveEditing() {
     if (!draft) return;
-    const ok = await persist(draft);
+    const ok = await persist(draft, widgetDraft ?? savedWidgets);
     if (ok) {
       setDraft(null);
+      setWidgetDraft(null);
       setEditing(false);
       setLayoutNotice("Dashboard saved.");
     }
@@ -231,9 +271,10 @@ export function FederatedOverview({
       nav,
       nav.map((item) => ({ id: item.id, hidden: false, wide: false })),
     );
-    const ok = await persist(defaults);
+    const ok = await persist(defaults, DEFAULT_WIDGETS);
     if (ok) {
       setDraft(null);
+      setWidgetDraft(null);
       setEditing(false);
       setLayoutNotice("Dashboard reset to the default arrangement.");
     }
@@ -249,6 +290,88 @@ export function FederatedOverview({
     side === "usg"
       ? meta.organizationName || "Student government office"
       : unitName || "Your unit";
+
+  function barList(bucket: Record<string, number> | undefined) {
+    const rows = ranked(bucket);
+    if (rows.length === 0) {
+      return <p className="text-[0.8125rem] leading-relaxed text-muted">No data yet.</p>;
+    }
+    const max = Math.max(1, ...rows.map((row) => row[1]));
+    return (
+      <div className="flex flex-col gap-3">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-3 text-[0.75rem] font-medium text-body">
+              <span className="truncate">{label}</span>
+              <span className="shrink-0 text-muted">{value}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-line/50">
+              <div
+                className="h-full rounded-full bg-brass-deep"
+                style={{ width: `${Math.max(4, Math.round((value / max) * 100))}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  function renderWidget(id: string) {
+    if (id === "stats") {
+      const stats = [
+        ["Open tasks", counts?.tasksOpen],
+        ["Overdue", counts?.tasksOverdue],
+        ["Open requests", counts?.requestsOpen],
+        ["Pending events", counts?.eventsPending],
+        ["Open surveys", counts?.surveysOpen],
+      ] as const;
+      return (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {stats.map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-line/70 bg-paper/60 p-3">
+              <p className="text-[0.6875rem] font-medium text-muted">{label}</p>
+              <p className="mt-1 text-[1.375rem] font-semibold leading-none text-ink">
+                {value ?? "—"}
+              </p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (id === "reports") {
+      return (
+        <div className="flex flex-col gap-2 text-[0.8125rem] leading-relaxed text-body">
+          <p>
+            {counts
+              ? `${counts.tasksOpen} task${counts.tasksOpen === 1 ? "" : "s"} are open, including ${counts.tasksOverdue} overdue.`
+              : "Task totals are loading."}
+          </p>
+          <p>
+            {counts
+              ? `${counts.requestsOpen} request${counts.requestsOpen === 1 ? "" : "s"} are waiting for review, with ${counts.eventsPending} event${counts.eventsPending === 1 ? "" : "s"} and ${counts.surveysOpen} survey${counts.surveysOpen === 1 ? "" : "s"} in progress.`
+              : "Request, event, and survey totals are loading."}
+          </p>
+        </div>
+      );
+    }
+    if (id === "task-chart") return barList(breakdown?.tasks);
+    if (id === "request-chart") return barList(breakdown?.requests);
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-[0.75rem] font-medium text-body">
+        {["Filed", "Triaged", "Assigned", "Reviewed"].map((step, index) => (
+          <span key={step} className="flex items-center gap-2">
+            <span className="rounded-full border border-brass/30 bg-brass-soft/25 px-3 py-1.5 text-brass-deep">
+              {step}
+            </span>
+            {index < 3 ? (
+              <IconArrowRight className="h-3.5 w-3.5 text-muted" strokeWidth={1.8} aria-hidden="true" />
+            ) : null}
+          </span>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-8">
@@ -448,6 +571,78 @@ export function FederatedOverview({
             Every tile is hidden. Choose Customize to bring one back.
           </p>
         ) : null}
+      </Reveal>
+
+      <Reveal delay={0.08}>
+        <div data-tour="workspace-widgets" className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div className="flex flex-col gap-1">
+              <p className="eyebrow">Reports and signals</p>
+              <p className="text-[0.8125rem] leading-relaxed text-muted">
+                {editing
+                  ? "Choose which summaries stay on your desk."
+                  : "A quick read of the work moving through the office."}
+              </p>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {editing
+              ? WIDGETS.map((widget) => {
+                  const shown = activeWidgetIds.includes(widget.id);
+                  return (
+                    <div
+                      key={widget.id}
+                      data-widget={widget.id}
+                      className={`flex flex-col gap-3 rounded-2xl border border-dashed border-line-strong bg-paper/50 p-5${
+                        shown ? "" : " opacity-55"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[1.0625rem] leading-snug font-medium text-ink">
+                          {widget.label}
+                        </span>
+                        {shown ? (
+                          <span className="rounded-full bg-brass-soft/50 px-2 py-0.5 text-[0.6875rem] font-semibold text-brass-deep">
+                            Shown
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-line/60 px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">
+                            Hidden
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-auto flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleWidget(widget.id)}
+                          aria-pressed={shown}
+                          className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:border-line-strong"
+                        >
+                          {shown ? "Hide" : "Show"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              : visibleWidgets.map((widget) => (
+                  <div
+                    key={widget.id}
+                    data-widget={widget.id}
+                    className={`rounded-2xl border border-line bg-paper/70 p-5 sm:p-6${
+                      widget.id === "flow" ? " sm:col-span-2" : ""
+                    }`}
+                  >
+                    <p className="mb-4 text-[0.9375rem] font-semibold text-ink">{widget.label}</p>
+                    {renderWidget(widget.id)}
+                  </div>
+                ))}
+          </div>
+          {!editing && visibleWidgets.length === 0 ? (
+            <p className="rounded-2xl border border-line bg-paper/70 p-6 text-[0.875rem] leading-relaxed text-muted">
+              Every widget is hidden. Choose Customize to bring one back.
+            </p>
+          ) : null}
+        </div>
       </Reveal>
 
       <Reveal delay={0.1}>

@@ -2,7 +2,7 @@ import type { PageTour } from "../types";
 
 export const usgOverviewTour: PageTour = {
   id: "usg-overview",
-  version: "1",
+  version: "2",
   route: "/usg",
   label: "USG workspace overview",
   roles: ["usg"],
@@ -25,6 +25,12 @@ export const usgOverviewTour: PageTour = {
       title: "Customize workspace",
       body: "Use this control to arrange the tiles so the tools you use most are easy to find.",
       placement: "left",
+    },
+    {
+      target: "workspace-widgets",
+      title: "Reports and signals",
+      body: "These widgets summarize the work moving through the office. Use Customize to hide the ones you do not need.",
+      placement: "top",
     },
     {
       target: "workspace-shortcuts",

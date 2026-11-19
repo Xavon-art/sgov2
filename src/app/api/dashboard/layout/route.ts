@@ -5,21 +5,12 @@ import { readSessionToken } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
-/**
- * The signed-in officer's own dashboard arrangement.
- *
- * GET returns whatever was saved, or an empty array for a first visit -- the
- * client falls back to its nav order, so "never arranged" and "arranged to the
- * default" look the same without a server-side default to keep in step.
- *
- * PUT replaces the whole arrangement. A layout is small (a handful of tiles),
- * so a partial patch would add merge semantics for no gain, and whole-document
- * writes make the last save the truth no matter how many tabs are open.
- */
-
 type LayoutItem = { id: string; hidden: boolean; wide: boolean };
 
-type GetPayload = RpcResult & { layout?: LayoutItem[] };
+type PreferencesPayload = RpcResult & {
+  layout?: LayoutItem[];
+  widgets?: string[];
+};
 
 export async function GET() {
   const token = await readSessionToken();
@@ -28,14 +19,18 @@ export async function GET() {
   }
 
   try {
-    const res = await callRpc<GetPayload>("get_dashboard_layout", { p_session_token: token });
+    const res = await callRpc<PreferencesPayload>("get_dashboard_preferences", { p_session_token: token });
     if (!res.ok) {
       return NextResponse.json(
         { ok: false, reason: res.reason, message: messageFor(res.reason) },
         { status: 403 },
       );
     }
-    return NextResponse.json({ ok: true, layout: Array.isArray(res.layout) ? res.layout : [] });
+    return NextResponse.json({
+      ok: true,
+      layout: Array.isArray(res.layout) ? res.layout : [],
+      widgets: Array.isArray(res.widgets) ? res.widgets : [],
+    });
   } catch (error) {
     console.error("[dashboard:layout:get]", error);
     return NextResponse.json({ ok: false, message: messageFor("retry") }, { status: 503 });
@@ -48,23 +43,22 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
-  let body: { layout?: unknown };
+  let body: { layout?: unknown; widgets?: unknown };
   try {
-    body = (await request.json()) as { layout?: unknown };
+    body = (await request.json()) as { layout?: unknown; widgets?: unknown };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
-  if (!Array.isArray(body.layout)) {
+  if (!Array.isArray(body.layout) || !Array.isArray(body.widgets)) {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
   try {
-    const res = await callRpc<RpcResult>("save_dashboard_layout", {
+    const res = await callRpc<RpcResult>("save_dashboard_preferences", {
       p_session_token: token,
-      // The function normalises and rejects; the route does not try to be a
-      // second validator, because two validators that disagree is worse than one.
       p_layout: body.layout,
+      p_widgets: body.widgets,
     });
     if (!res.ok) {
       return NextResponse.json(

@@ -55,7 +55,20 @@ async function get(path, cookie) {
 
 async function main() {
   console.log("Anonymous");
-  for (const path of ["/api/overview", "/api/officers", "/api/invites", "/api/surveys"]) {
+  for (const path of [
+    "/api/overview",
+    "/api/officers",
+    "/api/invites",
+    "/api/surveys",
+    "/api/resolutions",
+    "/api/documents",
+    "/api/budgets",
+    "/api/feed",
+    "/api/monitoring",
+    "/api/accomplishment-reports",
+    "/api/feedback",
+    "/api/profile/officer",
+  ]) {
     const res = await get(path);
     check(`${path} answers 401 without a session`, res.status === 401, `got ${res.status}`);
   }
@@ -74,6 +87,24 @@ async function main() {
   check("owner is redirected out of /lsg", ownerIntoLsg.status === 307 && ownerIntoLsg.headers.get("location") === "/usg", `got ${ownerIntoLsg.status} ${ownerIntoLsg.headers.get("location") ?? ""}`);
   check("owner may list invites", (await get("/api/invites", owner.cookie)).status === 200);
   check("owner may list officers", (await get("/api/officers", owner.cookie)).status === 200);
+  for (const path of [
+    "/api/resolutions",
+    "/api/documents",
+    "/api/budgets",
+    "/api/feed",
+    "/api/monitoring",
+    "/api/accomplishment-reports",
+    "/api/feedback",
+    "/api/profile/officer",
+  ]) {
+    check(`owner may read ${path}`, (await get(path, owner.cookie)).status === 200);
+  }
+  const ownerIntoLsgTab = await get("/lsg/manage?tab=budget", owner.cookie);
+  check(
+    "owner is redirected out of the LSG budget tab",
+    ownerIntoLsgTab.status === 307 && ownerIntoLsgTab.headers.get("location") === "/usg",
+    `got ${ownerIntoLsgTab.status} ${ownerIntoLsgTab.headers.get("location") ?? ""}`,
+  );
 
   console.log("LSG officer session");
   const lsg = await login(LSG);
@@ -84,6 +115,28 @@ async function main() {
   check("LSG may not list invites", (await get("/api/invites", lsg.cookie)).status === 403);
   check("LSG may not list officers", (await get("/api/officers", lsg.cookie)).status === 403);
   check("LSG reaches its own overview API", (await get("/api/overview", lsg.cookie)).status === 200);
+  for (const path of [
+    "/api/resolutions",
+    "/api/documents",
+    "/api/budgets",
+    "/api/feed",
+    "/api/accomplishment-reports",
+    "/api/profile/officer",
+  ]) {
+    check(`LSG may read ${path}`, (await get(path, lsg.cookie)).status === 200);
+  }
+  check("LSG may not read the monitoring API", (await get("/api/monitoring", lsg.cookie)).status === 403);
+  check("LSG may not read the feedback API", (await get("/api/feedback", lsg.cookie)).status === 403);
+  check(
+    "LSG may not list the officer roster",
+    (await get("/api/profile/officer?scope=all", lsg.cookie)).status === 403,
+  );
+  const lsgIntoUsgTab = await get("/usg/manage?tab=monitoring", lsg.cookie);
+  check(
+    "LSG is redirected out of the USG monitoring tab",
+    lsgIntoUsgTab.status === 307 && lsgIntoUsgTab.headers.get("location") === "/lsg",
+    `got ${lsgIntoUsgTab.status} ${lsgIntoUsgTab.headers.get("location") ?? ""}`,
+  );
 
   const bad = await login({ email: OWNER.email, password: "wrong-password" });
   check("wrong password is rejected", bad.status === 401 && !bad.cookie, `got ${bad.status}`);

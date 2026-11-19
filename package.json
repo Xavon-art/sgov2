@@ -10,6 +10,8 @@
     "check:reveal": "node scripts/check-reveal.mjs",
     "check:federated": "node scripts/check-federated.mjs",
     "check:units": "node scripts/check-units.mjs",
+    "check:dashboard": "node scripts/check-dashboard-audit.mjs",
+    "check:features": "node scripts/check-federated-features.mjs",
     "check:interactions": "node scripts/check-interactions.mjs",
     "check:interactions:ui": "node scripts/check-interactions-ui.mjs",
     "check:tours": "node scripts/check-tours.mjs",

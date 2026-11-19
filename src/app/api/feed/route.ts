@@ -10,6 +10,21 @@ type FeedResult = RpcResult & { scope?: string; posts?: FeedPost[] };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+function isCalendarMonth(value: string): boolean {
+  const parts = ISO_DATE.test(value) ? value.split("-") : null;
+  if (!parts || parts[2] !== "01") return false;
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  if (month < 1 || month > 12) return false;
+  const parsed = new Date(0);
+  parsed.setUTCFullYear(year, month - 1, 1);
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === 1
+  );
+}
+
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
   if (reason === "forbidden") return 403;
@@ -102,7 +117,7 @@ export async function POST(req: Request) {
   let month: string | null = null;
   if (typeof body.month === "string" && body.month.trim()) {
     month = body.month.trim();
-    if (!ISO_DATE.test(month)) {
+    if (!ISO_DATE.test(month) || !isCalendarMonth(month)) {
       return NextResponse.json(
         { ok: false, message: "That month is not a date this calendar can use." },
         { status: 400 },
@@ -157,8 +172,15 @@ export async function POST(req: Request) {
 
 type CalendarEvent = {
   id: string;
+  itemId?: string;
+  source?: "event" | "proposal" | string;
+  date?: string;
+  time?: string | null;
+  timezone?: string | null;
   title: string;
   venue: string | null;
-  activityType: string;
+  activityType: string | null;
   unitName: string | null;
+  status?: string | null;
+  honorStatus?: string | null;
 };

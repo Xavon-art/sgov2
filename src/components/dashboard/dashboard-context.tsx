@@ -2,6 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import type { Account } from "@/lib/auth/session";
+import type { WorkspaceRole } from "@/lib/auth/workspace";
 
 /**
  * What the dashboard layout resolved once, published to every section route.
@@ -37,6 +38,11 @@ export type DashboardMeta = {
 type DashboardValue = {
   account: Account;
   meta: DashboardMeta;
+  /**
+   * The server-resolved workspace side. Children use it for capability gating
+   * instead of inferring a role from client-supplied account fields.
+   */
+  role: WorkspaceRole;
 };
 
 const DashboardContext = createContext<DashboardValue | null>(null);
