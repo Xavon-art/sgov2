@@ -46,6 +46,10 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
     manageChildren.push({ label: "Feedback", href: "/usg/manage?tab=feedback" });
   }
   if (canManage) {
+    // `/org-chart` is a full-page view of the published chart. It has to be
+    // reached from inside the app: the session guard ends a session that arrives
+    // by loading the URL, so a pasted link would sign the owner out.
+    manageChildren.push({ label: "Published chart", href: "/org-chart" });
     manageChildren.push({ label: "Accounts", href: "/usg/manage?tab=accounts" });
   }
 

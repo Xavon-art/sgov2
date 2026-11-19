@@ -168,7 +168,7 @@ export function ManageClient({ requestedTab }: { requestedTab?: string }) {
             </Link>
           </div>
           <div className="mt-4">
-            <StructureEditorPanel variant="chart" showQueue />
+            <StructureEditorPanel showQueue />
           </div>
         </div>
       ) : null}

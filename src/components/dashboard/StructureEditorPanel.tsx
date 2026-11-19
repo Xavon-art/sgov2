@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { OrgChartDragDrop, type OrgChartInitial } from "@/components/structure/OrgChartDragDrop";
 import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
 import { ReviewQueue } from "@/components/structure/ReviewQueue";
 import type { StructureReadPayload, StructureSummary } from "@/lib/structure";
@@ -16,14 +15,12 @@ import type { StructureReadPayload, StructureSummary } from "@/lib/structure";
  * reads the caller's own unit from `/api/structures?view=own` and hands the
  * saved document to the editor as its initial state, so "edit" actually edits.
  *
- * `variant` picks the editor: USG gets the triangle drag-and-drop chart the
- * mission asks for, an LSG gets the fuller committee workspace.
+ * Both sides get the same builder: the USG edits its root chart here, and an
+ * LSG edits its council chart through the same component.
  */
 export function StructureEditorPanel({
-  variant,
   showQueue = false,
 }: {
-  variant: "chart" | "workspace";
   showQueue?: boolean;
 }) {
   const [data, setData] = useState<StructureReadPayload | null>(null);
@@ -69,7 +66,6 @@ export function StructureEditorPanel({
   }
 
   const current: StructureSummary | null = data.draft ?? data.approved ?? null;
-  const initial = toInitial(current);
 
   return (
     <div data-tour="manage-structure" className="flex flex-col gap-6">
@@ -83,20 +79,11 @@ export function StructureEditorPanel({
         </p>
       ) : null}
 
-      {variant === "chart" ? (
-        <OrgChartDragDrop
-          unitId={data.unit.id}
-          unitName={data.unit.name}
-          capability={data.capability}
-          initial={initial}
-        />
-      ) : (
-        <StructureWorkspace
-          unitId={data.unit.id}
-          unitName={data.unit.name}
-          capability={data.capability}
-        />
-      )}
+      <StructureWorkspace
+        unitId={data.unit.id}
+        unitName={data.unit.name}
+        capability={data.capability}
+      />
 
       {showQueue && data.capability.isReviewer ? (
         <div className="border-t border-line pt-8">
@@ -112,32 +99,4 @@ export function StructureEditorPanel({
       ) : null}
     </div>
   );
-}
-
-/**
- * The triangle editor speaks in flat nodes, not committees. A saved structure
- * keeps its unit committee first; the positions in that committee are the
- * officers drawn in the triangle.
- */
-function toInitial(summary: StructureSummary | null): OrgChartInitial | undefined {
-  if (!summary) return undefined;
-  const committee =
-    summary.document.committees.find((entry) => entry.isUnit) ?? summary.document.committees[0];
-  if (!committee) return undefined;
-
-  return {
-    nodes: committee.positions.map((position) => ({
-      title: position.title ?? "",
-      firstName: position.holder?.firstName ?? "",
-      lastName: position.holder?.lastName ?? "",
-      email: position.holder?.email ?? "",
-      // Photos are write-only in the database; they are re-attached on the next
-      // save rather than round-tripped through the browser.
-      photo: null,
-    })),
-    termLabel: summary.termLabel,
-    startsOn: summary.startsOn,
-    endsOn: summary.endsOn,
-    structureId: summary.id,
-  };
 }

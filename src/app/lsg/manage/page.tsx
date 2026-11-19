@@ -124,7 +124,7 @@ export default function LsgManagePage() {
             your unit is accountable for — directly below.
           </p>
           <div className="mt-4">
-            <StructureEditorPanel variant="workspace" />
+            <StructureEditorPanel />
           </div>
         </div>
       ) : null}

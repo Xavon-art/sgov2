@@ -14,6 +14,7 @@ import { RowReorder } from "@/components/structure/RowReorder";
 import { useReorder, type ReorderRow } from "@/components/structure/reorder";
 import { StructureChartEditor } from "@/components/structure/StructureChartEditor";
 import { ChartViewer } from "@/components/structure/ChartViewer";
+import { StructureStatusTracker } from "@/components/structure/StructureStatusTracker";
 import {
   MAX_PHOTO_BYTES,
   fetchMemberPhoto,
@@ -25,6 +26,7 @@ import {
   saveTemplate,
   structureError,
   submitDraft,
+  type SaveResult,
   type StructureCapability,
   type StructureCommittee,
   type StructureDocument,
@@ -701,7 +703,9 @@ export function StructureWorkspace({
   const [doc, setDoc] = useState<StructureDocument>(emptyDocument);
   const [structureId, setStructureId] = useState<string | null>(null);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState<StructureSummary | null>(null);
   const [approved, setApproved] = useState<StructureSummary | null>(null);
+  const [history, setHistory] = useState<StructureSummary[]>([]);
   const [renewal, setRenewal] = useState<StructureRenewal | null>(null);
   const [termLabel, setTermLabel] = useState("");
   const [startsOn, setStartsOn] = useState("");
@@ -741,22 +745,19 @@ export function StructureWorkspace({
       }
       setApproved(res.approved ?? null);
       setRenewal(res.renewal ?? null);
-      const draft = res.draft ?? null;
-      if (draft) {
-        setStructureId(draft.id);
-        setDoc(draft.document);
-        setTemplateKey(draft.templateKey);
-        setTermLabel(draft.termLabel);
-        setStartsOn(draft.startsOn);
-        setEndsOn(draft.endsOn);
-        setNote(draft.note ?? "");
-        setUpdatedAt(draft.updatedAt ?? null);
+      setHistory(res.history ?? []);
+      const open = res.draft ?? null;
+      setDraft(open);
+      if (open) {
+        setStructureId(open.id);
+        setDoc(open.document);
+        setTemplateKey(open.templateKey);
+        setTermLabel(open.termLabel);
+        setStartsOn(open.startsOn);
+        setEndsOn(open.endsOn);
+        setNote(open.note ?? "");
+        setUpdatedAt(open.updatedAt ?? null);
         setAutosave("idle");
-        setStatus(
-          draft.status === "returned"
-            ? `Returned by your reviewer${draft.decisionRemark ? `: ${draft.decisionRemark}` : "."}`
-            : `Revision ${draft.revision}, ${draft.status}.`,
-        );
       } else if (res.approved) {
         // Nothing under this officer yet but something is published: start the
         // next term from what is live rather than from a blank page.
@@ -834,6 +835,37 @@ export function StructureWorkspace({
     setSelected(null);
   }
 
+  function rememberSavedDraft(res: SaveResult) {
+    const id = res.structureId;
+    if (!id) return;
+    const nextStatus = (res.status as StructureSummary["status"] | undefined) ?? "draft";
+    setDraft((previous) => ({
+      id,
+      unitId,
+      authorKind: previous?.authorKind ?? (capability.isReviewer ? "usg" : "lsg"),
+      status: nextStatus,
+      revision: res.revision ?? previous?.revision ?? 1,
+      templateKey: templateKey ?? previous?.templateKey ?? null,
+      termLabel: termLabel.trim() || previous?.termLabel || "",
+      startsOn: startsOn || previous?.startsOn || "",
+      endsOn: endsOn || previous?.endsOn || "",
+      document: doc,
+      note: note.trim() || null,
+      submittedBy: previous?.submittedBy ?? null,
+      submittedAt:
+        nextStatus === "submitted"
+          ? previous?.submittedAt ?? new Date().toISOString()
+          : previous?.submittedAt ?? null,
+      decidedBy: previous?.decidedBy ?? null,
+      decidedAt: previous?.decidedAt ?? null,
+      decisionRemark: previous?.decisionRemark ?? null,
+      renewsId: previous?.renewsId ?? null,
+      renewsTermLabel: previous?.renewsTermLabel ?? null,
+      createdAt: previous?.createdAt ?? new Date().toISOString(),
+      updatedAt: res.updatedAt ?? new Date().toISOString(),
+    }));
+  }
+
   /**
    * Autosave. It only runs once the draft is publishable-shaped (term set and
    * the document passes the same checks the database will run), so a half-typed
@@ -869,6 +901,7 @@ export function StructureWorkspace({
           }
           if (res.structureId) setStructureId(res.structureId);
           if (res.updatedAt) setUpdatedAt(res.updatedAt);
+          rememberSavedDraft(res);
           setDirty(false);
           setAutosave("saved");
           setSave({ kind: "saved", revision: res.revision ?? 0 });
@@ -968,6 +1001,7 @@ export function StructureWorkspace({
 
       if (res.structureId) setStructureId(res.structureId);
       if (res.updatedAt) setUpdatedAt(res.updatedAt);
+      rememberSavedDraft(res);
       setConflict(null);
       setAutosave("saved");
       setSave({ kind: "saved", revision: res.revision ?? 0 });
@@ -1007,6 +1041,8 @@ export function StructureWorkspace({
       setNote("");
       setApproved(after.approved ?? null);
       setRenewal(after.renewal ?? null);
+      setHistory(after.history ?? []);
+      setDraft(after.draft ?? null);
       setDirty(false);
       setStatus("Renewed. The next term is open as a draft, carried forward from what was live.");
     } catch (e) {
@@ -1034,6 +1070,8 @@ export function StructureWorkspace({
       setDoc(after.draft?.document ?? doc);
       setApproved(after.approved ?? null);
       setRenewal(after.renewal ?? null);
+      setHistory(after.history ?? []);
+      setDraft(after.draft ?? null);
       setStatus(
         after.draft?.status === "submitted"
           ? "Sent for review. You can keep editing until a reviewer decides."
@@ -1064,13 +1102,20 @@ export function StructureWorkspace({
   }
 
   if (!capability.canEdit) {
-    return <ApprovedViewer approved={approved} unitName={unitName} />;
+    return (
+      <div className="flex flex-col gap-6">
+        <StructureStatusTracker draft={draft} approved={approved} history={history} />
+        <ApprovedViewer approved={approved} unitName={unitName} />
+      </div>
+    );
   }
 
   const busy = save.kind === "saving";
 
   return (
     <div className="flex flex-col gap-6">
+      <StructureStatusTracker draft={draft} approved={approved} history={history} />
+
       <Reveal>
         <TemplateGallery
           canSaveTemplates={capability.isReviewer}
@@ -1215,6 +1260,8 @@ export function StructureWorkspace({
                   size="sm"
                   onClick={async () => {
                     const after = await fetchStructure(unitId);
+                    setHistory(after.history ?? []);
+                    setDraft(after.draft ?? null);
                     if (after.draft) {
                       setDoc(after.draft.document);
                       setUpdatedAt(after.draft.updatedAt ?? null);
