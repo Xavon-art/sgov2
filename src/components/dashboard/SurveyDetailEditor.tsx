@@ -9,6 +9,7 @@ import { TextField } from "@/components/ui/Field";
 import { useAccount } from "@/components/dashboard/dashboard-context";
 import { NotAvailable } from "@/components/dashboard/NotAvailable";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import { SurveyAiSummary } from "@/components/dashboard/SurveyAiSummary";
 import {
   IconArchive,
   IconCheckCircle,
@@ -591,6 +592,10 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
           </ul>
         )}
       </section>
+
+      {survey.status !== "draft" && results ? (
+        <SurveyAiSummary surveyId={id} responseCount={results.totalResponses} />
+      ) : null}
 
       {survey.status !== "draft" && results ? (
         <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">

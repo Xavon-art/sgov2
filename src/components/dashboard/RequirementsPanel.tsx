@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ActionError } from "@/components/dashboard/workspace-shared";
+import { RequirementPrecheckPanel } from "@/components/dashboard/RequirementPrecheckPanel";
+import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Button } from "@/components/ui/Button";
 import { Reveal } from "@/components/fx/Reveal";
 import {
@@ -1043,6 +1045,18 @@ function RespondRequirementsForm({
   );
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [precheckBlocked, setPrecheckBlocked] = useState(false);
+
+  const precheckItems = requirements.map((requirement) => {
+    const row = rows[requirement.id] ?? { mode: "file", link: "", file: null };
+    return {
+      itemId: requirement.id,
+      label: requirement.label,
+      itemKind: row.mode,
+      file: row.mode === "file" ? row.file : null,
+      linkUrl: row.mode === "link" ? row.link : "",
+    };
+  });
 
   const submit = async () => {
     setBusy(true);
@@ -1155,6 +1169,19 @@ function RespondRequirementsForm({
             </div>
           );
         })}
+        <RequirementPrecheckPanel
+          proposalId={detail.id}
+          context={{
+            title: detail.title,
+            eventDate: detail.eventDate,
+            venue: detail.venue,
+            unitName: detail.unitName,
+            programName: detail.programName,
+          }}
+          items={precheckItems}
+          onBlockedChange={setPrecheckBlocked}
+          disabled={busy}
+        />
         <textarea
           value={note}
           onChange={(event) => setNote(event.target.value)}
@@ -1162,7 +1189,7 @@ function RespondRequirementsForm({
           placeholder="Submission note (optional)"
           className="rounded-xl border border-line px-3 py-2 text-sm"
         />
-        <Button size="sm" disabled={busy} onClick={() => void submit()}>
+        <Button size="sm" disabled={busy || precheckBlocked} onClick={() => void submit()}>
           Submit requirements
         </Button>
       </div>
@@ -1252,6 +1279,7 @@ function CreateProposalModal({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [precheckBlocked, setPrecheckBlocked] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1293,6 +1321,17 @@ function CreateProposalModal({
   }, []);
 
   const items = programItems(programs, programId, defaults);
+
+  const precheckItems = items.map((item) => {
+    const draft = drafts[item.id] ?? { file: null, link: "" };
+    return {
+      itemId: item.id,
+      label: item.label,
+      itemKind: item.itemKind,
+      file: item.itemKind === "file" ? draft.file : null,
+      linkUrl: item.itemKind === "link" ? draft.link : "",
+    };
+  });
 
   const changeProgram = (nextId: string) => {
     setProgramId(nextId);
@@ -1446,6 +1485,24 @@ function CreateProposalModal({
                 rows={3}
                 className="w-full rounded-xl border border-line px-3 py-2 text-sm"
               />
+              <div className="mt-2">
+                <DraftWithAiButton
+                  kind="proposal"
+                  label="Draft proposal with AI"
+                  disabled={busy}
+                  getFields={() => ({
+                    title,
+                    activityType,
+                    eventDate,
+                    venue,
+                    programName:
+                      programs.find((program) => program.id === programId)?.name ?? "",
+                    purpose: description,
+                    budgetText: "",
+                  })}
+                  onUse={setDescription}
+                />
+              </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
@@ -1493,6 +1550,22 @@ function CreateProposalModal({
             <div>
               <div className="mb-2 text-sm font-medium">Requirement documents</div>
               <TemplateItemInputs items={items} drafts={drafts} setDrafts={setDrafts} />
+              <div className="mt-3">
+                <RequirementPrecheckPanel
+                  programId={programId || undefined}
+                  context={{
+                    title,
+                    eventDate: eventDate || null,
+                    venue,
+                    unitName: units.find((unit) => unit.id === unitId)?.name ?? null,
+                    programName:
+                      programs.find((program) => program.id === programId)?.name ?? null,
+                  }}
+                  items={precheckItems}
+                  onBlockedChange={setPrecheckBlocked}
+                  disabled={busy}
+                />
+              </div>
             </div>
 
             <div>
@@ -1509,7 +1582,10 @@ function CreateProposalModal({
             </div>
 
             <ActionError message={error} />
-            <Button disabled={busy || !title.trim() || !unitId} onClick={() => void submit()}>
+            <Button
+              disabled={busy || precheckBlocked || !title.trim() || !unitId}
+              onClick={() => void submit()}
+            >
               Send requirement
             </Button>
           </div>
@@ -1533,6 +1609,7 @@ function ReviseProposalForm({
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [precheckBlocked, setPrecheckBlocked] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1559,6 +1636,17 @@ function ReviseProposalForm({
       }
     })();
   }, [detail.programId, onError]);
+
+  const precheckItems = items.map((item) => {
+    const draft = drafts[item.id] ?? { file: null, link: "" };
+    return {
+      itemId: item.id,
+      label: item.label,
+      itemKind: item.itemKind,
+      file: item.itemKind === "file" ? draft.file : null,
+      linkUrl: item.itemKind === "link" ? draft.link : "",
+    };
+  });
 
   const submit = async () => {
     setBusy(true);
@@ -1617,6 +1705,19 @@ function ReviseProposalForm({
       ) : (
         <div className="mt-3 grid gap-3">
           <TemplateItemInputs items={items} drafts={drafts} setDrafts={setDrafts} />
+          <RequirementPrecheckPanel
+            proposalId={detail.id}
+            context={{
+              title: detail.title,
+              eventDate: detail.eventDate,
+              venue: detail.venue,
+              unitName: detail.unitName,
+              programName: detail.programName,
+            }}
+            items={precheckItems}
+            onBlockedChange={setPrecheckBlocked}
+            disabled={busy}
+          />
           <textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}
@@ -1624,7 +1725,7 @@ function ReviseProposalForm({
             placeholder="Revision note (optional)"
             className="rounded-xl border border-line px-3 py-2 text-sm"
           />
-          <Button size="sm" disabled={busy} onClick={() => void submit()}>
+          <Button size="sm" disabled={busy || precheckBlocked} onClick={() => void submit()}>
             Resubmit
           </Button>
         </div>

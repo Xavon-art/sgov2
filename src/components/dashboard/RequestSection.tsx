@@ -18,6 +18,7 @@ import {
 import { ResolutionPanel } from "@/components/dashboard/ResolutionPanel";
 import { RequirementsPanel } from "@/components/dashboard/RequirementsPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
 import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { todayIso, dueLabel } from "@/lib/tasks";
@@ -1022,6 +1023,21 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
           <div>
             <div className="mb-1 text-sm text-muted">Cover letter</div>
             <textarea id="pr-cover" value={coverLetter} onChange={(e) => setCoverLetter(e.target.value)} rows={4} className={selectClass} />
+            <div className="mt-2">
+              <DraftWithAiButton
+                kind="request_letter"
+                label="Draft letter with AI"
+                disabled={saving}
+                getFields={() => ({
+                  subject,
+                  purpose,
+                  neededOn,
+                  neededTime,
+                  narrativeNotes: purpose,
+                })}
+                onUse={setCoverLetter}
+              />
+            </div>
           </div>
           <div>
             <div className="mb-1 text-sm text-muted">Purpose</div>

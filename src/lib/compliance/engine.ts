@@ -10,7 +10,10 @@ import type {
   CompItemResult,
   ComplianceReport,
   ExtractedDocument,
+  PreflightInput,
+  PreflightReport,
   ProposalsContext,
+  ReportSummary,
   Signal,
 } from "./types";
 import { extractDocument, previewOf } from "./textify";
@@ -30,6 +33,11 @@ const NOTE =
   "organization's own requirement items. It is not a decision; a reviewer still " +
   "rules on each document.";
 
+const PREFLIGHT_NOTE =
+  "This is a deterministic pre-submission reading aid produced from the text and " +
+  "file descriptions you provided. It is not a decision; your organization still " +
+  "rules on whether the proposal is complete.";
+
 export async function runComplianceCheck(input: EngineInput): Promise<ComplianceReport> {
   const started = Date.now();
   const labels = input.items.map((it) => ({ itemId: it.itemId, label: it.label }));
@@ -39,15 +47,6 @@ export async function runComplianceCheck(input: EngineInput): Promise<Compliance
     results.push(await checkOne(item, labels, input.context));
   }
 
-  const summary = {
-    items: results.length,
-    present: results.filter((r) => r.status !== "missing").length,
-    missing: results.filter((r) => r.status === "missing").length,
-    unreadable: results.filter((r) => r.status === "unreadable").length,
-    suspect: results.filter((r) => r.status === "suspect").length,
-    ok: results.filter((r) => r.status === "ok").length,
-  };
-
   return {
     ok: true,
     schemaVersion: 1,
@@ -56,9 +55,83 @@ export async function runComplianceCheck(input: EngineInput): Promise<Compliance
     versionId: input.versionId,
     generatedAt: new Date().toISOString(),
     durationMs: Date.now() - started,
-    summary,
+    summary: summarize(results),
     items: results,
     note: NOTE,
+  };
+}
+
+export async function runPreflightCheck(input: PreflightInput): Promise<PreflightReport> {
+  const started = Date.now();
+  const labels = input.items.map((it) => ({ itemId: it.itemId, label: it.label }));
+
+  const results: CompItemResult[] = [];
+  for (const item of input.items) {
+    const hasFile =
+      item.fileName !== undefined ||
+      item.sizeBytes !== undefined ||
+      item.text !== undefined ||
+      item.issue !== undefined;
+    const hasLink = !!item.linkUrl;
+    const submission: CompItemInput["submission"] = hasLink
+      ? {
+          submissionId: `preflight:${item.itemId}`,
+          submissionKind: "link",
+          linkUrl: item.linkUrl,
+        }
+      : hasFile
+        ? {
+            submissionId: `preflight:${item.itemId}`,
+            submissionKind: "file",
+            ...(item.fileName !== undefined ? { originalName: item.fileName } : {}),
+            ...(item.sizeBytes !== undefined ? { sizeBytes: item.sizeBytes } : {}),
+          }
+        : undefined;
+
+    const extracted: ExtractedDocument | undefined =
+      item.text !== undefined || item.issue !== undefined
+        ? {
+            format: item.format ?? "txt",
+            text: item.text ?? "",
+            ...(item.issue !== undefined ? { issue: item.issue } : {}),
+          }
+        : undefined;
+
+    results.push(
+      await checkOne(
+        {
+          itemId: item.itemId,
+          label: item.label,
+          itemKind: item.itemKind,
+          ...(submission !== undefined ? { submission } : {}),
+        },
+        labels,
+        input.context,
+        extracted,
+      ),
+    );
+  }
+
+  return {
+    ok: true,
+    schemaVersion: 1,
+    scope: "preflight",
+    generatedAt: new Date().toISOString(),
+    durationMs: Date.now() - started,
+    summary: summarize(results),
+    items: results,
+    note: PREFLIGHT_NOTE,
+  };
+}
+
+function summarize(results: CompItemResult[]): ReportSummary {
+  return {
+    items: results.length,
+    present: results.filter((r) => r.status !== "missing").length,
+    missing: results.filter((r) => r.status === "missing").length,
+    unreadable: results.filter((r) => r.status === "unreadable").length,
+    suspect: results.filter((r) => r.status === "suspect").length,
+    ok: results.filter((r) => r.status === "ok").length,
   };
 }
 
@@ -66,6 +139,7 @@ async function checkOne(
   item: CompItemInput,
   labels: Array<{ itemId: string; label: string }>,
   context: ProposalsContext,
+  supplied?: ExtractedDocument,
 ): Promise<CompItemResult> {
   const result: CompItemResult = {
     itemId: item.itemId,
@@ -87,12 +161,15 @@ async function checkOne(
 
   const areBytes =
     hasSubmission && item.buffer !== undefined && item.buffer.length > 0;
-  const extracted: ExtractedDocument | null = areBytes
-    ? await extractDocument(item.buffer!, item.submission?.originalName)
-    : null;
+  const extracted: ExtractedDocument | null =
+    supplied ??
+    (areBytes
+      ? await extractDocument(item.buffer!, item.submission?.originalName)
+      : null);
   const text = extracted?.text ?? "";
-  const facts = areBytes ? extractFacts(text) : [];
-  const match = areBytes
+  const hasDocument = extracted !== null;
+  const facts = hasDocument ? extractFacts(text) : [];
+  const match = hasDocument
     ? matchDocumentAgainstItems(text, labels, item.itemId)
     : { score: 0, ownScore: 0 };
 

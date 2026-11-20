@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Reveal } from "@/components/fx/Reveal";
 import { ActionError, selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
 import { IconArrowLeft, IconPencil } from "@/components/ui/Icons";
@@ -385,6 +386,18 @@ function CreateResolutionModal({
               </select>
             </div>
           )}
+          <DraftWithAiButton
+            kind="resolution"
+            label="Draft resolution with AI"
+            disabled={saving}
+            getFields={() => ({
+              title,
+              resolutionTitle: title,
+              scope: units.find((unit) => unit.id === unitId)?.name ?? "Organization-wide",
+              purpose: body,
+            })}
+            onUse={setBody}
+          />
           <ActionError message={error} />
           <Button disabled={saving || title.trim().length < 4 || body.trim().length < 10} onClick={submit}>
             File resolution

@@ -106,3 +106,22 @@ actionable recommendations everywhere, and a cold run under 5 seconds. Current s
 
 The engine's extraction is verified on real bytes, not mocks — that is the whole point of
 the fixture generator.
+
+## 7. Pre-flight check
+
+Authors can run **Pre-flight check** inside the submission and revision forms before
+sending anything to USG. It is the same deterministic reading aid as the reviewer check,
+but it runs against the draft items the author is about to submit.
+
+- The browser extracts text from selected files; no file bytes, storage paths, or link
+  fetches reach the route.
+- `runPreflightCheck` shares the deterministic item logic with `runComplianceCheck`, so
+  the same document receives the same finding whether previewed or reviewed.
+- AI advice is optional. It may add suggested fixes, but it cannot change an item status,
+  block a submission, or write a domain record. The deterministic report remains
+  authoritative.
+- Images need a configured vision model. Without one they stay `ocr_pending`, and the
+  author can still send the requirement for human review.
+- Nothing from pre-flight is stored. The report is computed from the request and returned.
+- The route is `POST /api/compliance/precheck`; it requires a signed-in account and is
+  limited to 30 requests per 5 minutes per IP.

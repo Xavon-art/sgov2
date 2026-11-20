@@ -223,3 +223,21 @@ Mocking the parsers would have validated the engine against inputs the engine it
 defines, while the real bugs live at the boundary: pdfjs needing a filesystem path for
 standard fonts, `read-excel-file`'s root import not being exported, a PDF clipping one
 over-long literal at page width. Every one of those was found by running real bytes.
+
+## AI assistance
+
+### Optional assistance on top of the deterministic engine
+
+Chosen: optional AI assistance for natural-language survey summaries, pre-flight advice,
+and letter/report drafts.
+
+Why: summaries and drafts are open-ended prose, which the deterministic engine deliberately
+does not produce. A model is the right tool for that narrow, optional layer.
+
+Cost: one server-side secret and per-call spend, bounded by daily quotas and request
+rate limits. No AI key is ever exposed to the browser.
+
+Guardrail: AI assistance is optional; the deterministic engine remains authoritative. AI
+cannot change requirement statuses, block submissions, or write domain records. When the
+key is absent, the deterministic features keep working and the AI controls report that AI
+is not configured.

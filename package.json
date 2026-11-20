@@ -13,6 +13,7 @@
     "check:dashboard": "node scripts/check-dashboard-audit.mjs",
     "check:features": "node scripts/check-federated-features.mjs",
     "check:feedback-forms": "node scripts/check-feedback-forms.mjs",
+    "check:ai": "node scripts/check-ai.mjs",
     "check:interactions": "node scripts/check-interactions.mjs",
     "check:interactions:ui": "node scripts/check-interactions-ui.mjs",
     "check:tours": "node scripts/check-tours.mjs",

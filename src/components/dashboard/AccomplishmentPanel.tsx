@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Reveal } from "@/components/fx/Reveal";
 import { ActionError, ROW_STAGGER_MS, selectClass } from "@/components/dashboard/workspace-shared";
 import { IconArrowLeft, IconPencil } from "@/components/ui/Icons";
@@ -454,6 +455,19 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
                   className={selectClass}
                 />
               </div>
+              <DraftWithAiButton
+                kind="activity_report"
+                label="Draft report with AI"
+                disabled={uploading}
+                getFields={() => ({
+                  title: selectedEvent?.title ?? "",
+                  eventDate: selectedEvent?.eventDate ?? "",
+                  narrativeNotes: narrative,
+                  highlights,
+                })}
+                onUse={setNarrative}
+                onUseHighlights={(items) => setHighlights(items.join("\n"))}
+              />
               {documents.length > 0 && (
                 <div>
                   <div className="mb-1 text-sm text-muted">Attachment</div>

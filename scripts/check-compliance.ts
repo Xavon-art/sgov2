@@ -8,8 +8,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { runComplianceCheck } from "../src/lib/compliance/engine";
+import { runComplianceCheck, runPreflightCheck } from "../src/lib/compliance/engine";
 import type { EngineInput } from "../src/lib/compliance/engine";
+import type { PreflightInput } from "../src/lib/compliance/types";
 import { emptyStatusCounts, monitoringCsv } from "../src/lib/monitoring";
 import type { MonitoringPayload } from "../src/lib/monitoring";
 
@@ -102,6 +103,53 @@ const input: EngineInput = {
       itemId: "item-waiver",
       label: "Parent Waiver",
       itemKind: "file",
+    },
+  ],
+};
+
+const preflight: PreflightInput = {
+  context: input.context,
+  items: [
+    {
+      itemId: "pf-letter",
+      label: "Letter of Intent",
+      itemKind: "file",
+      fileName: "letter.txt",
+      sizeBytes: 420,
+      format: "txt",
+      text:
+        "LETTER OF INTENT\nOctober 8, 2026\n\nThe Computer Studies Council respectfully submits this letter of intent for the Color Run 2026 program at the Main Campus Oval. The activity will bring students and faculty together for a community wellness event with registration, opening remarks, a monitored route, and a closing program. We request the approval of the Office of Student Affairs so the council can proceed with logistics and participant coordination.",
+    },
+    {
+      itemId: "pf-placeholder",
+      label: "Program Flow",
+      itemKind: "file",
+      fileName: "flow.txt",
+      sizeBytes: 240,
+      format: "txt",
+      text:
+        "Lorem ipsum dolor sit amet, consectetur adipiscing elit. TODO: replace this sample schedule with the final program flow, including registration, opening remarks, the run itself, and the closing ceremony. This placeholder text is only for checking.",
+    },
+    {
+      itemId: "pf-missing",
+      label: "Parent Waiver",
+      itemKind: "file",
+    },
+    {
+      itemId: "pf-image",
+      label: "Venue Photo",
+      itemKind: "file",
+      fileName: "oval.jpg",
+      sizeBytes: 900,
+      format: "image",
+      text: "",
+      issue: "ocr_pending",
+    },
+    {
+      itemId: "pf-link",
+      label: "Photo Album",
+      itemKind: "link",
+      linkUrl: "https://example.com/album",
     },
   ],
 };
@@ -206,6 +254,20 @@ check(
 
 // -- Timing: the heavy path (three parsed office documents) stays under 5s cold.
 check("runs fast (cold, < 5000ms)", report.durationMs < 5000);
+
+const preflightReport = await runPreflightCheck(preflight);
+const pf = new Map(preflightReport.items.map((it) => [it.itemId, it]));
+
+check("preflight uses the preflight scope", preflightReport.scope === "preflight");
+check("preflight has no proposal or version id", !("proposalId" in preflightReport) && !("versionId" in preflightReport));
+check("preflight summary counts every item", preflightReport.summary.items === 5 && preflightReport.summary.missing === 1);
+check("preflight real letter is ok", pf.get("pf-letter")?.status === "ok");
+check("preflight placeholder text is suspect", pf.get("pf-placeholder")?.status === "suspect");
+check("preflight placeholder flags placeholder_language", pf.get("pf-placeholder")?.signals.some((s) => s.code === "placeholder_language") === true);
+check("preflight absent file is missing", pf.get("pf-missing")?.status === "missing");
+check("preflight image with OCR pending is unreadable", pf.get("pf-image")?.status === "unreadable");
+check("preflight link is ok", pf.get("pf-link")?.status === "ok");
+check("preflight avoids full file extraction when supplied text exists", preflightReport.durationMs < 1000);
 
 console.log("\n" + "=".repeat(46));
   if (failures.length === 0) {

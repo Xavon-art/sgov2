@@ -119,6 +119,15 @@ export interface CompItemResult {
   recommendation: string;
 }
 
+export interface ReportSummary {
+  items: number;
+  present: number;
+  missing: number;
+  unreadable: number;
+  suspect: number;
+  ok: number;
+}
+
 export interface ComplianceReport {
   ok: true;
   schemaVersion: 1;
@@ -127,15 +136,37 @@ export interface ComplianceReport {
   versionId: string;
   generatedAt: string;
   durationMs: number;
-  summary: {
-    items: number;
-    present: number;
-    missing: number;
-    unreadable: number;
-    suspect: number;
-    ok: number;
-  };
+  summary: ReportSummary;
   items: CompItemResult[];
   /** Fixed, always-present disclaimer that this is an assist, not a decision. */
+  note: string;
+}
+
+export interface PreflightItemInput {
+  itemId: string;
+  label: string;
+  itemKind: ItemKind;
+  fileName?: string;
+  sizeBytes?: number;
+  linkUrl?: string;
+  text?: string;
+  format?: ExtractedFormat;
+  issue?: ExtractedDocument["issue"];
+  readError?: string;
+}
+
+export interface PreflightInput {
+  items: PreflightItemInput[];
+  context: ProposalsContext;
+}
+
+export interface PreflightReport {
+  ok: true;
+  schemaVersion: 1;
+  scope: "preflight";
+  generatedAt: string;
+  durationMs: number;
+  summary: ReportSummary;
+  items: CompItemResult[];
   note: string;
 }
