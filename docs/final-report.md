@@ -246,7 +246,8 @@
 
 - The earlier Task 11 verification table is retained as history; the Task 13 counts above supersede it where they differ.
 - The production build was served on port 3000 after the rebuild; `check:smoke` and `test:authority` were rerun against that rebuilt server and passed at 56/56 and 229/229.
-- Pending before sign-off: any commit, push, or deploy action, which requires explicit authorization.
+- Committed as `1d4b6aa` and pushed to `main`. The Supabase migration workflow completed successfully, and both Vercel production deployments (`sgov`, `smartgov1`) completed successfully for that commit.
+- Production verification on `https://sgov.vercel.app`: `/api/feedback/forms` answered 401 anonymously; an invalid public slug rendered the invalid-link page without a `/login` redirect; owner sign-in reached `/usg`; Manage -> Feedback showed all four sub-tabs; Direct messages loaded; a draft form was created with a quick-add question, saved, opened, rendered at its public link, closed, and deleted; and the browser produced no console errors.
 
 ## Ambiguity decisions
 - Public wrapper grants were left as the PostgREST entry surface because removing `anon`/`authenticated` would break the custom-auth transport. The DB functions still derive identity from the session token.
