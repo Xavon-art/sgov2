@@ -137,7 +137,11 @@ const RPC_MESSAGES: Record<string, string> = {
   task_closed: "This task is closed, so it no longer takes answers or messages.",
   already_closed: "This task has already been closed.",
   already_done: "The office has already marked this unit done.",
-  invalid_body: "Write a short paragraph of at least 10 characters for the resolution.",
+  invalid_body: "Write the resolution clauses in at least 10 characters.",
+  invalid_resolution_no: "Enter a resolution number of 80 characters or fewer.",
+  invalid_date_passed: "Choose the date the resolution was passed.",
+  invalid_summary: "Write a short summary of 10 to 1000 characters.",
+  invalid_budget: "Enter a proposed budget of zero or more.",
   invalid_subject: "Give the request a subject of 4 to 160 characters.",
   invalid_feedback_subject: "Give the feedback a subject of 3 to 160 characters.",
   invalid_message: "Write feedback of at least 10 characters.",
@@ -166,7 +170,8 @@ const RPC_MESSAGES: Record<string, string> = {
   invalid_audience: "Choose a valid audience for this form.",
   invalid_answers: "Check the answers and try again.",
   invalid_slug: "This feedback link is not valid.",
-  invalid_respondent: "Enter your name and email to continue.",
+  invalid_respondent:
+    "Enter your name, year and section, course, department or campus, and email to continue.",
   responses_exist: "Forms with responses cannot be deleted.",
 };
 

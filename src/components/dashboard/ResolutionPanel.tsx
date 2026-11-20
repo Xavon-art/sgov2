@@ -6,6 +6,7 @@ import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Reveal } from "@/components/fx/Reveal";
 import { ActionError, selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
 import { IconArrowLeft, IconPencil } from "@/components/ui/Icons";
+import { uploadFile } from "@/lib/upload-client";
 import {
   STATUS_CLASS,
   STATUS_LABEL,
@@ -131,10 +132,22 @@ export function ResolutionPanel({ isUsg }: { isUsg: boolean }) {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-lg font-medium">{row.title}</div>
+                        <div className="text-lg font-medium">
+                          {row.resolutionNo ? `${row.resolutionNo} — ` : ""}
+                          {row.title}
+                        </div>
                         <div className="text-sm text-muted">
                           {row.unitName ?? "Organization-wide"} • {formatDate(row.createdAt)}
+                          {row.hasAttachment ? " • Attachment" : ""}
                         </div>
+                        {row.shortSummary && (
+                          <p className="mt-1 text-sm text-body">{row.shortSummary}</p>
+                        )}
+                        {row.proposedBudget !== null && (
+                          <p className="mt-1 text-sm text-muted">
+                            Proposed budget: ₱{row.proposedBudget.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                          </p>
+                        )}
                       </div>
                       <StatusBadge status={row.status} />
                     </div>
@@ -159,11 +172,34 @@ export function ResolutionPanel({ isUsg }: { isUsg: boolean }) {
             <StatusBadge status={selected.status} />
           </div>
 
-          <h2 className="text-xl font-medium">{selected.title}</h2>
+          <h2 className="text-xl font-medium">
+            {selected.resolutionNo ? `${selected.resolutionNo} — ` : ""}
+            {selected.title}
+          </h2>
           <p className="mt-1 text-sm text-muted">
             {selected.unitName ?? "Organization-wide"} • filed {formatDate(selected.createdAt)}
             {selected.decidedAt ? ` • decided ${formatDate(selected.decidedAt)}` : ""}
           </p>
+          {selected.shortSummary && <p className="mt-3 text-sm text-body">{selected.shortSummary}</p>}
+          <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
+            {selected.datePassed && (
+              <span>Date passed: {formatDate(`${selected.datePassed}T00:00:00`)}</span>
+            )}
+            {selected.proposedBudget !== null && (
+              <span>
+                Proposed budget: ₱
+                {selected.proposedBudget.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+              </span>
+            )}
+          </div>
+          {selected.hasAttachment && (
+            <a
+              href={`/api/files/resolution/${selected.id}`}
+              className="mt-3 inline-flex text-sm text-accent underline"
+            >
+              Download {selected.originalName ?? "attachment"}
+            </a>
+          )}
           <p className="mt-4 whitespace-pre-wrap text-body">{selected.body}</p>
 
           {selected.decisionRemark && (
@@ -296,8 +332,15 @@ function CreateResolutionModal({
   onDone: () => void;
 }) {
   const [title, setTitle] = useState("");
+  const [resolutionNo, setResolutionNo] = useState("");
+  const [datePassed, setDatePassed] = useState("");
+  const [shortSummary, setShortSummary] = useState("");
   const [body, setBody] = useState("");
+  const [proposedBudget, setProposedBudget] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentPath, setAttachmentPath] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [units, setUnits] = useState<Array<{ id: string; name: string }>>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -324,6 +367,29 @@ function CreateResolutionModal({
     })();
   }, [isUsg]);
 
+  const attach = async (file: File | undefined) => {
+    if (!file) return;
+    setAttachment(file);
+    setAttachmentPath("");
+    setUploading(true);
+    setError(null);
+    try {
+      const result = await uploadFile(file, {
+        target: "resolution",
+        unitId: unitId || undefined,
+        nonce: crypto.randomUUID(),
+        version: 1,
+      });
+      if (!result.ok || !result.storagePath) throw new Error("We could not upload that attachment.");
+      setAttachmentPath(result.storagePath);
+    } catch (e) {
+      setAttachment(null);
+      setError(actionMessage(e, "We could not upload that attachment."));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const submit = async () => {
     setSaving(true);
     setError(null);
@@ -331,7 +397,19 @@ function CreateResolutionModal({
       await mutate("/api/resolutions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ title, body, unitId: unitId || null }),
+        body: JSON.stringify({
+          title: title.trim(),
+          resolutionNo: resolutionNo.trim(),
+          datePassed,
+          shortSummary: shortSummary.trim(),
+          body: body.trim(),
+          proposedBudget: proposedBudget.trim(),
+          storagePath: attachmentPath,
+          originalName: attachment?.name ?? "",
+          mimeType: attachment?.type ?? "",
+          sizeBytes: attachment?.size ?? 0,
+          unitId: unitId || null,
+        }),
       });
       onDone();
     } catch (e) {
@@ -357,6 +435,66 @@ function CreateResolutionModal({
               onChange={(e) => setTitle(e.target.value)}
               className={selectClass}
             />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <div className="mb-1 text-sm text-muted">Resolution no.</div>
+              <input
+                id="resolution-no"
+                value={resolutionNo}
+                onChange={(e) => setResolutionNo(e.target.value)}
+                placeholder="e.g. 2026-001"
+                className={selectClass}
+              />
+            </div>
+            <div>
+              <div className="mb-1 text-sm text-muted">Date passed</div>
+              <input
+                id="resolution-date-passed"
+                type="date"
+                value={datePassed}
+                onChange={(e) => setDatePassed(e.target.value)}
+                className={selectClass}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 text-sm text-muted">Short summary</div>
+            <textarea
+              id="resolution-summary"
+              value={shortSummary}
+              onChange={(e) => setShortSummary(e.target.value)}
+              rows={2}
+              placeholder="What does this resolution do?"
+              className={selectClass}
+            />
+          </div>
+          <div>
+            <div className="mb-1 text-sm text-muted">Proposed budget (PHP)</div>
+            <input
+              id="resolution-budget"
+              type="number"
+              min="0"
+              step="0.01"
+              value={proposedBudget}
+              onChange={(e) => setProposedBudget(e.target.value)}
+              placeholder="0.00"
+              className={selectClass}
+            />
+          </div>
+          <div>
+            <div className="mb-1 text-sm text-muted">Attachment</div>
+            <input
+              id="resolution-attachment"
+              type="file"
+              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              onChange={(e) => void attach(e.target.files?.[0])}
+              className={selectClass}
+            />
+            {uploading && <p className="mt-1 text-xs text-muted">Uploading attachment...</p>}
+            {attachmentPath && !uploading && (
+              <p className="mt-1 text-xs text-muted">Attached: {attachment?.name}</p>
+            )}
           </div>
           <div>
             <div className="mb-1 text-sm text-muted">Resolution text</div>
@@ -399,8 +537,21 @@ function CreateResolutionModal({
             onUse={setBody}
           />
           <ActionError message={error} />
-          <Button disabled={saving || title.trim().length < 4 || body.trim().length < 10} onClick={submit}>
-            File resolution
+          <Button
+            disabled={
+              saving ||
+              uploading ||
+              title.trim().length < 4 ||
+              resolutionNo.trim().length < 1 ||
+              !datePassed ||
+              shortSummary.trim().length < 10 ||
+              body.trim().length < 10 ||
+              proposedBudget.trim() === "" ||
+              !attachmentPath
+            }
+            onClick={submit}
+          >
+            SUBMIT FOR USG REVIEW
           </Button>
         </div>
       </div>

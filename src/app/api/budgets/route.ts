@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import type { BudgetRow, BudgetSummary } from "@/lib/budgets";
+import type { BudgetDashboard, BudgetRow, BudgetSummary } from "@/lib/budgets";
 
 export const runtime = "nodejs";
 
 type ListResult = RpcResult & { scope?: string; budgets?: BudgetRow[] };
 type SummaryResult = RpcResult & BudgetSummary;
+type DashboardResult = RpcResult & BudgetDashboard;
 
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
@@ -48,11 +49,23 @@ export async function GET() {
 
     const scope = res.scope ?? "unit";
     let summary: BudgetSummary | null = null;
+    let dashboard: BudgetDashboard | null = null;
 
     if (scope === "organization") {
       const sum = await callRpc<SummaryResult>("budget_summary", { p_session_token: token });
       if (sum.ok) {
         summary = { units: sum.units ?? [], totals: sum.totals ?? null } as BudgetSummary;
+      }
+    } else {
+      const dash = await callRpc<DashboardResult>("lsg_budget_dashboard", { p_session_token: token });
+      if (dash.ok) {
+        dashboard = {
+          totalSpent: dash.totalSpent ?? 0,
+          requestCount: dash.requestCount ?? 0,
+          approvedCount: dash.approvedCount ?? 0,
+          remaining: dash.remaining ?? 0,
+          periods: dash.periods ?? [],
+        };
       }
     }
 
@@ -61,6 +74,7 @@ export async function GET() {
       scope,
       budgets: res.budgets ?? [],
       summary,
+      dashboard,
     });
   } catch (error) {
     console.error("[budgets:list]", error);

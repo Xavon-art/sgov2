@@ -71,6 +71,15 @@ export type BudgetSummary = {
   totals: { requested: number; approved: number; remaining: number };
 };
 
+/** The LSG-only view of its own money, returned by `lsg_budget_dashboard`. */
+export type BudgetDashboard = {
+  totalSpent: number;
+  requestCount: number;
+  approvedCount: number;
+  remaining: number;
+  periods: Array<{ label: string; requested: number; approved: number }>;
+};
+
 /** What the LSG types before anything is sent. Subtotals are never sent. */
 export type DraftItem = { label: string; quantity: string; unitCost: string };
 

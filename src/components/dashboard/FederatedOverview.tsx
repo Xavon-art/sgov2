@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { NAV_ICONS, type NavItem } from "@/components/dashboard/AppShell";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
+import { formatMoney, type BudgetDashboard } from "@/lib/budgets";
 import {
   IconArrowRight,
   IconCheck,
@@ -129,6 +130,7 @@ export function FederatedOverview({
   const { account, meta } = useDashboard();
   const [counts, setCounts] = useState<Counts | null>(null);
   const [breakdown, setBreakdown] = useState<NonNullable<OverviewPayload["breakdown"]> | null>(null);
+  const [budgetDashboard, setBudgetDashboard] = useState<BudgetDashboard | null>(null);
   const [error, setError] = useState("");
 
   const [saved, setSaved] = useState<TileLayout[]>([]);
@@ -161,6 +163,26 @@ export function FederatedOverview({
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (side !== "lsg") return;
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/budgets");
+        const body = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          dashboard?: BudgetDashboard | null;
+        };
+        if (alive && res.ok && body.ok) setBudgetDashboard(body.dashboard ?? null);
+      } catch {
+        if (alive) setBudgetDashboard(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [side]);
 
   useEffect(() => {
     let alive = true;
@@ -572,6 +594,55 @@ export function FederatedOverview({
           </p>
         ) : null}
       </Reveal>
+
+      {side === "lsg" && (
+        <Reveal delay={0.06}>
+          <div data-tour="budget-overview" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <p className="eyebrow">Budget overview</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted">Total spent</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  ₱{formatMoney(budgetDashboard?.totalSpent)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Requests</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {budgetDashboard?.requestCount ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Approved</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {budgetDashboard?.approvedCount ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Remaining</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  ₱{formatMoney(budgetDashboard?.remaining)}
+                </p>
+              </div>
+            </div>
+            {(budgetDashboard?.periods?.length ?? 0) > 0 && (
+              <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {budgetDashboard?.periods.map((period) => (
+                  <div key={period.label} className="rounded-xl border border-line p-3">
+                    <p className="text-xs text-muted">{period.label}</p>
+                    <p className="mt-1 text-sm text-ink">
+                      Approved ₱{formatMoney(period.approved)} of ₱{formatMoney(period.requested)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!budgetDashboard && (
+              <p className="mt-4 text-sm text-muted">Budget figures are not available right now.</p>
+            )}
+          </div>
+        </Reveal>
+      )}
 
       <Reveal delay={0.08}>
         <div data-tour="workspace-widgets" className="flex flex-col gap-4">

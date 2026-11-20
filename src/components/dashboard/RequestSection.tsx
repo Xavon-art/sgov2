@@ -540,6 +540,15 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
 
       {tab === "personal" && (
         <div className="grid gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-canvas/50 p-4">
+            <p className="text-sm text-muted">
+              Formal resolutions are filed straight to the USG office from the
+              Resolutions tab.
+            </p>
+            <Button size="sm" onClick={() => setTab("resolutions")}>
+              <IconPencil className="h-4 w-4" /> File resolution
+            </Button>
+          </div>
           {pState === "loading" && <div className="text-muted">Loading...</div>}
           {personal.map((pr) => (
             <div key={pr.id} className="rounded-2xl border border-line bg-paper p-5">

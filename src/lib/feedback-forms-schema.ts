@@ -74,6 +74,14 @@ export const feedbackSubmissionSchema = z.object({
   respondentEmail: z.string().trim().max(200).nullable().default(null),
 });
 
+export const publicFeedbackSubmissionSchema = feedbackSubmissionSchema.extend({
+  respondentYear: z.string().trim().min(1).max(40).nullable().default(null),
+  respondentSection: z.string().trim().min(1).max(40).nullable().default(null),
+  respondentCourse: z.string().trim().min(1).max(120).nullable().default(null),
+  respondentDepartmentOrCampus: z.string().trim().min(1).max(120).nullable().default(null),
+});
+
 export type FeedbackFormInput = z.infer<typeof feedbackFormInputSchema>;
 export type FeedbackQuestionInput = z.infer<typeof feedbackQuestionInputSchema>;
 export type FeedbackSubmissionInput = z.infer<typeof feedbackSubmissionSchema>;
+export type PublicFeedbackSubmissionInput = z.infer<typeof publicFeedbackSubmissionSchema>;

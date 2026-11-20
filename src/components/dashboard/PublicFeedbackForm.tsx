@@ -45,6 +45,10 @@ export function PublicFeedbackForm({
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [respondentName, setRespondentName] = useState("");
   const [respondentEmail, setRespondentEmail] = useState("");
+  const [respondentYear, setRespondentYear] = useState("");
+  const [respondentSection, setRespondentSection] = useState("");
+  const [respondentCourse, setRespondentCourse] = useState("");
+  const [respondentDepartmentOrCampus, setRespondentDepartmentOrCampus] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -115,15 +119,29 @@ export function PublicFeedbackForm({
 
     let name: string | null = null;
     let email: string | null = null;
+    let year: string | null = null;
+    let section: string | null = null;
+    let course: string | null = null;
+    let department: string | null = null;
     if (form.identityMode === "identified") {
       name = respondentName.trim();
       email = respondentEmail.trim().toLowerCase();
+      year = respondentYear.trim();
+      section = respondentSection.trim();
+      course = respondentCourse.trim();
+      department = respondentDepartmentOrCampus.trim();
       if (name.length < 2) {
         setError("Enter your full name (at least 2 characters).");
         return;
       }
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 200) {
         setError("Enter a valid email address.");
+        return;
+      }
+      if (!year || !section || !course || !department) {
+        setError(
+          "Enter your year and section, course, and department or campus.",
+        );
         return;
       }
     }
@@ -140,6 +158,10 @@ export function PublicFeedbackForm({
             answers,
             respondentName: name,
             respondentEmail: email,
+            respondentYear: year,
+            respondentSection: section,
+            respondentCourse: course,
+            respondentDepartmentOrCampus: department,
           }),
         },
       );
@@ -278,7 +300,7 @@ export function PublicFeedbackForm({
         <p className="mt-5 rounded-xl border border-line bg-canvas-sunk/60 px-3.5 py-3 text-xs leading-relaxed text-ink-muted">
           {form.identityMode === "anonymous"
             ? "This form is anonymous. Your name and email are not recorded."
-            : "This form asks for your name and email so the organizer can follow up."}
+            : "This form asks for your name, student details, and email so the organizer can follow up."}
         </p>
       </header>
 
@@ -325,6 +347,85 @@ export function PublicFeedbackForm({
               onChange={(event) => setRespondentEmail(event.target.value)}
               maxLength={200}
               autoComplete="email"
+              required
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <p className="text-[0.9375rem] font-medium text-ink-deep">
+              Year and section
+              <span className="ml-1 text-brass-deep" aria-hidden="true">
+                *
+              </span>
+              <span className="sr-only"> (required)</span>
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <input
+                id="feedback-respondent-year"
+                name="respondentYear"
+                type="text"
+                placeholder="Year"
+                className={feedbackInputClass}
+                value={respondentYear}
+                onChange={(event) => setRespondentYear(event.target.value)}
+                maxLength={40}
+                required
+              />
+              <input
+                id="feedback-respondent-section"
+                name="respondentSection"
+                type="text"
+                placeholder="Section"
+                className={feedbackInputClass}
+                value={respondentSection}
+                onChange={(event) => setRespondentSection(event.target.value)}
+                maxLength={40}
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="feedback-respondent-course"
+              className="text-[0.9375rem] font-medium text-ink-deep"
+            >
+              Course
+              <span className="ml-1 text-brass-deep" aria-hidden="true">
+                *
+              </span>
+              <span className="sr-only"> (required)</span>
+            </label>
+            <input
+              id="feedback-respondent-course"
+              name="respondentCourse"
+              type="text"
+              className={`mt-3 ${feedbackInputClass}`}
+              value={respondentCourse}
+              onChange={(event) => setRespondentCourse(event.target.value)}
+              maxLength={120}
+              required
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="feedback-respondent-department"
+              className="text-[0.9375rem] font-medium text-ink-deep"
+            >
+              Department or campus
+              <span className="ml-1 text-brass-deep" aria-hidden="true">
+                *
+              </span>
+              <span className="sr-only"> (required)</span>
+            </label>
+            <input
+              id="feedback-respondent-department"
+              name="respondentDepartmentOrCampus"
+              type="text"
+              className={`mt-3 ${feedbackInputClass}`}
+              value={respondentDepartmentOrCampus}
+              onChange={(event) =>
+                setRespondentDepartmentOrCampus(event.target.value)
+              }
+              maxLength={120}
               required
             />
           </div>

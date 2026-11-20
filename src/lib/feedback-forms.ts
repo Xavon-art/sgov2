@@ -3,12 +3,14 @@ import type {
   FeedbackFormInput,
   FeedbackQuestionInput,
   FeedbackSubmissionInput,
+  PublicFeedbackSubmissionInput,
 } from "@/lib/feedback-forms-schema";
 
 export type {
   FeedbackFormInput,
   FeedbackQuestionInput,
   FeedbackSubmissionInput,
+  PublicFeedbackSubmissionInput,
 } from "@/lib/feedback-forms-schema";
 
 export type FeedbackFormStatus = "draft" | "open" | "closed";
@@ -94,6 +96,10 @@ export type FeedbackResponse = {
   submittedBy: string | null;
   respondentName: string | null;
   respondentEmail: string | null;
+  respondentYear: string | null;
+  respondentSection: string | null;
+  respondentCourse: string | null;
+  respondentDepartmentOrCampus: string | null;
 };
 
 export type FeedbackResponseForm = {
@@ -178,6 +184,19 @@ export type SubmitResponseResult = RpcResult & { responseId?: string };
 
 export type PublicFormResult = RpcResult & {
   form?: PublicFeedbackFormData;
+};
+
+export type PublicFeedbackFormSummary = {
+  title: string;
+  description: string | null;
+  identityMode: FeedbackIdentityMode;
+  publicPath: string;
+  questionCount: number;
+  openedAt: string | null;
+};
+
+export type ListPublicFeedbackFormsResult = RpcResult & {
+  forms?: PublicFeedbackFormSummary[];
 };
 
 export function feedbackHttpStatus(reason?: string): number {
@@ -358,6 +377,10 @@ export async function submitFeedbackResponse(
   });
 }
 
+export async function listPublicFeedbackForms(): Promise<ListPublicFeedbackFormsResult> {
+  return callRpc<ListPublicFeedbackFormsResult>("list_public_feedback_forms", {});
+}
+
 export async function getPublicFeedbackForm(
   slug: string,
 ): Promise<PublicFormResult> {
@@ -368,12 +391,16 @@ export async function getPublicFeedbackForm(
 
 export async function submitPublicFeedbackResponse(
   slug: string,
-  input: FeedbackSubmissionInput,
+  input: PublicFeedbackSubmissionInput,
 ): Promise<SubmitResponseResult> {
   return callRpc<SubmitResponseResult>("submit_public_feedback_response", {
     p_slug: slug,
     p_answers: input.answers,
     p_respondent_name: input.respondentName,
     p_respondent_email: input.respondentEmail,
+    p_respondent_year: input.respondentYear,
+    p_respondent_section: input.respondentSection,
+    p_respondent_course: input.respondentCourse,
+    p_respondent_department_or_campus: input.respondentDepartmentOrCampus,
   });
 }

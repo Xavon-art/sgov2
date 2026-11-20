@@ -5,7 +5,7 @@ import {
   getPublicFeedbackForm,
   submitPublicFeedbackResponse,
 } from "@/lib/feedback-forms";
-import { feedbackSubmissionSchema } from "@/lib/feedback-forms-schema";
+import { publicFeedbackSubmissionSchema } from "@/lib/feedback-forms-schema";
 
 export const runtime = "nodejs";
 
@@ -66,7 +66,7 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  const parsed = feedbackSubmissionSchema.safeParse(body);
+  const parsed = publicFeedbackSubmissionSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       {

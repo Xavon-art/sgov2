@@ -121,6 +121,16 @@ export function buildPersonalRequestStoragePath(args: {
   return `${organizationId}/requests/v${version}/${unitId}/${fileName}`;
 }
 
+export function buildResolutionStoragePath(args: {
+  organizationId: string;
+  scopeId: string;
+  version: number;
+  fileName: string;
+}): string {
+  const { organizationId, scopeId, version, fileName } = args;
+  return `${organizationId}/resolutions/v${version}/${scopeId}/${fileName}`;
+}
+
 /**
  * A file attached to an accomplishment report. The event id is in the path so
  * the claim function can check the caller is allowed to file for that event

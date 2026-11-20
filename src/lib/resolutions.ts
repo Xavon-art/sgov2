@@ -18,8 +18,13 @@ export type ResolutionScope = "unit" | "org";
 export type ResolutionRow = {
   id: string;
   title: string;
+  resolutionNo: string | null;
+  datePassed: string | null;
+  shortSummary: string | null;
+  proposedBudget: number | null;
   status: ResolutionStatus;
   unitName: string | null;
+  hasAttachment: boolean;
   createdAt: string;
   decidedAt: string | null;
   decisionRemark: string | null;
@@ -36,6 +41,10 @@ export type ResolutionDetail = ResolutionRow & {
   body: string;
   scope: ResolutionScope;
   unitId: string | null;
+  storagePath: string | null;
+  originalName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
   timeline: ResolutionTimelineEntry[];
 };
 

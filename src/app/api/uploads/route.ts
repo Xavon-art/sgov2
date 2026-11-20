@@ -11,6 +11,7 @@ import {
   buildTaskRequirementStoragePath,
   buildTaskAssignmentStoragePath,
   buildPersonalRequestStoragePath,
+  buildResolutionStoragePath,
   buildAccomplishmentStoragePath,
   sanitizeFileName,
 } from "@/lib/documents";
@@ -133,9 +134,11 @@ async function handleJson(req: Request, token: string) {
           ? "task_assignment"
           : body.target === "personal_request"
           ? "personal_request"
-          : body.target === "accomplishment"
-            ? "accomplishment"
-            : "item";
+          : body.target === "resolution"
+            ? "resolution"
+            : body.target === "accomplishment"
+              ? "accomplishment"
+              : "item";
 
     if (!fileName || sizeBytes === null) return fail("invalid_request");
     if (sizeBytes < 1) return fail("invalid_request");
@@ -277,6 +280,47 @@ async function handleJson(req: Request, token: string) {
 
       const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
         "claim_personal_request_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: result.writtenBytes ?? 0 });
+    }
+
+    if (target === "resolution") {
+      let scopeId = typeof body.unitId === "string" ? body.unitId : "";
+      if (!UUID_RE.test(scopeId)) {
+        try {
+          const res = await callRpc<RpcResult & { unitId?: string; unit?: { id?: string }; id?: string }>(
+            "my_unit",
+            { p_session_token: token },
+          );
+          scopeId =
+            (typeof res.unitId === "string" && res.unitId) ||
+            (typeof res.unit?.id === "string" && res.unit.id) ||
+            (typeof res.id === "string" && res.id) ||
+            "";
+        } catch {
+          scopeId = "";
+        }
+      }
+      if (!UUID_RE.test(scopeId)) scopeId = account.organizationId;
+
+      const storagePath = buildResolutionStoragePath({
+        organizationId: account.organizationId,
+        scopeId,
+        version,
+        fileName,
+      });
+
+      const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
+        "claim_resolution_upload",
         {
           p_session_token: token,
           p_storage_path: storagePath,
