@@ -21,8 +21,8 @@ export const lsgManageTour: PageTour = {
     },
     {
       target: "manage-usg",
-      title: "USG details",
-      body: "This section shows information about the undergraduate student government you belong to.",
+      title: "Unit details",
+      body: "This section shows the office your council belongs to and where your unit sits under it.",
       placement: "bottom",
     },
     {

@@ -28,6 +28,8 @@ type ApiResponse = RpcResult & {
   canCustomise?: boolean;
   displayName?: string;
   email?: string;
+  universityName?: string;
+  campusName?: string;
 };
 
 export async function GET() {
@@ -59,7 +61,7 @@ export async function GET() {
 }
 
 type Body = {
-  action?: "profile" | "email" | "password" | "customisation";
+  action?: "profile" | "email" | "password" | "customisation" | "identity";
   displayName?: string;
   email?: string;
   password?: string;
@@ -68,6 +70,8 @@ type Body = {
   accent?: string;
   themeMode?: string;
   logoData?: string | null;
+  universityName?: string;
+  campusName?: string;
 };
 
 export async function POST(req: Request) {
@@ -104,6 +108,25 @@ export async function POST(req: Request) {
         );
       }
       return NextResponse.json({ ok: true, displayName: res.displayName });
+    }
+
+    if (body.action === "identity") {
+      const res = await callRpc<ApiResponse>("update_my_identity", {
+        p_session_token: token,
+        p_university_name: body.universityName ?? "",
+        p_campus_name: body.campusName ?? "",
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: res.reason === "unauthenticated" ? 401 : 400 },
+        );
+      }
+      return NextResponse.json({
+        ok: true,
+        universityName: res.universityName,
+        campusName: res.campusName,
+      });
     }
 
     if (body.action === "email") {

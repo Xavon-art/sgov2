@@ -81,7 +81,14 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
   };
 
   const nav = buildLsgNav(role);
-  const badge = role.unitName ? `${role.unitName} LSG` : "LSG workspace";
+  // The campus or college the account named is the label the person editing the
+  // profile sees; the seat name is only the fallback when they have not.
+  const campusLabel = account.campusName.trim();
+  const badge = campusLabel
+    ? `${campusLabel} LSG`
+    : role.unitName
+      ? `${role.unitName} LSG`
+      : "LSG workspace";
 
   return (
     <DashboardProvider value={{ account, meta, role }}>

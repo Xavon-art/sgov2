@@ -23,6 +23,7 @@ type DetailPayload = RpcResult & {
   task?: Record<string, unknown>;
   requirements?: Array<Record<string, unknown>>;
   assignments?: Array<Record<string, unknown>>;
+  responses?: Array<Record<string, unknown>>;
   canClose?: boolean;
   isUsg?: boolean;
   myUnitIds?: string[];
@@ -60,11 +61,17 @@ export async function GET(req: Request) {
       );
     }
 
+    const responses = await callRpc<DetailPayload>("task_assignment_responses", {
+      p_session_token: token,
+      p_task_id: taskId,
+    });
+
     return NextResponse.json({
       ok: true,
       task: res.task ?? null,
       requirements: res.requirements ?? [],
       assignments: res.assignments ?? [],
+      responses: responses.ok ? (responses.assignments ?? []) : [],
       canClose: Boolean(res.canClose),
       isUsg: Boolean(res.isUsg),
       myUnitIds: res.myUnitIds ?? [],
@@ -121,6 +128,25 @@ export async function PATCH(req: Request) {
         p_task_id: taskId,
         p_unit_id: typeof body.unitId === "string" ? body.unitId : "",
         p_note: typeof body.note === "string" ? body.note : "",
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: statusForReason(res.reason) },
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // An assigned unit filing its own answer: a note and, optionally, one
+    // uploaded document. The RPC owns the scope check.
+    if (action === "respond") {
+      const res = await callRpc<RpcResult>("submit_assignment_response", {
+        p_session_token: token,
+        p_task_id: taskId,
+        p_unit_id: typeof body.unitId === "string" ? body.unitId : "",
+        p_note: typeof body.note === "string" ? body.note : "",
+        p_storage_path: typeof body.storagePath === "string" ? body.storagePath : null,
       });
       if (!res.ok) {
         return NextResponse.json(

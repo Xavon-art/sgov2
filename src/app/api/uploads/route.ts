@@ -9,6 +9,7 @@ import {
   buildRequirementStoragePath,
   buildStoragePath,
   buildTaskRequirementStoragePath,
+  buildTaskAssignmentStoragePath,
   buildPersonalRequestStoragePath,
   buildAccomplishmentStoragePath,
   sanitizeFileName,
@@ -126,9 +127,11 @@ async function handleJson(req: Request, token: string) {
     const target =
     body.target === "requirement"
       ? "requirement"
-      : body.target === "task_requirement"
+      :     body.target === "task_requirement"
         ? "task_requirement"
-        : body.target === "personal_request"
+        : body.target === "task_assignment"
+          ? "task_assignment"
+          : body.target === "personal_request"
           ? "personal_request"
           : body.target === "accomplishment"
             ? "accomplishment"
@@ -198,6 +201,37 @@ async function handleJson(req: Request, token: string) {
 
       const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
         "claim_task_requirement_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: result.writtenBytes ?? 0 });
+    }
+
+    if (target === "task_assignment") {
+      const taskId = typeof body.taskId === "string" ? body.taskId : "";
+      const unitId = typeof body.unitId === "string" ? body.unitId : "";
+      if (!UUID_RE.test(taskId) || !UUID_RE.test(unitId)) return fail("invalid_request");
+
+      const account = await currentAccount();
+      if (!account?.organizationId) return fail("no_organization", 403);
+
+      const storagePath = buildTaskAssignmentStoragePath({
+        organizationId: account.organizationId,
+        taskId,
+        unitId,
+        version,
+        fileName,
+      });
+
+      const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
+        "claim_task_assignment_upload",
         {
           p_session_token: token,
           p_storage_path: storagePath,

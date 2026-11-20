@@ -1,7 +1,7 @@
 type Assignment = {
   unitId: string;
   unitName: string;
-  status: "assigned" | "in_progress" | "done";
+  status: "assigned" | "in_progress" | "submitted" | "done";
   note: string;
 };
 
@@ -26,12 +26,14 @@ type LoadState =
 const ASSIGNMENT_LABEL: Record<Assignment["status"], string> = {
   assigned: "Not started",
   in_progress: "In progress",
+  submitted: "Submitted",
   done: "Done",
 };
 
 const ASSIGNMENT_CLASS: Record<Assignment["status"], string> = {
   assigned: "border-line bg-canvas text-muted",
   in_progress: "border-brass/40 bg-brass-soft/30 text-brass-deep",
+  submitted: "border-ink/20 bg-ink/[0.06] text-ink",
   done: "border-ink/20 bg-ink/[0.06] text-ink",
 };
 

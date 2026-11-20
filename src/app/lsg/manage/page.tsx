@@ -77,7 +77,7 @@ export default function LsgManagePage() {
         className="flex flex-wrap gap-1 border-b border-line/80"
       >
         {([
-          { id: "usg" as const, label: "My USG", icon: IconBuilding },
+          { id: "usg" as const, label: "Unit details", icon: IconBuilding },
           { id: "profile" as const, label: "Profile", icon: IconUser },
           { id: "structure" as const, label: "Government structure", icon: IconLayers },
           { id: "documents" as const, label: "Documents", icon: IconArchive },

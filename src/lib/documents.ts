@@ -94,6 +94,23 @@ export function buildTaskRequirementStoragePath(args: {
   return `${organizationId}/tasks/${taskId}/reqs/v${version}/${requirementId}/${fileName}`;
 }
 
+/**
+ * The storage path for an assigned unit's own answer to a task. The `response`
+ * segment is what tells `claim_task_assignment_upload` this is not a checklist
+ * item; the unit is in the path so the claim can refuse a file for a task the
+ * caller is not assigned to.
+ */
+export function buildTaskAssignmentStoragePath(args: {
+  organizationId: string;
+  taskId: string;
+  unitId: string;
+  version: number;
+  fileName: string;
+}): string {
+  const { organizationId, taskId, unitId, version, fileName } = args;
+  return `${organizationId}/tasks/${taskId}/response/v${version}/${unitId}/${fileName}`;
+}
+
 export function buildPersonalRequestStoragePath(args: {
   organizationId: string;
   unitId: string;

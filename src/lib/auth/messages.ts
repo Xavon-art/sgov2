@@ -113,6 +113,7 @@ const RPC_MESSAGES: Record<string, string> = {
 
   // ---- federated dashboard remodel (03100-03104)
   display_name_invalid: "Use a name of 2 to 80 characters.",
+  invalid_identity: "Enter a university name of 2 to 160 characters.",
   wrong_password: "That password is not correct.",
   same_password: "Choose a password you have not used for this account.",
   invalid_theme: "Choose Light, Dark, or Match the system.",

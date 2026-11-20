@@ -18,7 +18,7 @@ async function jsonPost(body: unknown): Promise<Record<string, unknown>> {
 }
 
 export async function uploadFile(file: File, params: {
-  target: "item" | "requirement" | "task_requirement" | "personal_request" | "accomplishment";
+  target: "item" | "requirement" | "task_requirement" | "task_assignment" | "personal_request" | "accomplishment";
   itemId?: string;
   requirementId?: string;
   taskId?: string;

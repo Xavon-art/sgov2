@@ -62,7 +62,7 @@ type TaskListItem = {
   autoClose?: boolean;
   overdue: boolean;
   daysLeft: number | null;
-  assignments: Array<{ unitId: string; unitName: string; status: "assigned" | "in_progress" | "done"; note: string }>;
+  assignments: Array<{ unitId: string; unitName: string; status: "assigned" | "in_progress" | "submitted" | "done"; note: string }>;
   doneUnits: number;
   totalUnits: number;
   isClosed?: boolean;
@@ -77,6 +77,20 @@ type ReqItem = {
   position: number;
   verdicts?: Array<Record<string, unknown>>;
   myAnswer?: Record<string, unknown> | null;
+};
+
+type AssignmentResponse = {
+  unitId: string;
+  unitName: string;
+  status: string;
+  note: string;
+  responseName: string | null;
+  responseMime: string | null;
+  responseBytes: number | null;
+  hasResponse: boolean;
+  respondedAt: string | null;
+  updatedAt: string | null;
+  mine: boolean;
 };
 
 type Msg = {
@@ -150,6 +164,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
   const [reqs, setReqs] = useState<ReqItem[]>([]);
+  const [responses, setResponses] = useState<AssignmentResponse[]>([]);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [canClose, setCanClose] = useState(false);
   const [closed, setClosed] = useState(false);
@@ -200,6 +215,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
     if (d.ok) {
       setDetail(d.task);
       setReqs(d.requirements || []);
+      setResponses((d.responses as AssignmentResponse[] | undefined) ?? []);
       setCanClose(d.canClose);
     }
   }, []);
@@ -282,7 +298,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
           <p className="max-w-2xl text-[0.98rem] leading-relaxed text-body">
             {isUsg
               ? "Push tasks down to units, review LSG requirements, follow threads, and decide submissions."
-              : "Respond to USG requirements, send LSG requirements upward, and follow every thread."}
+              : "Respond to requirements from the office, send yours upward, and follow every thread."}
           </p>
         </header>
       </Reveal>
@@ -433,6 +449,40 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="mt-6">
+              <div className="mb-2 text-sm font-medium">
+                {isUsg ? "Unit responses" : "Your response"}
+              </div>
+              {isUsg ? (
+                <div className="grid gap-2">
+                  {responses.length === 0 && (
+                    <div className="rounded-xl border border-line/70 p-3 text-sm text-muted">
+                      No unit has filed a response yet.
+                    </div>
+                  )}
+                  {responses.map((r) => (
+                    <TaskResponsePanel
+                      key={`${selectedTask}:${r.unitId}`}
+                      isUsg
+                      taskId={selectedTask}
+                      unitId={r.unitId}
+                      response={r}
+                      onDone={() => openTask(selectedTask)}
+                    />
+                  ))}
+                </div>
+              ) : ((detail as { myUnitIds?: string[] } | null)?.myUnitIds ?? [])[0] ? (
+                <TaskResponsePanel
+                  key={selectedTask}
+                  isUsg={false}
+                  taskId={selectedTask}
+                  unitId={((detail as { myUnitIds?: string[] } | null)?.myUnitIds ?? [])[0]}
+                  response={responses.find((r) => r.mine) ?? null}
+                  onDone={() => openTask(selectedTask)}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -766,6 +816,128 @@ function AnswerRequirement({ req, taskId, onDone }: { req: ReqItem; taskId: stri
       <Button size="sm" disabled={saving || (!link && !file)} onClick={submit}>
         Submit answer
       </Button>
+    </div>
+  );
+}
+
+function TaskResponsePanel({
+  isUsg,
+  taskId,
+  unitId,
+  response,
+  onDone,
+}: {
+  isUsg: boolean;
+  taskId: string;
+  unitId: string;
+  response: AssignmentResponse | null;
+  onDone: () => void;
+}) {
+  const [note, setNote] = useState(response?.note ?? "");
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (isUsg) {
+    return (
+      <div className="grid gap-2">
+        {response ? (
+          <div className="rounded-xl border border-line p-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">{response.unitName}</span>
+              <span className="text-xs text-muted">{response.status}</span>
+            </div>
+            {response.note && (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-body">{response.note}</p>
+            )}
+            {response.hasResponse && (
+              <a
+                className="mt-2 inline-block text-sm underline"
+                href={`/api/files/task-response/${taskId}/${response.unitId}`}
+              >
+                {response.responseName || "Download response"}
+              </a>
+            )}
+            {response.respondedAt && (
+              <div className="mt-1 text-xs text-muted">Filed {fmtTime(response.respondedAt)}</div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-line/70 p-3 text-sm text-muted">
+            No response filed yet.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      let storagePath: string | undefined;
+      if (file) {
+        const uploaded = await uploadFile(file, {
+          target: "task_assignment",
+          taskId,
+          unitId,
+          nonce: uuidv4(),
+          version: 1,
+        });
+        if (!uploaded.ok) throw new Error(uploaded.reason);
+        storagePath = uploaded.storagePath;
+      }
+
+      await mutate(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "respond",
+          taskId,
+          unitId,
+          note: note.trim(),
+          storagePath,
+        }),
+      });
+
+      setFile(null);
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not file that response."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-2">
+      {response?.status && (
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <span className="rounded-full border border-line px-2 py-0.5">{response.status}</span>
+          {response.hasResponse && response.responseName ? (
+            <span>{response.responseName}</span>
+          ) : null}
+        </div>
+      )}
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={4}
+        placeholder="Write your response to this task…"
+        className="w-full rounded-xl border border-line px-3 py-2 text-sm"
+      />
+      <input
+        type="file"
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
+        className="text-sm"
+      />
+      <ActionError message={error} />
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={saving || (!note.trim() && !file)} onClick={submit}>
+          {saving ? "Filing…" : response?.respondedAt ? "Replace response" : "File response"}
+        </Button>
+        <span className="text-xs text-muted">A note or a document is required.</span>
+      </div>
     </div>
   );
 }

@@ -21,7 +21,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "overview",
       label: "Overview",
-      hint: where ? `What ${where} owes USG` : "What your unit owes USG",
+      hint: where ? `What ${where} must file` : "What your unit must file",
       href: "/lsg",
       icon: "dashboard",
     },
@@ -32,7 +32,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       href: "/lsg/manage",
       icon: "layers",
       children: [
-        { label: "My USG", href: "/lsg/manage?tab=usg" },
+        { label: "Unit details", href: "/lsg/manage?tab=usg" },
         { label: "Government structure", href: "/lsg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
         { label: "Documents", href: "/lsg/manage?tab=documents" },
@@ -44,7 +44,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "request",
       label: "Request",
-      hint: "Tasks from USG, and what you send up",
+      hint: "Tasks from the office, and what you send up",
       href: "/lsg/request",
       icon: "submission",
       children: [

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Reveal } from "@/components/fx/Reveal";
 import { Button } from "@/components/ui/Button";
 import { PasswordField, TextField } from "@/components/ui/Field";
@@ -67,12 +68,15 @@ function notice(value: { kind: "ok" | "error"; text: string } | null) {
 
 export function ProfileSection({ allowCustomisation }: { allowCustomisation: boolean }) {
   const { account } = useDashboard();
+  const router = useRouter();
 
   const [profile, setProfile] = useState<ProfilePayload["account"] | null>(null);
   const [org, setOrg] = useState<ProfilePayload["organization"]>(null);
   const [canCustomise, setCanCustomise] = useState(false);
 
   const [displayName, setDisplayName] = useState(account.displayName);
+  const [universityName, setUniversityName] = useState(account.universityName);
+  const [campusName, setCampusName] = useState(account.campusName);
   const [email, setEmail] = useState(account.email);
   const [emailPassword, setEmailPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -80,8 +84,9 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
   const [accent, setAccent] = useState("#16324f");
   const [themeMode, setThemeMode] = useState("light");
 
-  const [busy, setBusy] = useState<"name" | "email" | "password" | "look" | null>(null);
+  const [busy, setBusy] = useState<"name" | "identity" | "email" | "password" | "look" | null>(null);
   const [nameNote, setNameNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [identityNote, setIdentityNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [emailNote, setEmailNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [passNote, setPassNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [lookNote, setLookNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -95,6 +100,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
         setOrg(body.organization ?? null);
         setCanCustomise(Boolean(body.canCustomise));
         if (body.account?.displayName) setDisplayName(body.account.displayName);
+        if (body.account?.universityName) setUniversityName(body.account.universityName);
+        if (body.account?.campusName) setCampusName(body.account.campusName);
         if (body.account?.email) setEmail(body.account.email);
         if (body.organization?.accent) setAccent(body.organization.accent);
         if (body.organization?.themeMode) setThemeMode(body.organization.themeMode);
@@ -132,6 +139,30 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
       );
     } catch {
       setNameNote({ kind: "error", text: "We could not reach the server." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function saveIdentity(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy("identity");
+    setIdentityNote(null);
+    try {
+      const body = await post("identity", { universityName, campusName });
+      if (body.ok) {
+        setIdentityNote({ kind: "ok", text: "Your university and campus are saved." });
+        // The badge and the dashboard chrome come from the server layout, so a
+        // save here has to refresh it rather than only this panel.
+        router.refresh();
+      } else {
+        setIdentityNote({
+          kind: "error",
+          text: body.message ?? "We could not save that.",
+        });
+      }
+    } catch {
+      setIdentityNote({ kind: "error", text: "We could not reach the server." });
     } finally {
       setBusy(null);
     }
@@ -220,13 +251,13 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
               <div>
                 <dt className="text-[0.75rem] tracking-[0.08em] text-muted uppercase">Unit</dt>
                 <dd className="mt-0.5 text-[0.9375rem] text-ink">
-                  {profile?.campusName || account.campusName || "—"}
+                  {campusName || profile?.campusName || account.campusName || "—"}
                 </dd>
               </div>
               <div>
                 <dt className="text-[0.75rem] tracking-[0.08em] text-muted uppercase">University</dt>
                 <dd className="mt-0.5 text-[0.9375rem] text-ink">
-                  {profile?.universityName || account.universityName || "—"}
+                  {universityName || profile?.universityName || account.universityName || "—"}
                 </dd>
               </div>
             </dl>
@@ -244,6 +275,41 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
                   {busy === "name" ? "Saving…" : "Save name"}
                 </Button>
                 {notice(nameNote)}
+              </div>
+            </form>
+          </div>
+        </Reveal>
+      </section>
+
+      <section id="identity" className="scroll-mt-24">
+        <Reveal delay={0.01}>
+          <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <p className="eyebrow">Where you are</p>
+            <h2 className="mt-1 text-[1.25rem] leading-tight">University and campus</h2>
+            <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
+              These name the place this workspace belongs to. They are shown in the dashboard
+              header and are yours to keep current; they do not rename the organisation.
+            </p>
+            <form onSubmit={saveIdentity} className="mt-5 flex flex-col gap-3">
+              <TextField
+                id="profile-university"
+                label="University"
+                value={universityName}
+                onChange={(e) => setUniversityName(e.target.value)}
+                autoComplete="organization"
+              />
+              <TextField
+                id="profile-campus"
+                label="Campus or college"
+                value={campusName}
+                onChange={(e) => setCampusName(e.target.value)}
+                autoComplete="address-level2"
+              />
+              <div className="flex items-center gap-3">
+                <Button type="submit" size="sm" disabled={busy === "identity"}>
+                  {busy === "identity" ? "Saving…" : "Save location"}
+                </Button>
+                {notice(identityNote)}
               </div>
             </form>
           </div>

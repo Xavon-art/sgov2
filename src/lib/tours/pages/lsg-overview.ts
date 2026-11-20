@@ -29,7 +29,7 @@ export const lsgOverviewTour: PageTour = {
     {
       target: "workspace-widgets",
       title: "Reports and signals",
-      body: "These widgets summarize what your unit owes the USG and what you have sent back. Use Customize to hide the ones you do not need.",
+      body: "These widgets summarize what your unit must file and what you have sent back. Use Customize to hide the ones you do not need.",
       placement: "top",
     },
     {
