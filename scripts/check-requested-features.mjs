@@ -37,6 +37,17 @@ function includes(path, snippets) {
   );
 }
 
+function excludes(path, snippets) {
+  const text = source(path);
+  if (!text) return;
+  const found = snippets.filter((snippet) => text.includes(snippet));
+  check(
+    `${path} excludes ${snippets.length} obsolete snippet(s)`,
+    found.length === 0,
+    found.length ? `found: ${found.join(" | ")}` : "",
+  );
+}
+
 console.log("Resolution filing");
 
 includes("supabase/migrations/20260101003400_resolution_submission_fields.sql", [
@@ -128,6 +139,83 @@ includes("src/components/dashboard/PublicFeedbackForm.tsx", [
   "Department or campus",
   "respondentYear",
   "respondentDepartmentOrCampus",
+]);
+
+console.log("Latest LSG workspace fixes");
+
+includes("src/components/dashboard/lsg-nav.ts", [
+  "Your profile and your LSG structure",
+  "Tasks from the student government",
+]);
+
+includes("src/components/dashboard/FederatedOverview.tsx", [
+  "owes the student government",
+  "Letter dashboard",
+  "Letters submitted",
+  "Under review",
+]);
+
+includes("src/components/dashboard/ProfileSection.tsx", [
+  "setUniversityName(body.universityName",
+  "setCampusName(body.campusName",
+]);
+
+includes("src/components/structure/StructureWorkspace.tsx", [
+  "smartgov:structure-draft:",
+  "localStorage.setItem(draftKey",
+  "void showStoredPhoto()",
+]);
+
+includes("src/components/dashboard/RequestSection.tsx", [
+  "Tasks from USG",
+  "Requirements from USG",
+  "Submit your requirement response",
+]);
+
+includes("src/components/dashboard/ResolutionPanel.tsx", [
+  "Body (WHEREAS / RESOLVED)",
+  "Proposed budget (PHP, optional)",
+]);
+
+excludes("src/components/dashboard/ResolutionPanel.tsx", [
+  'proposedBudget.trim() === "" ||',
+]);
+excludes("src/app/api/resolutions/route.ts", [
+  "if (proposedBudget === null || !Number.isFinite(proposedBudget) || proposedBudget < 0) {",
+]);
+
+includes("supabase/migrations/20260101003440_lsg_workspace_fixes.sql", [
+  "v_roster_id",
+  "actual_spent",
+  "public_feedback_response_status",
+  "Semester",
+  "lsg_budget_dashboard",
+]);
+
+includes("src/components/dashboard/EventsWorkspace.tsx", [
+  ">EDIT<",
+  ">DELETE<",
+  "Overall budget request",
+  "Record spending",
+  "Remaining budget",
+]);
+
+includes("src/lib/budgets.ts", ["actualSpent"]);
+includes("src/app/api/budgets/[id]/route.ts", ["PATCH", "actualSpent"]);
+
+includes("src/components/dashboard/PublicFeedbackForm.tsx", [
+  "Fill in your verification details first",
+  "Submission status",
+  "feedback-submissions",
+]);
+
+includes("src/components/landing/PublishedFeedbackForms.tsx", [
+  "feedback-submissions",
+  "Submitted",
+]);
+
+includes("src/app/api/feedback/public/status/route.ts", [
+  "public_feedback_response_status",
 ]);
 
 console.log(`\n${checks - failures}/${checks} requested-feature checks passed`);

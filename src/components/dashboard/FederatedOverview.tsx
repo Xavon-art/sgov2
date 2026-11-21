@@ -8,6 +8,7 @@ import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { NAV_ICONS, type NavItem } from "@/components/dashboard/AppShell";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
 import { formatMoney, type BudgetDashboard } from "@/lib/budgets";
+import type { ResolutionRow } from "@/lib/resolutions";
 import {
   IconArrowRight,
   IconCheck,
@@ -53,6 +54,30 @@ type OverviewPayload = {
 type TileLayout = { id: string; hidden: boolean; wide: boolean };
 
 type LayoutPayload = { ok: boolean; layout?: unknown; widgets?: unknown; message?: string };
+
+type LetterCounts = {
+  total: number;
+  approved: number;
+  pending: number;
+  underReview: number;
+};
+
+type ResolutionsPayload = { ok: boolean; rows?: ResolutionRow[]; message?: string };
+
+function countLetters(rows: ResolutionRow[]): LetterCounts {
+  const counts: LetterCounts = {
+    total: rows.length,
+    approved: 0,
+    pending: 0,
+    underReview: 0,
+  };
+  for (const row of rows) {
+    if (row.status === "submitted") counts.pending += 1;
+    else if (row.status === "under_review") counts.underReview += 1;
+    else if (row.status === "approved" || row.status === "published") counts.approved += 1;
+  }
+  return counts;
+}
 
 const WIDGETS = [
   { id: "stats", label: "At a glance" },
@@ -131,6 +156,7 @@ export function FederatedOverview({
   const [counts, setCounts] = useState<Counts | null>(null);
   const [breakdown, setBreakdown] = useState<NonNullable<OverviewPayload["breakdown"]> | null>(null);
   const [budgetDashboard, setBudgetDashboard] = useState<BudgetDashboard | null>(null);
+  const [letterCounts, setLetterCounts] = useState<LetterCounts | null>(null);
   const [error, setError] = useState("");
 
   const [saved, setSaved] = useState<TileLayout[]>([]);
@@ -185,6 +211,23 @@ export function FederatedOverview({
   }, [side]);
 
   useEffect(() => {
+    if (side !== "lsg") return;
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/resolutions");
+        const body = (await res.json().catch(() => ({}))) as ResolutionsPayload;
+        if (alive && res.ok && body.ok) setLetterCounts(countLetters(body.rows ?? []));
+      } catch {
+        if (alive) setLetterCounts(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [side]);
+
+  useEffect(() => {
     let alive = true;
     void (async () => {
       try {
@@ -203,19 +246,24 @@ export function FederatedOverview({
     };
   }, []);
 
-  const activeLayout = useMemo(
-    () => mergeLayout(nav, draft ?? saved),
-    [nav, draft, saved],
+  const tileNav = useMemo(
+    () => (side === "lsg" ? nav.filter((item) => item.id !== "manage") : nav),
+    [nav, side],
   );
 
-  const byId = useMemo(() => new Map(nav.map((item) => [item.id, item])), [nav]);
+  const activeLayout = useMemo(
+    () => mergeLayout(tileNav, draft ?? saved),
+    [tileNav, draft, saved],
+  );
+
+  const byId = useMemo(() => new Map(tileNav.map((item) => [item.id, item])), [tileNav]);
 
   const visibleTiles = activeLayout.filter((tile) => editing || !tile.hidden);
   const activeWidgetIds = widgetDraft ?? savedWidgets;
   const visibleWidgets = WIDGETS.filter((widget) => activeWidgetIds.includes(widget.id));
 
   function beginEditing() {
-    setDraft(mergeLayout(nav, saved));
+    setDraft(mergeLayout(tileNav, saved));
     setWidgetDraft(savedWidgets.slice());
     setEditing(true);
     setLayoutNotice("");
@@ -290,8 +338,8 @@ export function FederatedOverview({
 
   async function resetLayout() {
     const defaults = mergeLayout(
-      nav,
-      nav.map((item) => ({ id: item.id, hidden: false, wide: false })),
+      tileNav,
+      tileNav.map((item) => ({ id: item.id, hidden: false, wide: false })),
     );
     const ok = await persist(defaults, DEFAULT_WIDGETS);
     if (ok) {
@@ -410,7 +458,7 @@ export function FederatedOverview({
         <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
           {side === "usg"
             ? "You oversee every unit underneath you: their tasks, their requests back up, the events they file, and the surveys you run together. Start anywhere below."
-            : `What ${unitName ?? "your unit"} owes the USG, and what it has sent back. Start anywhere below.`}
+            : `What ${unitName ?? "your unit"} owes the student government, and what it has sent back. Start anywhere below.`}
         </p>
         <p className="text-[0.75rem] text-muted">
           Signed in as {account.displayName} - {roleWord}
@@ -639,6 +687,43 @@ export function FederatedOverview({
             )}
             {!budgetDashboard && (
               <p className="mt-4 text-sm text-muted">Budget figures are not available right now.</p>
+            )}
+          </div>
+        </Reveal>
+      )}
+
+      {side === "lsg" && (
+        <Reveal delay={0.07}>
+          <div data-tour="letter-dashboard" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
+            <p className="eyebrow">Letter dashboard</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted">Letters submitted</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {letterCounts?.total ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Approved</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {letterCounts?.approved ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Pending</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {letterCounts?.pending ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted">Under review</p>
+                <p className="mt-1 text-xl font-semibold text-ink">
+                  {letterCounts?.underReview ?? 0}
+                </p>
+              </div>
+            </div>
+            {!letterCounts && (
+              <p className="mt-4 text-sm text-muted">Letter figures are not available right now.</p>
             )}
           </div>
         </Reveal>

@@ -7,7 +7,7 @@ import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SectionIcon, selectClass } from "@/components/dashboard/workspace-shared";
 import { IconCheckCircle, IconClose, IconEvents, IconPencil, IconShield } from "@/components/ui/Icons";
-import { toDraftPayload, type DraftItem } from "@/lib/budgets";
+import { formatMoney, parseAmount, toDraftPayload, type BudgetRow } from "@/lib/budgets";
 import { CalendarPanel } from "@/components/dashboard/CalendarPanel";
 import { AccomplishmentPanel } from "@/components/dashboard/AccomplishmentPanel";
 
@@ -90,6 +90,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   const [filter, setFilter] = useState("all");
 
   const [showCreate, setShowCreate] = useState(false);
+  const [editTarget, setEditTarget] = useState<Ev | null>(null);
   const [calendarRefreshKey, setCalendarRefreshKey] = useState(0);
 
   // create form
@@ -126,14 +127,18 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   const [assignCandidates, setAssignCandidates] = useState<AssigneeOption[]>([]);
 
   // budget
+  const [budgets, setBudgets] = useState<BudgetRow[]>([]);
   const [budgetTarget, setBudgetTarget] = useState<Ev | null>(null);
   const [budgetTitle, setBudgetTitle] = useState("");
   const [budgetJustification, setBudgetJustification] = useState("");
-  const [budgetItems, setBudgetItems] = useState<DraftItem[]>([
-    { label: "", quantity: "1", unitCost: "" },
-  ]);
+  const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
+
+  const [spendTarget, setSpendTarget] = useState<{ event: Ev; budget: BudgetRow } | null>(null);
+  const [spendAmount, setSpendAmount] = useState("");
+  const [spendSaving, setSpendSaving] = useState(false);
+  const [spendError, setSpendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,12 +155,24 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     }
   }, []);
 
+  const loadBudgets = useCallback(async () => {
+    try {
+      const res = await fetch("/api/budgets");
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.message);
+      setBudgets((json.budgets as BudgetRow[]) ?? []);
+    } catch {
+      setBudgets([]);
+    }
+  }, []);
+
   useEffect(() => {
     const t = setTimeout(() => {
       void load();
+      void loadBudgets();
     }, 0);
     return () => clearTimeout(t);
-  }, [load]);
+  }, [load, loadBudgets]);
 
   useEffect(() => {
     if (isUsg) {
@@ -197,42 +214,76 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     setUnitIds([]);
     setFiles([]);
     setClaimNote("");
+    setEditTarget(null);
+  };
+
+  const closeEventForm = () => {
+    setShowCreate(false);
+    resetForm();
+  };
+
+  const openEdit = (ev: Ev) => {
+    setEditTarget(ev);
+    setTitle(ev.title);
+    setDescription(ev.description ?? "");
+    setEventDate(ev.eventDate);
+    setEventTime(ev.eventTime ? ev.eventTime.slice(0, 5) : "");
+    setTimezone(ev.timezone ?? "Asia/Manila");
+    setVenue(ev.venue ?? "");
+    setActionError(null);
+    setShowCreate(true);
   };
 
   const create = async () => {
+    const editing = editTarget !== null;
     if (!title.trim() || !eventDate) {
       setActionError("Title and date are required.");
+      return;
+    }
+    if (editing && title.trim().length < 3) {
+      setActionError("Give the event a title of at least 3 characters.");
       return;
     }
     setSaving(true);
     setActionError(null);
     try {
-      const res = await fetch("/api/events", {
-        method: "POST",
+      const res = await fetch(editing ? `/api/events/${editTarget?.id}` : "/api/events", {
+        method: editing ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title,
-          description: description || null,
-          eventDate,
-          eventTime: eventTime || null,
-          timezone,
-          venue: venue || null,
-          scope,
-          unitIds: scope === "units" || scope === "unit" ? unitIds : [],
-          unitTypes: scope === "unit_type" ? unitTypes : [],
-          files: files.filter((f) => f.name && f.url),
-          claimNote: isUsg ? null : claimNote || null,
-        }),
+        body: JSON.stringify(
+          editing
+            ? {
+                title: title.trim(),
+                description: description || null,
+                eventDate,
+                eventTime: eventTime || null,
+                timezone: timezone || null,
+                venue: venue || null,
+              }
+            : {
+                title,
+                description: description || null,
+                eventDate,
+                eventTime: eventTime || null,
+                timezone,
+                venue: venue || null,
+                scope,
+                unitIds: scope === "units" || scope === "unit" ? unitIds : [],
+                unitTypes: scope === "unit_type" ? unitTypes : [],
+                files: files.filter((f) => f.name && f.url),
+                claimNote: isUsg ? null : claimNote || null,
+              },
+        ),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
       setShowCreate(false);
       resetForm();
       setCalendarRefreshKey((key) => key + 1);
-      setNote(isUsg ? "Event created." : "Event claim submitted.");
+      setNote(editing ? "Event updated." : isUsg ? "Event created." : "Event claim submitted.");
       await load();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Could not create event.");
+      setActionError(e instanceof Error ? e.message : editing ? "Could not update event." : "Could not create event.");
     } finally {
       setSaving(false);
     }
@@ -336,7 +387,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     setBudgetTarget(ev);
     setBudgetTitle(`${ev.title} budget`.slice(0, 140));
     setBudgetJustification("");
-    setBudgetItems([{ label: "", quantity: "1", unitCost: "" }]);
+    setBudgetAmount("");
     setBudgetError(null);
   };
 
@@ -346,7 +397,14 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       setBudgetError("Give the budget a name of at least 4 characters.");
       return;
     }
-    const payload = toDraftPayload(budgetItems);
+    const amount = parseAmount(budgetAmount);
+    if (amount === null || amount <= 0) {
+      setBudgetError("Enter an overall budget request above zero.");
+      return;
+    }
+    const payload = toDraftPayload([
+      { label: "Overall budget request", quantity: "1", unitCost: budgetAmount },
+    ]);
     if (!payload.ok) {
       setBudgetError(payload.message);
       return;
@@ -369,10 +427,52 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       if (!json.ok) throw new Error(json.message);
       setBudgetTarget(null);
       setNote("Budget request submitted.");
+      await loadBudgets();
     } catch (e) {
       setBudgetError(e instanceof Error ? e.message : "Could not submit the budget.");
     } finally {
       setBudgetSaving(false);
+    }
+  };
+
+  const approvedBudgetFor = (eventId: string) =>
+    budgets.find((row) => row.eventId === eventId && row.status === "approved") ?? null;
+
+  const openSpending = (ev: Ev, budget: BudgetRow) => {
+    setSpendTarget({ event: ev, budget });
+    setSpendAmount(String(budget.actualSpent ?? 0));
+    setSpendError(null);
+  };
+
+  const saveSpending = async () => {
+    if (!spendTarget) return;
+    const amount = parseAmount(spendAmount);
+    const approved = Number(spendTarget.budget.approvedTotal ?? 0);
+    if (amount === null || amount < 0) {
+      setSpendError("Enter a valid amount.");
+      return;
+    }
+    if (amount > approved) {
+      setSpendError("Spending cannot exceed the approved budget.");
+      return;
+    }
+    setSpendSaving(true);
+    setSpendError(null);
+    try {
+      const res = await fetch(`/api/budgets/${spendTarget.budget.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ actualSpent: amount }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.message);
+      setSpendTarget(null);
+      setNote("Spending recorded.");
+      await loadBudgets();
+    } catch (e) {
+      setSpendError(e instanceof Error ? e.message : "Could not record spending.");
+    } finally {
+      setSpendSaving(false);
     }
   };
 
@@ -388,6 +488,25 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       await load();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Could not cancel.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeEvent = async (ev: Ev) => {
+    if (saving) return;
+    if (!window.confirm("Delete this event?")) return;
+    setSaving(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/events/${ev.id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.message);
+      setNote("Event deleted.");
+      setCalendarRefreshKey((key) => key + 1);
+      await load();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Could not delete event.");
     } finally {
       setSaving(false);
     }
@@ -419,7 +538,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       {error && <p className="text-sm text-[#a5442c]">{error}</p>}
 
       <div data-tour="events-toolbar" className="flex flex-wrap items-center gap-2">
-        <Button data-tour="events-create" size="sm" onClick={() => setShowCreate(true)}>
+        <Button data-tour="events-create" size="sm" onClick={() => { resetForm(); setShowCreate(true); }}>
           <IconPencil className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           {isUsg ? "Create event" : "Add event"}
         </Button>
@@ -444,7 +563,9 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       {view === "list" && !loading && (
         <div data-tour="events-list" className="grid gap-3">
           {filtered.length === 0 && <p className="text-muted">No events.</p>}
-          {filtered.map((e) => (
+          {filtered.map((e) => {
+            const approvedBudget = approvedBudgetFor(e.id);
+            return (
             <div key={e.id} className="rounded-2xl border border-line bg-paper p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -506,7 +627,16 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                       Submit budget
                     </Button>
                   )}
-                  {e.canEdit && !e.cancelledAt && (
+                  {!isUsg && !e.cancelledAt && approvedBudget && (
+                    <Button size="sm" onClick={() => openSpending(e, approvedBudget)}>Record spending</Button>
+                  )}
+                  {e.canEdit && !isUsg && !e.cancelledAt && (
+                    <>
+                      <button disabled={saving} onClick={() => openEdit(e)} className="inline-flex items-center justify-end text-xs text-ink underline disabled:opacity-50">EDIT</button>
+                      <button disabled={saving} onClick={() => void removeEvent(e)} className="inline-flex items-center justify-end text-xs text-[#a5442c] underline disabled:opacity-50">DELETE</button>
+                    </>
+                  )}
+                  {e.canEdit && isUsg && !e.cancelledAt && (
                     <button disabled={saving} onClick={() => void cancel(e)} className="inline-flex items-center justify-end gap-1.5 text-xs text-[#a5442c] underline disabled:opacity-50">
                       <IconClose className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                       Cancel
@@ -524,7 +654,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                 <p className="mt-1 text-sm text-muted">Claim note: {e.claimNote}</p>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -532,7 +663,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
         <CalendarPanel
           variant={view === "future" ? "future" : "calendar"}
           refreshKey={calendarRefreshKey}
-          onCreate={view === "future" ? () => setShowCreate(true) : undefined}
+          onCreate={view === "future" ? () => { resetForm(); setShowCreate(true); } : undefined}
         />
       )}
 
@@ -542,8 +673,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-line bg-paper p-6">
             <div className="mb-4 flex items-center justify-between">
-              <div className="text-lg font-medium">{isUsg ? "Create event" : "Add event"}</div>
-              <button onClick={() => setShowCreate(false)}>×</button>
+              <div className="text-lg font-medium">{editTarget ? "Edit event" : isUsg ? "Create event" : "Add event"}</div>
+              <button onClick={closeEventForm}>×</button>
             </div>
             <div className="grid gap-3">
               <div>
@@ -572,7 +703,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                 <div className="mb-1 text-sm text-muted">Venue</div>
                 <input value={venue} onChange={(e) => setVenue(e.target.value)} className={selectClass} />
               </div>
-              {isUsg ? (
+              {!editTarget && (isUsg ? (
                 <>
                   <div>
                     <div className="mb-1 text-sm text-muted">Scope</div>
@@ -632,7 +763,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                 <div className="rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-sm text-body">
                   This will be added as an event claim for your unit. USG will review it before it is honoured.
                 </div>
-              )}
+              ))}
+              {!editTarget && (
               <div>
                 <div className="mb-1 text-sm text-muted">Support links</div>
                 {files.map((f, i) => (
@@ -669,14 +801,15 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                   + Add link
                 </button>
               </div>
-              {!isUsg && (
+              )}
+              {!editTarget && !isUsg && (
                 <div>
                   <div className="mb-1 text-sm text-muted">Note to USG (optional)</div>
                   <textarea value={claimNote} onChange={(e) => setClaimNote(e.target.value)} rows={2} className={selectClass} />
                 </div>
               )}
-              <Button disabled={saving || !title.trim() || !eventDate} onClick={() => void create()}>
-                {saving ? "Saving…" : isUsg ? "Create event" : "Submit event"}
+              <Button disabled={saving || !title.trim() || !eventDate || (editTarget !== null && title.trim().length < 3)} onClick={() => void create()}>
+                {saving ? "Saving…" : editTarget ? "Save changes" : isUsg ? "Create event" : "Submit event"}
               </Button>
             </div>
           </div>
@@ -851,66 +984,17 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
               </div>
 
               <div>
-                <div className="mb-1 text-sm text-muted">Lines</div>
-                {budgetItems.map((row, i) => (
-                  <div key={i} className="mb-2 grid gap-2 sm:grid-cols-[1fr_6rem_7rem_auto]">
-                    <input
-                      placeholder="Item"
-                      value={row.label}
-                      onChange={(e) =>
-                        setBudgetItems((prev) =>
-                          prev.map((item, j) =>
-                            j === i ? { ...item, label: e.target.value } : item,
-                          ),
-                        )
-                      }
-                      className="rounded-lg border border-line px-2 py-1 text-sm"
-                    />
-                    <input
-                      placeholder="Qty"
-                      inputMode="decimal"
-                      value={row.quantity}
-                      onChange={(e) =>
-                        setBudgetItems((prev) =>
-                          prev.map((item, j) =>
-                            j === i ? { ...item, quantity: e.target.value } : item,
-                          ),
-                        )
-                      }
-                      className="rounded-lg border border-line px-2 py-1 text-sm"
-                    />
-                    <input
-                      placeholder="Unit cost"
-                      inputMode="decimal"
-                      value={row.unitCost}
-                      onChange={(e) =>
-                        setBudgetItems((prev) =>
-                          prev.map((item, j) =>
-                            j === i ? { ...item, unitCost: e.target.value } : item,
-                          ),
-                        )
-                      }
-                      className="rounded-lg border border-line px-2 py-1 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setBudgetItems((prev) => prev.filter((_, j) => j !== i))}
-                      className="text-xs text-muted"
-                      disabled={budgetItems.length === 1}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setBudgetItems((prev) => [...prev, { label: "", quantity: "1", unitCost: "" }])
-                  }
-                  className="text-sm text-muted"
-                >
-                  + Add line
-                </button>
+                <div className="mb-1 text-sm text-muted">Overall budget request</div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={budgetAmount}
+                  onChange={(e) => setBudgetAmount(e.target.value)}
+                  className={selectClass}
+                />
               </div>
 
               {budgetError && (
@@ -921,6 +1005,52 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
 
               <Button disabled={budgetSaving} onClick={() => void submitBudget()}>
                 {budgetSaving ? "Submitting…" : "Submit budget"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {spendTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-line bg-paper p-6">
+            <div className="mb-1 flex items-center justify-between gap-4">
+              <div className="text-lg font-medium">Record spending</div>
+              <button
+                type="button"
+                onClick={() => setSpendTarget(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-muted">{spendTarget.event.title}</p>
+            <div className="grid gap-3">
+              <div className="rounded-xl border border-line bg-canvas px-3.5 py-2.5">
+                <div className="mb-1 text-sm text-muted">Remaining budget</div>
+                <div className="text-lg font-medium tabular-nums text-ink">
+                  ₱{formatMoney(Math.max(0, Number(spendTarget.budget.approvedTotal ?? 0) - Number(spendTarget.budget.actualSpent ?? 0)))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-sm text-muted">Actual spent</div>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={spendAmount}
+                  onChange={(e) => setSpendAmount(e.target.value)}
+                  className={selectClass}
+                />
+              </div>
+              {spendError && (
+                <p className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-sm font-medium text-[#a5442c]">
+                  {spendError}
+                </p>
+              )}
+              <Button disabled={spendSaving} onClick={() => void saveSpending()}>
+                {spendSaving ? "Saving…" : "Save spending"}
               </Button>
             </div>
           </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   checkDocument,
   emptyCommittee,
   emptyDocument,
   emptyPosition,
+  normalizeDocument,
   normalizeLayout,
 } from "@/components/structure/document";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -127,6 +128,40 @@ function bytes(n: number): string {
   return n < 1024 ? `${n} B` : `${Math.round(n / 1024)} KB`;
 }
 
+type StoredStructureDraft = {
+  document: StructureDocument;
+  termLabel: string;
+  startsOn: string;
+  endsOn: string;
+  note: string;
+  templateKey: string | null;
+  structureId: string | null;
+  serverUpdatedAt: string | null;
+  localUpdatedAt: number;
+  dirty: boolean;
+};
+
+function photoDataUrl(photo?: string | null): string | null {
+  if (!photo) return null;
+  if (photo.startsWith("data:")) return photo;
+  if (photo.startsWith("/9j/")) return `data:image/jpeg;base64,${photo}`;
+  if (photo.startsWith("iVBOR")) return `data:image/png;base64,${photo}`;
+  if (photo.startsWith("UklGR")) return `data:image/webp;base64,${photo}`;
+  return `data:image/jpeg;base64,${photo}`;
+}
+
+function readStructureDraft(unitId: string): StoredStructureDraft | null {
+  try {
+    const raw = localStorage.getItem(`smartgov:structure-draft:${unitId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredStructureDraft;
+    if (!parsed || !parsed.document || !Array.isArray(parsed.document.committees)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 /** Reads a File into bare base64, which is the shape `holder.photo` takes. */
 async function toBase64(file: File): Promise<string> {
   const buffer = new Uint8Array(await file.arrayBuffer());
@@ -155,6 +190,7 @@ function HolderEditor({
 
   const email = holder.email.trim();
   const rosterId = email ? rosterByEmail(email) : undefined;
+  const visiblePhoto = photoDataUrl(holder.photo) ?? photoUrl;
 
   // The stored photo is fetched from the photo route on demand. The document
   // itself only ever carries `hasPhoto`, so no read of a structure puts every
@@ -176,11 +212,11 @@ function HolderEditor({
     <div className="mt-3 rounded-xl border border-line bg-canvas/40 p-4">
       <div className="flex flex-wrap items-start gap-4">
         <div className="shrink-0">
-          {photoUrl ? (
+          {visiblePhoto ? (
             // The bytes came from our own scoped route as a data URL; there is no
             // remote, user-controlled source here to sanitize.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={photoUrl} alt="" className="size-20 rounded-xl border border-line object-cover" />
+            <img src={visiblePhoto} alt="" className="size-20 rounded-xl border border-line object-cover" />
           ) : (
             <button
               type="button"
@@ -716,6 +752,8 @@ export function StructureWorkspace({
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [readyUnitId, setReadyUnitId] = useState<string | null>(null);
+  const draftKey = `smartgov:structure-draft:${unitId}`;
 
   // Chart builder state. The document stays the source of truth; `selected` is
   // only which seat the inspector shows.
@@ -747,8 +785,29 @@ export function StructureWorkspace({
       setRenewal(res.renewal ?? null);
       setHistory(res.history ?? []);
       const open = res.draft ?? null;
+      const stored = readStructureDraft(unitId);
+      const serverTime = open?.updatedAt ? Date.parse(open.updatedAt) : 0;
+      const restore =
+        stored !== null &&
+        (stored.dirty ||
+          (!open && stored.document.committees.length > 0) ||
+          stored.localUpdatedAt > (Number.isFinite(serverTime) ? serverTime : 0));
       setDraft(open);
-      if (open) {
+      if (restore && stored) {
+        setStructureId(stored.structureId);
+        setDoc(normalizeDocument(stored.document));
+        setTemplateKey(stored.templateKey ?? null);
+        setTermLabel(stored.termLabel ?? "");
+        setStartsOn(stored.startsOn ?? "");
+        setEndsOn(stored.endsOn ?? "");
+        setNote(stored.note ?? "");
+        setUpdatedAt(stored.serverUpdatedAt);
+        setDirty(stored.dirty);
+        setPast([]);
+        setFuture([]);
+        setAutosave(stored.dirty ? "off" : "idle");
+        setSelected(null);
+      } else if (open) {
         setStructureId(open.id);
         setDoc(open.document);
         setTemplateKey(open.templateKey);
@@ -766,6 +825,7 @@ export function StructureWorkspace({
         setStartsOn(res.approved.startsOn);
         setEndsOn(res.approved.endsOn);
       }
+      setReadyUnitId(unitId);
     })();
     return () => {
       cancelled = true;
@@ -804,6 +864,34 @@ export function StructureWorkspace({
     };
   }, [doc, unitId]);
 
+  const persistDraft = useCallback(
+    (next: StructureDocument, markDirty: boolean) => {
+      if (readyUnitId !== unitId) return;
+      const stored: StoredStructureDraft = {
+        document: next,
+        termLabel,
+        startsOn,
+        endsOn,
+        note,
+        templateKey,
+        structureId,
+        serverUpdatedAt: updatedAt,
+        localUpdatedAt: Date.now(),
+        dirty: markDirty,
+      };
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(stored));
+      } catch {
+        return;
+      }
+    },
+    [draftKey, readyUnitId, unitId, termLabel, startsOn, endsOn, note, templateKey, structureId, updatedAt],
+  );
+
+  useEffect(() => {
+    persistDraft(doc, dirty);
+  }, [doc, dirty, persistDraft]);
+
   function edit(next: StructureDocument) {
     setPast((prev) => [...prev.slice(-39), doc]);
     setFuture([]);
@@ -811,6 +899,7 @@ export function StructureWorkspace({
     setDirty(true);
     setSave({ kind: "idle" });
     setConflict(null);
+    persistDraft(next, true);
   }
 
   function undo() {

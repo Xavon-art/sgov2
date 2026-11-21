@@ -157,7 +157,7 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (proposedBudget === null || !Number.isFinite(proposedBudget) || proposedBudget < 0) {
+    if (proposedBudget !== null && (!Number.isFinite(proposedBudget) || proposedBudget < 0)) {
       return NextResponse.json(
         { ok: false, message: messageFor("invalid_budget"), reason: "invalid_budget" },
         { status: 400 },

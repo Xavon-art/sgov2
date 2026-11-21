@@ -31,6 +31,61 @@ function errorMessage(json: Record<string, unknown>, fallback: string) {
     : fallback;
 }
 
+const SUBMISSIONS_KEY = "feedback-submissions";
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+type SubmissionStatus = {
+  status: string;
+  submittedAt: string | null;
+  acknowledgedAt: string | null;
+};
+
+function readSubmissions(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SUBMISSIONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const entries: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string") entries[key] = value;
+    }
+    return entries;
+  } catch {
+    return {};
+  }
+}
+
+function rememberSubmission(formSlug: string, responseId: string) {
+  try {
+    window.localStorage.setItem(
+      SUBMISSIONS_KEY,
+      JSON.stringify({ ...readSubmissions(), [formSlug]: responseId }),
+    );
+  } catch {
+    return;
+  }
+}
+
+function statusLabel(status: string | undefined) {
+  if (status === "acknowledged") return "Acknowledged";
+  if (status === "new") return "Under review";
+  return "Submitted";
+}
+
+function formatStatusDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export function PublicFeedbackForm({
   slug,
   initial,
@@ -51,6 +106,69 @@ export function PublicFeedbackForm({
   const [respondentDepartmentOrCampus, setRespondentDepartmentOrCampus] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [responseId, setResponseId] = useState<string | null>(null);
+  const [submissionStatus, setSubmissionStatus] = useState<SubmissionStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const stored = readSubmissions()[slug];
+      if (stored) setResponseId(stored);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [slug]);
+
+  useEffect(() => {
+    if (!responseId) return;
+    let alive = true;
+    void (async () => {
+      setStatusLoading(true);
+      setStatusError(null);
+      try {
+        const response = await fetch(
+          `/api/feedback/public/status?responseId=${encodeURIComponent(responseId)}`,
+          { cache: "no-store" },
+        );
+        const json = (await response.json().catch(() => ({}))) as Record<
+          string,
+          unknown
+        >;
+        if (!alive) return;
+        if (json.ok !== true) {
+          setStatusError(
+            errorMessage(json, "We could not check your submission status."),
+          );
+          return;
+        }
+        setSubmissionStatus({
+          status: typeof json.status === "string" ? json.status : "new",
+          submittedAt: typeof json.submittedAt === "string" ? json.submittedAt : null,
+          acknowledgedAt:
+            typeof json.acknowledgedAt === "string" ? json.acknowledgedAt : null,
+        });
+      } catch {
+        if (alive) setStatusError("We could not check your submission status.");
+      } finally {
+        if (alive) setStatusLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [responseId]);
+
+  const verificationComplete =
+    form?.identityMode !== "identified" ||
+    (respondentName.trim().length >= 2 &&
+      respondentEmail.trim().length <= 200 &&
+      EMAIL_PATTERN.test(respondentEmail.trim().toLowerCase()) &&
+      Boolean(
+        respondentYear.trim() &&
+          respondentSection.trim() &&
+          respondentCourse.trim() &&
+          respondentDepartmentOrCampus.trim(),
+      ));
 
   const load = useCallback(async () => {
     setPhase("loading");
@@ -108,6 +226,11 @@ export function PublicFeedbackForm({
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!form || busy) return;
+
+    if (form.identityMode === "identified" && !verificationComplete) {
+      setError("Fill in your verification details first");
+      return;
+    }
 
     const missing = form.questions.find(
       (question) => question.required && isBlankAnswer(answers[question.id]),
@@ -170,6 +293,12 @@ export function PublicFeedbackForm({
         unknown
       >;
       if (json.ok === true) {
+        const newResponseId =
+          typeof json.responseId === "string" ? json.responseId : null;
+        if (newResponseId) {
+          rememberSubmission(slug, newResponseId);
+          setResponseId(newResponseId);
+        }
         setPhase("submitted");
         return;
       }
@@ -188,6 +317,31 @@ export function PublicFeedbackForm({
       setBusy(false);
     }
   };
+
+  const statusBlock = responseId ? (
+    <section
+      data-testid="public-feedback-status"
+      className="mt-6 rounded-xl border border-line bg-canvas-sunk/60 px-4 py-4 text-left"
+    >
+      <p className="text-[0.6875rem] font-semibold tracking-[0.08em] text-ink-muted uppercase">
+        Submission status
+      </p>
+      <p className="mt-2 text-[0.9375rem] font-medium text-ink-deep">
+        {statusLoading ? "Checking status..." : statusLabel(submissionStatus?.status)}
+      </p>
+      {formatStatusDate(submissionStatus?.submittedAt) ? (
+        <p className="mt-1 text-xs text-ink-muted">
+          Submitted {formatStatusDate(submissionStatus?.submittedAt)}
+        </p>
+      ) : null}
+      {formatStatusDate(submissionStatus?.acknowledgedAt) ? (
+        <p className="mt-1 text-xs text-ink-muted">
+          Acknowledged {formatStatusDate(submissionStatus?.acknowledgedAt)}
+        </p>
+      ) : null}
+      {statusError ? <p className="mt-1 text-xs text-[#a5442c]">{statusError}</p> : null}
+    </section>
+  ) : null;
 
   if (phase === "loading") {
     return (
@@ -275,6 +429,7 @@ export function PublicFeedbackForm({
           Your response was recorded. Thank you for taking the time to share
           feedback. You can close this page.
         </p>
+        {statusBlock}
       </div>
     );
   }
@@ -303,6 +458,8 @@ export function PublicFeedbackForm({
             : "This form asks for your name, student details, and email so the organizer can follow up."}
         </p>
       </header>
+
+      {statusBlock}
 
       {form.identityMode === "identified" ? (
         <section className="mt-8 grid gap-5 border-t border-line pt-8 sm:grid-cols-2">
@@ -434,17 +591,30 @@ export function PublicFeedbackForm({
 
       <div
         data-tour="public-feedback-questions"
-        className="mt-8 grid gap-7 border-t border-line pt-8"
+        className="mt-8 border-t border-line pt-8"
       >
-        {form.questions.map((question, index) => (
-          <FeedbackQuestionField
-            key={question.id}
-            question={question}
-            index={index}
-            value={answers[question.id]}
-            onChange={(value) => setAnswer(question.id, value)}
-          />
-        ))}
+        {form.identityMode === "identified" && !verificationComplete ? (
+          <p
+            className="mb-6 rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-3 text-sm font-medium text-[#a5442c]"
+            role="status"
+          >
+            Fill in your verification details first
+          </p>
+        ) : null}
+        <fieldset
+          disabled={form.identityMode === "identified" && !verificationComplete}
+          className="grid min-w-0 gap-7 border-0 p-0"
+        >
+          {form.questions.map((question, index) => (
+            <FeedbackQuestionField
+              key={question.id}
+              question={question}
+              index={index}
+              value={answers[question.id]}
+              onChange={(value) => setAnswer(question.id, value)}
+            />
+          ))}
+        </fieldset>
       </div>
 
       {error ? (
@@ -464,7 +634,13 @@ export function PublicFeedbackForm({
         <p className="text-xs text-ink-muted">
           Your response is recorded once you submit this form.
         </p>
-        <Button type="submit" disabled={busy} className="sm:min-w-40">
+        <Button
+          type="submit"
+          disabled={
+            busy || (form.identityMode === "identified" && !verificationComplete)
+          }
+          className="sm:min-w-40"
+        >
           {busy ? "Submitting..." : "Submit response"}
         </Button>
       </div>

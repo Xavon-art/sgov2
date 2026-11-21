@@ -403,7 +403,7 @@ function CreateResolutionModal({
           datePassed,
           shortSummary: shortSummary.trim(),
           body: body.trim(),
-          proposedBudget: proposedBudget.trim(),
+          proposedBudget: proposedBudget.trim() || null,
           storagePath: attachmentPath,
           originalName: attachment?.name ?? "",
           mimeType: attachment?.type ?? "",
@@ -470,7 +470,7 @@ function CreateResolutionModal({
             />
           </div>
           <div>
-            <div className="mb-1 text-sm text-muted">Proposed budget (PHP)</div>
+            <div className="mb-1 text-sm text-muted">Proposed budget (PHP, optional)</div>
             <input
               id="resolution-budget"
               type="number"
@@ -497,7 +497,7 @@ function CreateResolutionModal({
             )}
           </div>
           <div>
-            <div className="mb-1 text-sm text-muted">Resolution text</div>
+            <div className="mb-1 text-sm text-muted">Body (WHEREAS / RESOLVED)</div>
             <textarea
               id="resolution-body"
               value={body}
@@ -546,7 +546,6 @@ function CreateResolutionModal({
               !datePassed ||
               shortSummary.trim().length < 10 ||
               body.trim().length < 10 ||
-              proposedBudget.trim() === "" ||
               !attachmentPath
             }
             onClick={submit}

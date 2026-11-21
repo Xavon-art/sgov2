@@ -33,6 +33,7 @@ export type BudgetRow = {
   unitName: string | null;
   requestedTotal: number;
   approvedTotal: number | null;
+  actualSpent: number | null;
   decisionRemark: string | null;
   itemCount: number;
   createdAt: string;
@@ -51,6 +52,7 @@ export type BudgetDetail = {
   unitName: string | null;
   requestedTotal: number;
   approvedTotal: number | null;
+  actualSpent: number | null;
   decisionRemark: string | null;
   decidedAt: string | null;
   createdAt: string;

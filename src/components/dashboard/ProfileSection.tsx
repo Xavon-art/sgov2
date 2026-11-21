@@ -122,7 +122,12 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, ...payload }),
     });
-    const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      message?: string;
+      universityName?: string;
+      campusName?: string;
+    };
     return { ...json, ok: res.ok && json.ok === true };
   }
 
@@ -152,6 +157,8 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
       const body = await post("identity", { universityName, campusName });
       if (body.ok) {
         setIdentityNote({ kind: "ok", text: "Your university and campus are saved." });
+        if (typeof body.universityName === "string") setUniversityName(body.universityName);
+        if (typeof body.campusName === "string") setCampusName(body.campusName);
         // The badge and the dashboard chrome come from the server layout, so a
         // save here has to refresh it rather than only this panel.
         router.refresh();

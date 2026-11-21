@@ -28,7 +28,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "manage",
       label: "Manage",
-      hint: "Your profile and your structure",
+      hint: "Your profile and your LSG structure",
       href: "/lsg/manage",
       icon: "layers",
       children: [
@@ -44,7 +44,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "request",
       label: "Request",
-      hint: "Tasks from the office, and what you send up",
+      hint: "Tasks from the student government, and what you send up",
       href: "/lsg/request",
       icon: "submission",
       children: [

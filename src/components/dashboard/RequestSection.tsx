@@ -344,6 +344,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
 
       {tab === "tasks" && !selectedTask && (
         <div data-tour="request-task-list" className="grid gap-3">
+          <div className="text-sm font-medium">Tasks from USG</div>
           {taskState === "loading" && <div className="text-muted">Loading...</div>}
           {taskState === "ready" &&
             tasks.map((t, i) => {
@@ -396,7 +397,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
             <h2 className="text-xl font-medium">{(detail as { title?: string } | null)?.title}</h2>
             <p className="mt-2 whitespace-pre-wrap text-body">{(detail as { details?: string } | null)?.details}</p>
             <div className="mt-6">
-              <div className="mb-2 text-sm font-medium">Requirements</div>
+              <div className="mb-2 text-sm font-medium">Requirements from USG</div>
               <div className="grid gap-2">
                 {reqs.map((r) => (
                   <div key={r.id} className="rounded-xl border border-line p-4">
@@ -943,7 +944,7 @@ function TaskResponsePanel({
       <ActionError message={error} />
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={saving || (!note.trim() && !file)} onClick={submit}>
-          {saving ? "Filing…" : response?.respondedAt ? "Replace response" : "File response"}
+          {saving ? "Filing…" : response?.respondedAt ? "Replace response" : "Submit your requirement response"}
         </Button>
         <span className="text-xs text-muted">A note or a document is required.</span>
       </div>
