@@ -33,6 +33,8 @@ function actionMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
+type LibraryRow = DocumentRow & { canApprove?: boolean };
+
 function StatusBadge({ status }: { status: DocumentRow["status"] }) {
   return (
     <span className={`rounded-full border px-2 py-0.5 text-xs ${DOCUMENT_STATUS_CLASS[status]}`}>
@@ -42,8 +44,8 @@ function StatusBadge({ status }: { status: DocumentRow["status"] }) {
 }
 
 export function DocumentLibraryPanel() {
-  const [rows, setRows] = useState<DocumentRow[]>([]);
-  const [canApprove, setCanApprove] = useState(false);
+  const [rows, setRows] = useState<LibraryRow[]>([]);
+  const [catalogCanApprove, setCanApprove] = useState(false);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [actionError, setActionError] = useState<string | null>(null);
   const [editing, setEditing] = useState<DocumentRow | null>(null);
@@ -55,7 +57,7 @@ export function DocumentLibraryPanel() {
       const res = await fetch("/api/documents?limit=100");
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
-      setRows((json.rows as DocumentRow[]) ?? []);
+      setRows((json.rows as LibraryRow[]) ?? []);
       setCanApprove(json.canApprove === true);
       setState("ready");
     } catch {
@@ -102,6 +104,7 @@ export function DocumentLibraryPanel() {
             const href = row.downloadUrl ?? row.externalUrl;
             const isExternal = !row.downloadUrl && Boolean(row.externalUrl);
             const isRequirement = row.sourceKind === "requirement_submission";
+            const canApprove = catalogCanApprove && row.canApprove === true;
 
             return (
               <Reveal key={row.documentKey || row.submissionId} delay={i * ROW_STAGGER_MS}>
@@ -154,7 +157,7 @@ export function DocumentLibraryPanel() {
                         <IconPencil className="h-4 w-4" /> Edit details
                       </Button>
                     )}
-                    {isRequirement && canApprove && (
+                    {canApprove && (isRequirement && (
                       <Button
                         size="sm"
                         onClick={() =>
@@ -163,10 +166,10 @@ export function DocumentLibraryPanel() {
                       >
                         Review
                       </Button>
-                    )}
+                    ))}
                   </div>
 
-                  {isRequirement && canApprove && reviewing === row.sourceId && (
+                  {canApprove && (isRequirement && reviewing === row.sourceId && (
                     <ReviewBox
                       submissionId={row.sourceId}
                       onDone={async () => {
@@ -175,7 +178,7 @@ export function DocumentLibraryPanel() {
                       }}
                       onError={setActionError}
                     />
-                  )}
+                  ))}
                 </div>
               </Reveal>
             );

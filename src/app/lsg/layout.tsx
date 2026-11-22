@@ -2,13 +2,17 @@ import { redirect } from "next/navigation";
 import ShaderField from "@/components/fx/ShaderField";
 import { AppShell } from "@/components/dashboard/AppShell";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
-import { DashboardProvider, type DashboardMeta } from "@/components/dashboard/dashboard-context";
+import {
+  DashboardProvider,
+  WorkspaceGuard,
+  type DashboardMeta,
+} from "@/components/dashboard/dashboard-context";
 import { buildLsgNav } from "@/components/dashboard/lsg-nav";
 import { ButtonLink } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
-import { resolveWorkspaceRole } from "@/lib/auth/workspace";
+import { resolveWorkspaceRole, type WorkspaceRole } from "@/lib/auth/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +37,21 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
   const role = await resolveWorkspaceRole();
 
   if (!role) redirect("/login");
-  if (role.side !== "lsg") redirect("/usg");
+
+  const roleIdentity = role as WorkspaceRole & {
+    isCentral?: boolean;
+    governanceModel?: "federated" | "unitary" | null;
+  };
+  const accountIdentity = account as typeof account & {
+    isCentral?: boolean;
+    isUnitAccount?: boolean;
+  };
+  const central =
+    roleIdentity.isCentral === true ||
+    accountIdentity.isCentral === true ||
+    roleIdentity.governanceModel === "unitary";
+
+  if (central || role.side !== "lsg") redirect("/usg");
 
   let data: WorkspacePayload | null = null;
   try {
@@ -92,6 +110,7 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
 
   return (
     <DashboardProvider value={{ account, meta, role }}>
+      <WorkspaceGuard section="lsg" />
       <script
         dangerouslySetInnerHTML={{
           __html: `document.documentElement.classList.toggle("dark", ${JSON.stringify(data.theme === "dark")});`,

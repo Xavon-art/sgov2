@@ -11,9 +11,11 @@ import {
 
 export const runtime = "nodejs";
 
+type ReviewableRow = DocumentRow & { canApprove?: boolean };
+
 type SearchResult = RpcResult & {
   canApprove?: boolean;
-  rows?: DocumentRow[];
+  rows?: ReviewableRow[];
 };
 
 const STATUSES = new Set<DocumentStatus>(["pending", "approved", "rejected"]);
@@ -104,10 +106,16 @@ export async function GET(req: Request) {
       );
     }
 
+    const reviewer = res.canApprove === true;
+    const rows = (res.rows ?? []).map((row) => ({
+      ...row,
+      canApprove: reviewer && row.sourceKind === "requirement_submission",
+    }));
+
     return NextResponse.json({
       ok: true,
-      canApprove: res.canApprove === true,
-      rows: res.rows ?? [],
+      canApprove: reviewer,
+      rows,
     });
   } catch (error) {
     console.error("[documents:search]", error);

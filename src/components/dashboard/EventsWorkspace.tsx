@@ -323,13 +323,17 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
 
   const claim = async () => {
     if (!claimTarget) return;
+    if (!claimNoteInput.trim()) {
+      setActionError("Enter a claim note before claiming.");
+      return;
+    }
     setSaving(true);
     setActionError(null);
     try {
       const res = await fetch(`/api/events/${claimTarget.id}/claim`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ note: claimNoteInput }),
+        body: JSON.stringify({ claimNote: claimNoteInput }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
@@ -851,7 +855,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                 onChange={(e) => setClaimNoteInput(e.target.value)}
                 rows={3}
                 className={selectClass}
-                placeholder="Claim note (optional)"
+                placeholder="Claim note (required)"
               />
             </div>
           }

@@ -15,7 +15,12 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  * The two navs are separate modules on purpose: this file names no `/usg`
  * route, so no USG route string can leak into an LSG bundle.
  */
-export function buildLsgNav(role: WorkspaceRole): NavItem[] {
+export function buildLsgNav(input: WorkspaceRole): NavItem[] {
+  const role = input as WorkspaceRole & {
+    isCentral?: boolean;
+    governanceModel?: "federated" | "unitary" | null;
+  };
+  const centralized = role.isCentral || role.governanceModel === "unitary";
   const where = role.unitName;
   return [
     {
@@ -32,7 +37,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       href: "/lsg/manage",
       icon: "layers",
       children: [
-        { label: "Unit details", href: "/lsg/manage?tab=usg" },
+        ...(centralized ? [] : [{ label: "Unit details", href: "/lsg/manage?tab=usg" }]),
         { label: "Government structure", href: "/lsg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
         { label: "Documents", href: "/lsg/manage?tab=documents" },
@@ -50,7 +55,7 @@ export function buildLsgNav(role: WorkspaceRole): NavItem[] {
       children: [
         { label: "Tasks and Inbox", href: "/lsg/request" },
         { label: "My Personal Requests", href: "/lsg/personal-requests" },
-        { label: "Resolutions", href: "/lsg/request?tab=resolutions" },
+        ...(centralized ? [] : [{ label: "Resolutions", href: "/lsg/request?tab=resolutions" }]),
       ],
     },
     {

@@ -376,9 +376,21 @@ export async function matchHolder(unitId: string, email: string): Promise<Holder
  * `base64` for somebody who has none, and an officer with no picture should show
  * initials rather than a broken image.
  */
+export async function fetchHolderPhoto(unitId: string, email: string): Promise<string | null> {
+  const params = new URLSearchParams({ unitId, email });
+  const res = await fetch(`/api/structures/photos?${params.toString()}`);
+  const payload = (await res.json().catch(() => ({}))) as MemberPhoto;
+  if (res.status === 404 || (payload.ok === false && payload.reason === "not_found")) return null;
+  if (!res.ok) throw new Error(typeof payload.message === "string" ? payload.message : `Photo request failed (${res.status}).`);
+  if (!payload.ok || !payload.base64 || !payload.mime) return null;
+  return `data:${payload.mime};base64,${payload.base64}`;
+}
+
 export async function fetchMemberPhoto(rosterId: string): Promise<string | null> {
   const res = await fetch(`/api/structures/photos/${encodeURIComponent(rosterId)}`);
-  const payload = (await res.json()) as MemberPhoto;
+  const payload = (await res.json().catch(() => ({}))) as MemberPhoto;
+  if (res.status === 404 || (payload.ok === false && payload.reason === "not_found")) return null;
+  if (!res.ok) throw new Error(typeof payload.message === "string" ? payload.message : `Photo request failed (${res.status}).`);
   if (!payload.ok || !payload.base64 || !payload.mime) return null;
   return `data:${payload.mime};base64,${payload.base64}`;
 }

@@ -22,11 +22,10 @@ function suggestedYears() {
 /**
  * Names the organization and fixes its charter year.
  *
- * This step used to declare the local councils as well, but a federated
- * organization starts as its USG alone. Colleges, campuses, and departments are
- * added from the org chart afterwards, which is also the only place that can
- * attach an officer to one — so asking for them here produced a list nobody
- * could staff yet, and a signup that could not be completed without it.
+ * This step used to declare the local councils as well. A centralized
+ * organization needs no local tier at all, and a federated one starts as its
+ * USG alone: colleges, campuses, and departments are added from the org chart
+ * afterwards, which is also the only place that can attach an officer to one.
  */
 export default function UnitsPage() {
   useStepGuard("units");
@@ -41,7 +40,7 @@ export default function UnitsPage() {
     <StepShell
       step="units"
       title="Name your organization"
-      lede="This is the name your officers will see across SmartGov. You can add its colleges, campuses, and departments later from your org chart."
+      lede="This is the name your officers will see across SmartGov. Centralized organizations run as one council with no LSG tier; federated colleges, campuses, and departments are added later from your org chart."
       errors={showErrors ? errors : []}
       onContinue={continueStep}
       continueLabel="Review everything"
@@ -114,7 +113,7 @@ export default function UnitsPage() {
             <span className="font-semibold">
               {org.academicYear.trim() || "the academic year you set"}
             </span>
-            . Its councils are added from the org chart once you are inside.
+            . Centralized councils work as one tier; federated LSG units are added from the org chart once you are inside.
           </p>
         </div>
       </div>

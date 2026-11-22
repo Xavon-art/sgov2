@@ -26,21 +26,29 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
   const { id } = await ctx.params;
-  let body: { supportFiles?: unknown; claimNote?: unknown };
+  let body: { supportFiles?: unknown; claimNote?: unknown; note?: unknown };
   try {
-    body = (await request.json()) as { supportFiles?: unknown; claimNote?: unknown };
+    body = (await request.json()) as { supportFiles?: unknown; claimNote?: unknown; note?: unknown };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
   const supportFiles = Array.isArray(body.supportFiles) ? body.supportFiles : [];
+  const rawNote = body.claimNote ?? body.note;
+  const claimNote = typeof rawNote === "string" ? rawNote.trim() : "";
+  if (!claimNote) {
+    return NextResponse.json(
+      { ok: false, reason: "claim_note_required", message: "Enter a claim note before claiming." },
+      { status: 400 },
+    );
+  }
 
   try {
     const res = await callRpc<RpcResult>("claim_event", {
       p_session_token: token,
       p_event_id: id,
       p_support_files: supportFiles,
-      p_claim_note: typeof body.claimNote === "string" ? body.claimNote.trim() : null,
+      p_claim_note: claimNote,
     });
     if (!res.ok) {
       return NextResponse.json(

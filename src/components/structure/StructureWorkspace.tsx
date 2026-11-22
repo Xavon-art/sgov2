@@ -19,6 +19,7 @@ import { ChartViewer } from "@/components/structure/ChartViewer";
 import { StructureStatusTracker } from "@/components/structure/StructureStatusTracker";
 import {
   MAX_PHOTO_BYTES,
+  fetchHolderPhoto,
   fetchMemberPhoto,
   fetchStructure,
   fetchTemplates,
@@ -51,9 +52,8 @@ import {
  *      editor-less save regardless of what this component believes.
  *   2. Publish anything. The published structure is whatever the last approved
  *      revision is; submitting hands the document to a reviewer and stops.
- *   3. Put a roster id in the document. `rosterId` is needed to fetch a stored
- *      photo, but the document is persisted verbatim into `gov_structures.document`,
- *      so an id that only matters to this session is held in `rosterByEmail` here.
+ *   3. Put a roster id in the document. Stored photos are read by unit and email,
+ *      so the document stays free of session-only roster identifiers.
  */
 
 type SaveState =
@@ -217,19 +217,20 @@ async function persistPhoto(unitId: string, email: string, photo: string): Promi
   }
 }
 
-async function loadStoredPhotos(unitId: string, holders: StructureHolder[]): Promise<Record<string, string>> {
+async function loadStoredPhotos(
+  unitId: string,
+  holders: StructureHolder[],
+  resolveRosterId: (email: string) => string | undefined,
+): Promise<Record<string, string>> {
   const found: Record<string, string> = {};
   await Promise.all(
     holders.map(async (holder) => {
       const email = holder.email.trim().toLowerCase();
       if (!email || !holder.hasPhoto || holder.photo) return;
       try {
-        const params = new URLSearchParams({ unitId, email });
-        const res = await fetch(`/api/structures/photos?${params.toString()}`);
-        if (!res.ok) throw new Error("photo read failed");
-        const payload = (await res.json()) as PhotoPayload;
-        if (payload.ok && payload.base64 && payload.mime) {
-          const url = `data:${payload.mime};base64,${payload.base64}`;
+        const rosterId = resolveRosterId(email);
+        const url = rosterId ? await fetchMemberPhoto(rosterId) : await fetchHolderPhoto(unitId, email);
+        if (url) {
           found[email] = url;
           writePhotoCache(unitId, email, url);
         } else {
@@ -315,13 +316,11 @@ async function toBase64(file: File): Promise<string> {
 function HolderEditor({
   unitId,
   holder,
-  rosterByEmail,
   onChange,
   onVacate,
 }: {
   unitId: string;
   holder: StructureHolder;
-  rosterByEmail: (email: string) => string | undefined;
   onChange: (next: StructureHolder) => void;
   onVacate: () => void;
 }) {
@@ -329,7 +328,6 @@ function HolderEditor({
   const [note, setNote] = useState("");
 
   const email = holder.email.trim();
-  const rosterId = email ? rosterByEmail(email) : undefined;
   const visiblePhoto = photoDataUrl(holder.photo) ?? photoUrl;
 
   // The stored photo is fetched from the photo route on demand. The document
@@ -337,15 +335,15 @@ function HolderEditor({
   // officer's face into a JSON payload.
   async function showStoredPhoto() {
     setNote("");
-    const id = rosterId ?? (await matchHolder(unitId, email)).rosterId;
-    if (!id) {
-      setNote("No photo is on file for this person yet.");
+    if (!email) return;
+    try {
+      const url = await fetchHolderPhoto(unitId, email);
+      setPhotoUrl(url);
+      if (!url) setNote("No photo is on file for this person yet.");
+    } catch (e) {
       setPhotoUrl(null);
-      return;
+      setNote(e instanceof Error && e.message.trim() ? e.message : "That photo could not be read.");
     }
-    const url = await fetchMemberPhoto(id);
-    setPhotoUrl(url);
-    if (!url) setNote("That photo could not be read.");
   }
 
   return (
@@ -474,7 +472,6 @@ function PositionRow({
   canMoveDown,
   onNudge,
   drag,
-  rosterByEmail,
 }: {
   unitId: string;
   position: StructurePosition;
@@ -487,7 +484,6 @@ function PositionRow({
   canMoveDown: boolean;
   onNudge: (delta: number) => void;
   drag: ReorderRow;
-  rosterByEmail: (email: string) => string | undefined;
 }) {
   const holder = position.holder ?? null;
 
@@ -543,7 +539,6 @@ function PositionRow({
         <HolderEditor
           unitId={unitId}
           holder={holder}
-          rosterByEmail={rosterByEmail}
           onChange={(next) => onChange({ ...position, holder: next })}
           onVacate={() => onChange({ ...position, holder: null })}
         />
@@ -565,7 +560,6 @@ function CommitteeEditor({
   onAddPosition,
   onMovePosition,
   onNudge,
-  rosterByEmail,
 }: {
   unitId: string;
   committee: StructureCommittee;
@@ -577,7 +571,6 @@ function CommitteeEditor({
   onAddPosition: () => void;
   onMovePosition: (from: number, to: number) => void;
   onNudge: (delta: number) => void;
-  rosterByEmail: (email: string) => string | undefined;
 }) {
   const [descriptionOpen, setDescriptionOpen] = useState(committee.description !== undefined);
   const isFirst = index === 0;
@@ -663,7 +656,6 @@ function CommitteeEditor({
                 total={committee.positions.length}
                 canRemove={committee.positions.length > 1}
                 drag={row}
-                rosterByEmail={rosterByEmail}
                 canMoveUp={pi > 0}
                 canMoveDown={pi < committee.positions.length - 1}
                 onNudge={(delta) => nudge(p.key, delta)}
@@ -907,11 +899,12 @@ export function StructureWorkspace({
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved" | "off">("idle");
   const savingRef = useRef(false);
   const hydratedPhotos = useRef(new Set<string>());
+  const rosterIds = useRef(new Map<string, string>());
+  const rosterByEmail = useCallback((email: string): string | undefined => {
+    return rosterIds.current.get(email.trim().toLowerCase());
+  }, []);
 
   const layout = useMemo(() => normalizeLayout(doc.layout), [doc.layout]);
-
-  // email -> rosterId, for the photo route. Never part of the document.
-  const [rosterByEmail, setRosterByEmail] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -974,37 +967,30 @@ export function StructureWorkspace({
     };
   }, [unitId]);
 
-  /**
-   * Resolves the roster ids a document already implies.
-   *
-   * A holder saved earlier is on the organization roll but not in this payload,
-   * so the ids are looked up once here instead of being carried in the document.
-   * Failures are ignored on purpose: a missing photo is a cosmetic miss, and a
-   * failed lookup must not stop the structure from loading.
-   */
   useEffect(() => {
+    if (!readyUnitId || readyUnitId !== unitId) return;
     const emails = new Set<string>();
-    for (const c of doc.committees) {
-      for (const p of c.positions) {
-        const e = p.holder?.email?.trim().toLowerCase();
-        if (e) emails.add(e);
-      }
+    for (const holder of collectHolders(doc)) {
+      const email = holder.email.trim().toLowerCase();
+      if (email && holder.hasPhoto) emails.add(email);
     }
     if (!emails.size) return;
     let cancelled = false;
     void (async () => {
-      const found: Record<string, string> = {};
       for (const email of emails) {
-        if (cancelled) return;
-        const match = await matchHolder(unitId, email);
-        if (match.rosterId) found[email] = match.rosterId;
+        if (cancelled || rosterByEmail(email)) continue;
+        try {
+          const match = await matchHolder(unitId, email);
+          if (!cancelled && match.rosterId) rosterIds.current.set(email, match.rosterId);
+        } catch {
+          continue;
+        }
       }
-      if (!cancelled) setRosterByEmail((prev) => ({ ...prev, ...found }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [doc, unitId]);
+  }, [doc, readyUnitId, rosterByEmail, unitId]);
 
   useEffect(() => {
     if (!readyUnitId || readyUnitId !== unitId) return;
@@ -1024,7 +1010,7 @@ export function StructureWorkspace({
     let cancelled = false;
     let settled = false;
     void (async () => {
-      const found = await loadStoredPhotos(unitId, targets);
+      const found = await loadStoredPhotos(unitId, targets, rosterByEmail);
       settled = true;
       if (cancelled || !Object.keys(found).length) return;
       setDoc((prev) => withStoredPhotos(prev, found));
@@ -1036,7 +1022,7 @@ export function StructureWorkspace({
         hydrated.delete(`${unitId}:${holder.email.trim().toLowerCase()}`);
       }
     };
-  }, [doc, readyUnitId, unitId]);
+  }, [doc, readyUnitId, rosterByEmail, unitId]);
 
   const persistDraft = useCallback(
     (next: StructureDocument, markDirty: boolean) => {
@@ -1593,7 +1579,6 @@ export function StructureWorkspace({
                 index={ci}
                 total={doc.committees.length}
                 drag={committeeReorder.rowProps(c.key, ci)}
-                rosterByEmail={(email) => rosterByEmail[email]}
                 onChange={(next) => patchCommittee(ci, next)}
                 onRemove={() => edit({ committees: doc.committees.filter((_, i) => i !== ci) })}
                 onAddPosition={() => patchCommittee(ci, { ...c, positions: [...c.positions, emptyPosition()] })}

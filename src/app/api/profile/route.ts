@@ -164,8 +164,8 @@ export async function POST(req: Request) {
         p_session_token: token,
         p_accent: body.accent ?? null,
         p_theme_mode: body.themeMode ?? null,
-        // `undefined` means "leave the logo alone"; an explicit null clears it.
-        p_logo_data: body.logoData === undefined ? null : body.logoData,
+        // Omitted means leave the logo alone; an explicit empty string clears it.
+        p_logo_data: "logoData" in body ? body.logoData ?? "" : undefined,
       });
       if (!res.ok) {
         return NextResponse.json(

@@ -251,7 +251,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
             {surveys.map((s) => (
               <li key={s.id} className="flex items-start justify-between gap-3 rounded-xl border border-line bg-paper px-4 py-3">
                 <div>
-                  <Link href={`${base}/surveys/${s.id}`} className="text-[0.9375rem] font-medium text-ink-deep hover:underline">
+                  <Link href={`${base}/surveys/${s.id}`} aria-label="Open internal survey detail" className="text-[0.9375rem] font-medium text-ink-deep hover:underline">
                     {s.title}
                   </Link>
                   <p className="text-[0.75rem] text-muted">

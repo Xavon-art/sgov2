@@ -67,6 +67,7 @@ const sql = (text, params = []) => client.query(text, params);
 const CASTS = {
   "public.create_organization": ["jsonb"],
   "smartgov.create_owner_account": ["jsonb"],
+  "smartgov.create_unit_account": ["text", "jsonb"],
   "smartgov.activate_owner": ["text"],
   "smartgov.add_position": ["text", "text", "smallint"],
   "smartgov.create_invite": ["text", "text", "text", "text", "uuid", "uuid"],
@@ -318,127 +319,50 @@ async function main() {
   const ownerToken = activated.token;
   log("owner account", `owner@${EMAIL_DOMAIN} (active)`);
 
-  // ---------------------------------------------------------------- positions
-  const POSITION_LABELS = [
-    "President",
-    "Vice President",
-    "Secretary",
-    "Treasurer",
-    "Auditor",
-    "Public Relations Officer",
-  ];
-  const positions = {};
-  for (let i = 0; i < POSITION_LABELS.length; i += 1) {
-    const label = POSITION_LABELS[i];
-    positions[label] = expect(
-      await call("smartgov.add_position", [ownerToken, label, i + 1]),
-      `add_position(${label})`,
-    ).positionId;
-  }
-  log("positions", POSITION_LABELS.join(", "));
-
-  // ---------------------------------------------------------------- people
   const accounts = [];
-  const rosterIds = new Map();
+  const unitTokens = new Map();
 
-  async function invite({ email, name, unitId = null, positionLabel = null }) {
-    const positionId = positionLabel ? positions[positionLabel] : null;
-    const invite = expect(
-      await call("smartgov.create_invite", [
-        ownerToken,
-        email,
-        "",
-        "lsg",
-        unitId,
-        positionId,
-      ]),
-      `create_invite(${email})`,
-    );
-    const accepted = expect(
-      await call("smartgov.accept_invite", [invite.token, PASSWORD]),
-      `accept_invite(${email})`,
-    );
-    expect(
-      await call("smartgov.create_notification", [
-        ownerToken,
-        accepted.accountId,
-        "welcome",
-        "Welcome to the demo student government",
-        "Your demo seat is ready. This notification exists so the bell has content.",
-        "/usg",
-      ]),
-      `welcome notification(${email})`,
-    );
-    await sql(
-      `update smartgov.accounts
-          set status = 'active', activated_at = now(), display_name = $2
-        where id = $1`,
-      [accepted.accountId, name],
-    );
-    if (invite.rosterId) {
-      await sql(`update smartgov.roster set full_name = $2 where id = $1`, [
-        invite.rosterId,
-        name,
-      ]);
-      rosterIds.set(email, invite.rosterId);
-    }
-    accounts.push({
-      email,
-      name,
-      accountId: accepted.accountId,
-      unitId,
-      positionLabel,
-    });
-    return accepted.accountId;
-  }
-
-  const usgPeople = [
-    ["juan.president", "Juan Dela Cruz", "President"],
-    ["maria.vicepresident", "Maria Santos", "Vice President"],
-    ["ana.secretary", "Ana Reyes", "Secretary"],
-    ["miguel.treasurer", "Miguel Bautista", "Treasurer"],
-    ["rosa.auditor", "Rosa Villanueva", "Auditor"],
+  const unitAccounts = [
+    ["pedro.engineering", "Pedro Aquino", "College of Engineering"],
+    ["carlo.education", "Carlo Mendoza", "College of Education"],
+    ["nicole.business", "Nicole Ramos", "College of Business Administration"],
+    ["rafael.nursing", "Rafael Castillo", "College of Nursing"],
+    ["sofia.arts", "Sofia Navarro", "College of Arts and Sciences"],
   ];
-  for (const [handle, name, seat] of usgPeople) {
-    await invite({ email: `${handle}@${EMAIL_DOMAIN}`, name, unitId: usg.id, positionLabel: seat });
-  }
-
-  const lsgPeople = [
-    ["pedro.engineering", "Pedro Aquino", "College of Engineering", "President"],
-    ["liza.engineering", "Liza Fernandez", "College of Engineering", "Secretary"],
-    ["carlo.education", "Carlo Mendoza", "College of Education", "President"],
-    ["grace.education", "Grace Torres", "College of Education", "Treasurer"],
-    ["nicole.business", "Nicole Ramos", "College of Business Administration", "President"],
-    ["rafael.nursing", "Rafael Castillo", "College of Nursing", "President"],
-    ["sofia.arts", "Sofia Navarro", "College of Arts and Sciences", "President"],
-  ];
-  for (const [handle, name, unitName, seat] of lsgPeople) {
-    await invite({
-      email: `${handle}@${EMAIL_DOMAIN}`,
-      name,
-      unitId: college(unitName),
-      positionLabel: seat,
-    });
-  }
-
-  await invite({
-    email: `member@${EMAIL_DOMAIN}`,
-    name: "Bea Ordinary Member",
-    unitId: college("College of Engineering"),
-  });
-  log("accounts", `${accounts.length + 1} total (1 owner, ${accounts.length} invited)`);
-
-  const login = async (email) => {
-    const result = expect(
-      await call("smartgov.login_account", [email, PASSWORD]),
-      `login_account(${email})`,
+  for (const [handle, name, unitName] of unitAccounts) {
+    const email = `${handle}@${EMAIL_DOMAIN}`;
+    const unitId = college(unitName);
+    const created = expect(
+      await call("smartgov.create_unit_account", [
+        ownerToken,
+        JSON.stringify({
+          email,
+          password: PASSWORD,
+          displayName: name,
+          accountKind: "lsg",
+          isUnitAccount: true,
+          unitId: college(unitName),
+          campusName: unitName,
+        }),
+      ]),
+      `create_unit_account(${handle})`,
     );
-    return result.token;
-  };
-  const engToken = await login(`pedro.engineering@${EMAIL_DOMAIN}`);
-  const eduToken = await login(`carlo.education@${EMAIL_DOMAIN}`);
-  const memberToken = await login(`member@${EMAIL_DOMAIN}`);
+    const token =
+      created.token ??
+      expect(
+        await call("smartgov.login_account", [email, PASSWORD]),
+        `login_account(${email})`,
+      ).token;
+    accounts.push({ email, name, accountId: created.accountId, unitId, token });
+    unitTokens.set(handle, token);
+  }
+  log("accounts", `${accounts.length + 1} total (1 owner, ${accounts.length} unit accounts)`);
+
+  const engToken = unitTokens.get("pedro.engineering");
+  const eduToken = unitTokens.get("carlo.education");
+  const memberToken = unitTokens.get("nicole.business");
   const accountId = (email) => accounts.find((a) => a.email === email).accountId;
+
 
   const future = (days) => {
     const d = new Date();
@@ -937,7 +861,7 @@ async function main() {
   expect(
     await call("smartgov.create_notification", [
       engToken,
-      accountId(`member@${EMAIL_DOMAIN}`),
+      accountId(`nicole.business@${EMAIL_DOMAIN}`),
       "task_assigned",
       "A task was assigned to your council",
       "Submit first-semester activity reports by the end of the month.",
@@ -964,18 +888,13 @@ async function main() {
     `Password for every account: ${PASSWORD}`,
     "",
     "USG - University Student Government",
-    ...usgPeople.map(
-      ([handle, name, seat]) => `  ${seat.padEnd(22)} ${name.padEnd(22)} ${handle}@${EMAIL_DOMAIN}`,
-    ),
     `  ${"Owner / Founder".padEnd(22)} ${"Demo University Founder".padEnd(22)} owner@${EMAIL_DOMAIN}`,
     "",
     "LSG - Local Student Councils",
-    ...lsgPeople.map(
-      ([handle, name, , seat]) => `  ${seat.padEnd(22)} ${name.padEnd(22)} ${handle}@${EMAIL_DOMAIN}`,
+    ...unitAccounts.map(
+      ([handle, name, unitName]) =>
+        `  ${unitName.padEnd(32)} ${name.padEnd(22)} ${handle}@${EMAIL_DOMAIN}`,
     ),
-    "",
-    "Ordinary member (no seat)",
-    `  ${"Member".padEnd(22)} ${"Bea Ordinary Member".padEnd(22)} member@${EMAIL_DOMAIN}`,
     "",
   ];
   writeFileSync(CREDENTIALS, lines.join("\r\n"), "utf8");

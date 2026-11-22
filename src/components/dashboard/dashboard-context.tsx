@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { Account } from "@/lib/auth/session";
 import type { WorkspaceRole } from "@/lib/auth/workspace";
 
@@ -72,4 +73,42 @@ export function useDashboard(): DashboardValue {
 
 export function useAccount(): Account {
   return useDashboard().account;
+}
+
+type IdentityFields = {
+  isCentral?: boolean;
+  isUnitAccount?: boolean;
+  governanceModel?: "federated" | "unitary" | null;
+};
+
+function identityFields(value: Account | WorkspaceRole): IdentityFields {
+  return value as unknown as IdentityFields;
+}
+
+export function WorkspaceGuard({ section }: { section: "usg" | "lsg" }) {
+  const { account, role } = useDashboard();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    const accountIdentity = identityFields(account);
+    const roleIdentity = identityFields(role);
+    const central =
+      accountIdentity.isCentral === true ||
+      roleIdentity.isCentral === true ||
+      roleIdentity.governanceModel === "unitary";
+    const unit =
+      accountIdentity.isUnitAccount === true || roleIdentity.isUnitAccount === true;
+
+    let target: string | null = null;
+    if (central && section === "lsg") target = "/usg";
+    else if (unit && section === "usg") target = "/lsg";
+    else if (!central && role.side !== section) {
+      target = role.side === "usg" ? "/usg" : "/lsg";
+    }
+
+    if (target && pathname !== target) router.replace(target);
+  }, [account, role, pathname, router, section]);
+
+  return null;
 }

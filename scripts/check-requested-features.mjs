@@ -342,5 +342,63 @@ includes("src/app/api/catalog-files/[documentKey]/route.ts", [
   "get_catalog_document",
 ]);
 
+console.log("Dual governance and unit accounts");
+
+const MIGRATION_03600 =
+  "supabase/migrations/20260101003600_dual_governance_and_unit_accounts.sql";
+
+includes(MIGRATION_03600, [
+  "alter type smartgov.account_kind add value if not exists 'lsg';",
+  "add column if not exists unit_id uuid",
+  "is_unit_account boolean",
+  "accounts_one_active_unit_account_idx",
+  "governance_model",
+  "'isCentral', v_is_central",
+  "'isUnitAccount', v_is_unit_account",
+  "'governanceModel', v_governance_model",
+  "v_side := 'lsg'",
+  "smartgov.can_approve_document",
+  "NOTIFY pgrst, 'reload schema';",
+]);
+
+excludes(MIGRATION_03600, ["account_kind = 'usg'", "unit_type = 'usg'"]);
+
+includes("supabase/migrations/20260101003480_unified_submission_catalog.sql", [
+  "delete from smartgov.filed_document_catalog where true;",
+]);
+
+includes("src/lib/auth/session.ts", [
+  'AccountKind = "usg" | "central" | "lsg"',
+  "unitId: string | null",
+  "governanceModel: GovernanceModel | null",
+  "isUnitAccount: boolean",
+  "unit_id: string | null",
+  "is_unit_account: boolean",
+  "row.unit_id",
+  "row.is_unit_account",
+]);
+
+includes("src/lib/auth/workspace.ts", [
+  "isCentral: boolean",
+  "governanceModel: GovernanceModel | null",
+  "isUnitAccount: boolean",
+  'data.side === "usg" ? "usg" : "lsg"',
+  "Boolean(data.isCentral)",
+  "Boolean(data.isUnitAccount)",
+]);
+
+includes("src/app/api/organization/route.ts", [
+  'const canInvite = governanceModel === "federated"',
+  'officerRole === "usg_officer"',
+  'officerRole === "council_officer"',
+]);
+
+includes("scripts/seed-demo.mjs", [
+  "smartgov.create_unit_account",
+  "isUnitAccount: true",
+  "unitId: college(unitName)",
+  "accountKind: \"lsg\"",
+]);
+
 console.log(`\n${checks - failures}/${checks} requested-feature checks passed`);
 if (failures > 0) process.exit(1);

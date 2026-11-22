@@ -1,0 +1,873 @@
+SMARTGOV SYSTEM BEHAVIOR / EXPECTED WORKFLOW
+============================================
+
+Last verified: 2026-11-22
+Verified commit: 36d0532 ("Complete LSG and USG workflow requirements and document catalog")
+Deploy state at that commit: both Vercel checks success; production smoke 56/56.
+
+HOW TO READ THIS FILE
+---------------------
+DAPAT        = expected behavior. This is the contract of the system.
+KASALUKUYAN  = currently implemented / verified in code.
+KUNG HINDI   = where to look when that action appears broken.
+Anchors      = file paths relative to this repository root. Line numbers are from the verified commit.
+
+This file documents behavior only. It does not change code.
+
+
+0. ONE-MINUTE OVERVIEW
+----------------------
+SmartGov is a federated student-government portal:
+
+  - One USG (University Student Government) owns the organization.
+  - Many LSGs (Local Student Governments / colleges) belong to it.
+  - USG reviews, approves, monitors, and publishes organization-wide data.
+  - LSG submits requests, tasks, events, reports, budgets, documents, and structure charts for its own unit only.
+  - Public users can answer surveys and feedback forms through anonymous links.
+
+Core rules:
+
+  1. Session-based auth. Cookie: sgov_session, httpOnly, SameSite=Lax, 30 days.
+  2. Identity is resolved on the server by currentAccount() -> smartgov.resolve_account.
+  3. The browser never decides final authority. RPCs in Postgres enforce auth, org, and unit scope.
+  4. Tables are RLS-protected with no broad direct policies. Authoritative writes go through RPCs.
+  5. Statuses are shared vocabulary; UI labels are mapped in src/lib/*.ts.
+  6. Files are catalog metadata only in lists. Bytes are downloaded through scoped routes/RPCs.
+  7. Time-based state (expired requests, closed surveys, pauses) is computed lazily on read.
+  8. If SMTP is absent, mail goes to smartgov.outbox and can be viewed at /dev/outbox in dev.
+
+
+1. ROLES AND BOUNDARIES
+-----------------------
+
+Role                | Where                 | Dapat / expected                                      | Hindi dapat
+--------------------+-----------------------+-------------------------------------------------------+---------------------------
+Public / anonymous  | /, /login, /survey/*, | View public pages; submit survey/feedback answers.     | Call any /api/* data route
+                    | /feedback/f/[token],  | Invalid link -> 404, no login redirect.               | Read dashboards or DB.
+                    | /invite/[token]       |                                                       |
+Member              | Any workspace        | Submit personal request, feedback, survey answers.     | Approve/review anything.
+LSG officer/president| /lsg/*, /my-council/*| Work only in own unit: request, events, structure,     | See other units, /usg/*,
+                    |                       | budgets, documents, accomplished reports, feedback.    | officers, invites, monitoring.
+USG officer/reviewer| /usg/*               | Review organization submissions, documents, budgets,   | Owner-only tabs: Umbrella,
+                    |                       | events, accomplishment reports, feedback, monitoring.  | Invites, Structure.
+USG owner/founder   | /usg/*, /org-chart   | Everything a USG officer can do plus invites, officers,| Act as an LSG or bypass unit
+                    |                       | umbrella/child org, owner structure/chart writes.      | scope in another unit.
+
+Important identity fields live on smartgov.accounts:
+  university_name, campus_name -> organization-level profile identity.
+  account_scope = owner | invited.
+  account_kind  = usg | central.
+
+During organization creation, effectiveRole() forces "usg_officer" for federated model
+(src/lib/store.ts:105-111). At runtime the DB is the final authority.
+
+
+2. SYSTEM ENTRY AND NAVIGATION
+------------------------------
+
+2.1 Open the site
+DAPAT:
+  - "/" is public landing.
+  - "/login" accepts email + password.
+  - Anonymous "/usg" and "/lsg" redirect to "/login".
+  - Anonymous API calls return 401 JSON, not a page redirect.
+
+KASALUKUYAN:
+  - Login calls smartgov.login_account and sets sgov_session.
+  - currentAccount() re-resolves the session on every server request.
+  - Expired sessions and inactive accounts fail closed.
+
+KUNG HINDI:
+  - Clear cookies and sign in again.
+  - Check whether the account is active.
+  - Check AUTH_PEPPER and DATABASE_URL.
+
+2.2 Role routing
+DAPAT:
+  - USG account lands in /usg; LSG account lands in /lsg.
+  - USG in /lsg -> redirected out. LSG in /usg -> redirected out.
+  - Wrong-role tabs are denied by client routing AND server RPC/API.
+
+2.3 Stable page groups
+USG pages:
+  /usg                 overview
+  /usg/request         requirements, proposals, tasks, personal requests
+  /usg/events          calendar, future events, accomplishments
+  /usg/surveys         survey list and detail
+  /usg/manage          members, invites, umbrella, structure, documents, search, budget, monitoring, feedback, accounts
+  /usg/officers        officer roster
+  /usg/messages        chat
+  /usg/personal-requests
+  /usg/settings
+  /usg/structure
+
+LSG pages:
+  /lsg                 overview
+  /lsg/request         requirements, proposals, tasks, personal requests, approved budget/spending
+  /lsg/events          calendar, future events, accomplishments
+  /lsg/surveys
+  /lsg/manage          unit details, profile, structure, documents, search, budget, feedback
+  /lsg/messages
+  /lsg/personal-requests
+  /lsg/settings
+
+Shared / legacy:
+  /my-council, /my-council/structure, /org-chart, /dashboard/* redirects, /dev/outbox
+
+
+3. GLOBAL CONTRACTS THAT MUST ALWAYS HOLD
+-----------------------------------------
+
+3.1 Every mutation checks authority in Postgres
+DAPAT:
+  - UI gating is convenience only; RPC rechecks session token, org, role, and unit.
+  - Forged UUIDs return not_found / forbidden, never another unit's data.
+  - LSG cannot widen scope by sending another unitId.
+
+KUNG HINDI:
+  - Run npm run test:authority.
+
+3.2 Direct table access is closed
+DAPAT:
+  - anon and authenticated cannot directly read/write protected tables.
+  - Public wrapper functions only expose safe RPCs.
+
+3.3 Status display families
+Raw status     | Display
+---------------+---------------
+submitted      | Pending
+assigned       | Pending
+awaiting       | Pending
+draft          | Pending
+under_review   | Under review
+in_progress    | Under review
+claimed        | Under review
+approved       | Approved
+published      | Approved
+done           | Approved
+honored        | Approved
+verified       | Approved
+returned       | Returned
+queried        | Returned
+rejected       | Rejected
+cancelled      | Cancelled
+
+Source: scripts/check-federated-features.mjs:22-55.
+
+3.4 Files
+DAPAT:
+  - A catalog/search row contains metadata + downloadUrl only.
+  - Download goes through /api/catalog-files/[documentKey] and an RPC visibility gate.
+  - Another unit cannot download a pending document.
+  - Approved catalog rows are visible organization-wide.
+
+3.5 Time and scheduling
+DAPAT:
+  - Dates are stored as IANA timezone + UTC timestamps.
+  - Expired/closed/paused states are computed lazily, so a down scheduler does not leave stale state.
+
+
+4. ACTION-BY-ACTION WORKFLOW
+-----------------------------
+
+4.1 Sign in / sign out
+User action:
+  Enter email + password on /login; click Sign out in the shell.
+
+DAPAT:
+  - Correct credentials -> session cookie -> correct role workspace.
+  - Wrong password -> visible error; no session.
+  - Sign out checks the logout response before redirecting.
+  - Failed logout shows an error instead of silently redirecting.
+
+API/RPC:
+  POST /api/auth/login -> smartgov.login_account
+  POST /api/auth/logout -> smartgov.logout_account
+
+KUNG HINDI:
+  - Run npm run check:smoke.
+  - Check browser console for failed logout handling (covered by check:interactions).
+
+4.2 Create organization / activate owner
+User action:
+  /create/* flow: governance model -> institution -> account -> units -> review -> verification -> activated.
+
+DAPAT:
+  - Federated model creates one USG owner; LSG units are added later as children.
+  - Verification link activates the owner once.
+  - Owner activation token is one-shot.
+  - A failed sign-in that lands on verification must NOT create a second org.
+
+KASALUKUYAN:
+  - confirmIntent flag in src/lib/store.ts guards the one write path.
+  - effectiveRole() forces usg_officer for federated.
+
+KUNG HINDI:
+  - Check /create/verification and smartgov.applied_migrations are current.
+  - Do not reuse an activation link after success.
+
+4.3 Update profile / identity / email / password / appearance
+User action:
+  /lsg/manage?tab=profile or /usg/settings -> save display name, university/campus identity,
+  change sign-in email, change password, "Save look".
+
+DAPAT:
+  - Display-name save updates only the account display name.
+  - University/campus save updates account-level identity and calls router.refresh()
+    so the server-rendered badge/chrome changes too.
+  - Email change requires the account password.
+  - Password change requires the current password.
+  - Appearance save should preserve the existing logo unless the user explicitly clears it.
+
+API/RPC:
+  POST /api/profile with action: profile | identity | email | password | customisation
+  RPCs: update_my_profile, update_my_identity, change_my_email,
+        change_my_password, update_customisation
+
+KUNG HINDI:
+  - "Save look" clears the logo: known issue. See section 7.2.
+  - Check src/components/dashboard/ProfileSection.tsx:217-232 and src/app/api/profile/route.ts:162-169.
+
+4.4 Invites, officers, permissions, umbrella
+User action:
+  USG owner -> Manage -> Invites / Accounts / Umbrella; invite officer, resend invite,
+  grant/revoke can_target_units, deactivate officer, schedule pause, purge officer.
+
+DAPAT:
+  - Only owner can list/invite/manage officers and umbrella child links.
+  - Invite status: pending -> activated | expired | revoked.
+  - Deactivate can hand over to a replacement; mail is sent before email swap.
+  - Purge requires typing the exact confirmEmail.
+  - Pause window: startsOn required, endsOn optional; scheduled unit gets email notice.
+  - can_target_units grant lets Pedro target Carlo's unit; revoke removes it immediately.
+
+API/RPC:
+  /api/invites, /api/invites/resend, /api/permissions,
+  /api/officers/[id]/deactivate, /api/umbrella
+  RPCs include create_invite, deactivate_officer, grant_permission, revoke_permission,
+  umbrella pause functions.
+
+KUNG HINDI:
+  - Run npm run test:authority (officer profile + feedback form authority sections).
+  - If no email arrives, check /dev/outbox.
+
+4.5 Org chart
+User action:
+  /org-chart -> add position, toggle unit seat, invite/assign/release seat.
+
+DAPAT:
+  - Only owner can open/write the owner chart.
+  - LSG is redirected away.
+  - Seat toggles guard concurrency and roll back optimistic UI on failure.
+  - Last owner cannot deactivate or purge self.
+
+KUNG HINDI:
+  - Run npm run check:units and npm run test:authority.
+
+4.6 Structure chart and officer photos
+User action:
+  /usg/structure or /lsg/manage?tab=structure -> edit draft, upload photo, save, submit, renew, review, approve.
+
+DAPAT:
+  - Document shape is { committees: [...] }, never a bare array.
+  - Committee and position order is render order.
+  - holder.photo is write-only; reads carry holder.hasPhoto.
+  - Photo bytes are fetched separately, not embedded in every structure read.
+  - Uploaded photo persists in DB across reload and new browser.
+  - Reviewer can approve/return; LSG can submit/renew; wrong side is refused.
+  - Optimistic concurrency conflict shows an error; no silent overwrite.
+
+API/RPC:
+  POST /api/structures                actions: save | submit | review | renew | template
+  GET  /api/structures/photos/[rosterId]         -> get_member_photo
+  GET  /api/structures/photos?unitId=...&email=... -> show_structure_holder_photo
+  POST /api/structures/photos body: { unitId, email, photo }
+  RPCs: save_structure_draft_v2, submit_structure, review_structure,
+        request_structure_renewal, import_structure_template, get_member_photo,
+        persist_structure_holder_photo, show_structure_holder_photo.
+
+Migration:
+  supabase/migrations/20260101003490_structure_photo_persistence.sql
+
+KUNG HINDI:
+  - Run npm run test:structure (34/34 expected).
+  - Run npm run probe:structure-http for deeper DB/PostgREST checks.
+  - If manual "Show photo" button fails, see section 7.3.
+
+4.7 Personal requests
+User action:
+  LSG/member -> File request; USG -> decide request; LSG/member -> resubmit.
+
+DAPAT:
+Status flow:
+  submitted -> granted | declined | needs_revision | submission_required
+  needs_revision | submission_required -> submitted (resubmit)
+  submitted -> withdrawn (requester only)
+  expired is computed for old requests.
+
+Decision rules:
+  - USG may decide granted/declined/needs_revision/submission_required only from submitted.
+  - Declined / needs_revision / submission_required require a note.
+  - LSG can withdraw only its own submitted request.
+  - Resubmit keeps the same row, appends response note, clears decision fields.
+
+UI labels:
+  Need revision, Require submission, Resubmit.
+
+API/RPC:
+  POST /api/requests -> decide_personal_request, resubmit_personal_request
+  Migration: supabase/migrations/20260101003450_personal_request_decision_states.sql
+
+KUNG HINDI:
+  - Check the request status is still "submitted" before showing decisions.
+  - Check note is present for declined/needs_revision/submission_required.
+  - Run npm run test:authority.
+
+4.8 Requirements, proposals, tasks, assignments
+User action:
+  USG creates requirement/proposal/task; LSG answers requirements, uploads files, accepts assignments,
+  updates status, confirms done; USG reviews answers and closes tasks.
+
+DAPAT:
+  - LSG sees only its own requirement submissions/tasks.
+  - USG sees organization-wide.
+  - Task assignment vocabulary: assigned, in_progress, submitted, done.
+  - /api/tasks list filter is intentionally assigned, in_progress, done; an "all"
+    filter maps to null. Do not change those status literals or add "all" as a status.
+  - Uploads use claim -> chunk -> commit; storage paths are server-built.
+  - Subtotals and client-chosen amounts are never trusted.
+
+API/RPC:
+  /api/requests, /api/tasks, /api/uploads
+  Upload claim targets: item, requirement, task_requirement, task_assignment,
+                        personal_request, resolution, accomplishment.
+  Actions: claim, abort, commit; chunk offset via x-smartgov-offset.
+
+KUNG HINDI:
+  - Run npm run check:tours, npm run check:units, npm run test:authority.
+  - Check MAX_FILE_BYTES and MIME allowlist.
+
+4.9 Events
+User action:
+  Create event; edit/cancel; claim; decide honored/not honored; submit event budget; view calendar/future list.
+
+DAPAT:
+  - Create/update event automatically syncs event_report_requirements.
+  - Event scope/unit changes re-sync requirements (trigger also covers direct DB writes).
+  - LSG can budget only its own unit's event; USG can budget university event.
+  - A budget cannot link to both proposal and event.
+  - Cancelled events are excluded from calendar.
+  - Claim note should be saved in the claim trail.
+
+API/RPC:
+  /api/events, /api/events/[id]/claim, /api/budgets
+  RPCs: create_event_v2, update_event, cancel_event, claim_event, list_events.
+
+Migrations:
+  supabase/migrations/20260101003460_event_report_requirements.sql
+  supabase/migrations/20260101003500_fix_accomplishment_report_requirements.sql
+
+KUNG HINDI:
+  - Event not showing in report list: check event_report_requirements row for the LSG unit.
+  - Claim note missing: known issue, section 7.4.
+
+4.10 Accomplishment reports
+User action:
+  Eligible unit submits accomplishment with files; USG reviews acknowledge/return; LSG resubmits returned report.
+
+DAPAT:
+  - Needs Submission = report not yet acknowledged.
+  - Accomplished = status "acknowledged".
+  - Filing is allowed when any of these is true:
+      a) account is USG side,
+      b) account is an event assignee,
+      c) account's LSG unit has an event_report_requirements row,
+      d) legacy fallback: no required rows, event source is lsg, and account created it / owns its unit.
+  - USG can return with remark; returned report stays the same row on resubmit.
+  - Duplicate reports are prevented.
+  - Cannot review own report. Cannot read another unit's report.
+
+Statuses:
+  submitted -> acknowledged | returned
+  returned -> submitted (resubmit)
+
+API/RPC:
+  /api/accomplishment-reports
+  /api/accomplishment-reports/[id]/review
+  RPCs: list_accomplishment_reports, get_accomplishment_report,
+        submit_accomplishment_report_v2, review_accomplishment_report.
+
+KUNG HINDI:
+  - "Report reference not valid" after LSG submit: old wrapper bug; fixed in 03500.
+  - USG cannot submit: old wrapper bug; fixed in 03500.
+  - Fixture-created events with no requirement rows: 03500 triggers + fallback handle it.
+  - Run npm run test:authority; 229/229 expected.
+
+4.11 Documents library, search, approval, download
+User action:
+  Documents tab -> filter/search -> Open support link / Download / Edit details / Review.
+  Search tab -> type title/keyword -> open/download result.
+
+DAPAT:
+  - Unified catalog contains: requirement submissions, resolutions, personal requests,
+    events/event files, accomplishment files, task requirement/assignment files.
+  - Group kinds: requirement, resolution, event, request, task.
+  - Statuses: pending, approved, rejected.
+  - USG reviewer can edit metadata and approve/return pending rows.
+  - LSG can see own unit pending docs; other unit cannot.
+  - Approved docs are visible organization-wide.
+  - Download URL is only present when caller is allowed.
+  - Search must not fail with "DELETE requires a WHERE clause".
+
+API/RPC:
+  GET /api/documents -> search_documents
+  GET /api/catalog-files/[documentKey] -> get_catalog_document -> source-specific file gate
+  RPCs: refresh_filed_document_catalog, get_catalog_document, get_personal_request_file,
+        set_document_metadata, approve_document.
+
+Migration:
+  supabase/migrations/20260101003480_unified_submission_catalog.sql
+  Critical line: delete from smartgov.filed_document_catalog where true;
+
+KUNG HINDI:
+  - Documents/search empty or 500: confirm 03480 applied and contains "where true".
+  - After migration, reload PostgREST schema cache.
+  - Run npm run check:smoke and npm run test:authority.
+
+4.12 Budget approval and spending
+User action:
+  LSG submits event/proposal budget; USG approves/returns/rejects; LSG or USG records actual spend;
+  dashboard shows approved total, spent, remaining by semester.
+
+DAPAT:
+Statuses: submitted, returned, approved, rejected.
+  - submitted -> approved | returned | rejected
+  - returned -> approved | returned | rejected
+  - remark required for returned/rejected, not for approved.
+  - approved_total defaults to requested_total and must be 0..requested_total.
+  - actual_spent cannot exceed approved_total.
+  - Approved event-linked budget sets actual_spent = 0 on approval.
+  - USG sees org-wide; LSG sees own/requested/unit/approved visibility only.
+  - Shared budget store fetches once, polls every 15s while visible, dedupes refresh.
+  - Budget periods: school year + Semester 1 / Semester 2.
+
+API/RPC:
+  /api/budgets, /api/budgets/[id], /api/budgets/[id]/review
+  RPCs: submit_budget, review_budget, list_budgets, lsg_budget_dashboard.
+
+Migration:
+  supabase/migrations/20260101003470_lsg_budget_propagation.sql
+
+KUNG HINDI:
+  - Approved budget not visible in LSG: check list_budgets scope and 03470.
+  - Actual spend rejected: check approved_total vs actual_spent.
+  - Dashboard stale: call refreshBudgetStore() or wait for visibility/poll.
+
+4.13 Surveys
+User action:
+  USG/LSG creates survey, adds questions, opens/closes, duplicates, exports CSV, copies public link.
+  Public respondent opens link, passes OTP if email-list survey, answers, submits.
+
+DAPAT:
+  - Survey statuses: draft, open, closed.
+  - Draft can be edited; non-draft loads results.
+  - Open survey accepts answers; closed survey does not.
+  - Required-answer validation is client-side + RPC.
+  - Email-list surveys require typed email access + proof token.
+  - Question types: short text, long text, date, time, multiple choice, dropdown, checkbox, linear scale.
+  - Conditional questions use showIf.
+  - Duplicate checks every question copy and refreshes only on success.
+
+API/RPC:
+  /api/surveys, /api/surveys/[id], /api/surveys/[id]/responses
+  Public page: /survey/[id]
+
+KUNG HINDI:
+  - Broken public link: see section 7.6.
+  - OTP flow: POST /otp/send -> POST /otp/verify -> reload with x-survey-access-proof.
+
+4.14 Resolutions
+User action:
+  USG or LSG files resolution with file; USG reviews approve/return/publish.
+
+DAPAT:
+Statuses: submitted, under_review, approved, returned, published.
+  - published and approved both display as "Approved", but published means released org-wide.
+  - LSG can read only own-unit resolution until published.
+  - Returning requires remark.
+  - Legacy create_resolution(text,text,text,uuid) and kind="resolution" remain compatible.
+
+API/RPC:
+  /api/resolutions
+  lib: src/lib/resolutions.ts
+
+4.15 Feedback (classic)
+User action:
+  Member submits feedback; reviewer lists/details/acknowledges; public sees status.
+
+DAPAT:
+Statuses: new, acknowledged.
+  - Public status display: new -> "Under review", acknowledged -> "Acknowledged".
+  - Only reviewer/USG can acknowledge.
+  - LSG cannot read USG feedback API.
+
+4.16 Feedback forms
+User action:
+  USG/Pedro creates form, adds questions, opens/closes, copies public link, responds, acknowledges,
+  exports CSV, regenerates link, deletes.
+
+DAPAT:
+  - Form statuses: draft, open, closed.
+  - Public slug is 32 characters from gen_random_bytes(24).
+  - Regenerating link invalidates old slug; new slug works immediately.
+  - Opening with zero questions -> no_questions.
+  - Changing questions after a response -> questions_locked.
+  - Changing access after open -> form_locked.
+  - Delete with responses -> responses_exist.
+  - Signed-in anonymous response stores null identity fields.
+  - Rate limit: 10 responses per 10 minutes -> 429.
+  - CSV prefixes formula cells beginning = + - @ with apostrophe.
+  - No external Google Docs dependency.
+
+API:
+  /api/feedback/forms, /api/feedback/forms/[id], /questions, /status, /link,
+  /responses, /responses/[responseId]/acknowledge, /export,
+  /api/feedback/available, /api/feedback/public/[slug], /api/feedback/f/[token].
+
+KUNG HINDI:
+  - Run npm run check:feedback-forms with server up (118/118 expected including live integration).
+  - If integration skipped, server was not reachable at FEEDBACK_BASE_URL.
+
+4.17 Feed / calendar / messages
+User action:
+  View feed, switch calendar month, open chat, send/read/unsend message, delete conversation.
+
+DAPAT:
+  - Calendar accepts canonical month: first day of month only.
+  - Impossible month or non-first day is refused.
+  - Feed excludes cancelled, rejected, and not_honored events.
+  - LSG feed is scoped to own unit.
+  - Message polling cannot produce unhandled rejection.
+  - Unsends and deletes are guarded against duplicate submits.
+
+API:
+  /api/feed, /api/feed/calendar, /api/messages
+
+KUNG HINDI:
+  - npm run test:authority has a Unified calendar boundaries section.
+  - npm run check:interactions covers read polling and unsend guards.
+
+4.18 Monitoring and overview widgets
+User action:
+  USG Manage -> Monitoring; Overview -> widgets hide/navigate/reset.
+
+DAPAT:
+  - Only USG can access monitoring (DB RPC + API + page).
+  - LSG has no Monitoring nav or Manage tab.
+  - Every campus carries every module.
+  - Status counts use the six monitoring statuses.
+  - Overview maps raw statuses to the display families in section 3.3.
+  - Widgets: stats, reports, task-chart, request-chart, flow.
+  - Hidden widget stays hidden after navigation; Reset restores all.
+
+KUNG HINDI:
+  - Run npm run check:dashboard (30/30 expected) and npm run test:authority.
+
+4.19 AI-assisted compliance precheck (optional)
+User action:
+  Upload requirements/documents -> run preflight -> view issues/advice/fixes.
+
+DAPAT:
+  - Requires AI_API_KEY; if absent, AI advice is disabled but core checks still work.
+  - Image OCR consumes quota via consume_ai_quota({ p_kind: "vision" }).
+  - OCR failure becomes issue "ocr_pending", not a crash.
+  - AI must not change statuses, add findings, or invent requirements.
+  - IP limit 30 / 5 min; body limit 3 MB.
+
+KUNG HINDI:
+  - Run npm run check:ai.
+  - Check AI_API_KEY, AI_MODEL, AI_VISION_MODEL, AI_BASE_URL.
+
+4.20 Mail / outbox
+DAPAT:
+  - If SMTP configured, mail is sent via Nodemailer.
+  - If not, mail is stored in smartgov.outbox.
+  - /dev/outbox is dev-only.
+
+
+5. EXACT STATUS VOCABULARIES
+----------------------------
+
+Module           | Statuses
+-----------------+---------------------------------------------------------------
+Tasks            | assigned, in_progress, submitted, done
+Personal request | submitted, granted, declined, needs_revision,
+                 | submission_required, withdrawn, expired
+Request display  | pending, under_review, approved, returned, rejected, cancelled
+Event            | upcoming, claimed, honored, rejected, cancelled
+Event honor_status | pending, honored, not_honored
+Event UI filter  | open (filter only; "open" is not a database status)
+
+Accomplishment   | submitted, acknowledged, returned
+Budget           | submitted, returned, approved, rejected
+Budget decision  | approved, returned, rejected
+Document catalog | pending, approved, rejected
+Resolution       | submitted, under_review, approved, returned, published
+Survey           | draft, open, closed
+Feedback response| new, acknowledged
+Feedback form    | draft, open, closed
+Invite           | pending, activated, expired, revoked
+Seat             | active, suspended
+Monitoring       | pending, under_review, approved, returned, rejected, cancelled
+
+Do not introduce "draft" or "published" into budgets.
+Do not change /api/tasks list-filter literals: assigned, in_progress, done.
+
+
+6. DATABASE / MIGRATION NOTES
+-----------------------------
+
+Apply migrations:
+  node scripts/apply-migration.mjs supabase/migrations/<file>.sql
+
+Rules:
+  - Each applied file is recorded in smartgov.applied_migrations.
+  - Re-running without --force is a no-op.
+  - After schema-changing migrations, PostgREST cache must be reloaded.
+  - Many RPCs end with NOTIFY pgrst, 'reload schema'.
+
+Key recent migrations:
+  20260101003450  personal request decision states
+  20260101003460  event report requirements + initial report workflow
+  20260101003470  budget propagation, list_budgets, lsg_budget_dashboard
+  20260101003480  unified document catalog/search/download
+  20260101003490  structure photo persistence
+  20260101003500  accomplishment requirement sync + filing fix
+
+Traps already found and fixed:
+  - 03480 originally had DELETE without WHERE; safeupdate rejected it.
+    Correct form: delete from smartgov.filed_document_catalog where true;
+  - 03500 is forward-only. Do not re-run/rename 03460 blindly; it used non-idempotent
+    wrapper/base renames. Apply 03500 as the hotfix.
+
+
+7. KNOWN SUSPECT / CURRENTLY BROKEN SPOTS
+-----------------------------------------
+
+These were found by static inspection and currently verified gates. They are NOT fixed in commit 36d0532.
+Treat this as the "parang hindi gumana" list.
+
+7.1 Document approve controls gate mismatch
+Symptom:
+  Approval/Review controls may only appear for requirement documents, not every row the server says canApprove.
+Evidence:
+  scripts/check-interactions.mjs:243-250 expects bare {canApprove && (...).
+  src/components/dashboard/DocumentLibraryPanel.tsx:157 and :169 use {isRequirement && canApprove && (...).
+Current gate result:
+  npm run check:interactions = 26/27 FAIL (only this check fails).
+Expected:
+  Approve/Review visibility is driven by server canApprove; if only requirement docs are reviewable,
+  the gate or the UI must be reconciled.
+
+7.2 "Save look" clears uploaded logo
+Symptom:
+  After changing accent/theme, logo disappears.
+Evidence:
+  src/components/dashboard/ProfileSection.tsx:217-232 posts only { accent, themeMode }.
+  src/app/api/profile/route.ts:162-169 maps undefined logoData to null.
+Expected:
+  Omitted logoData means "keep current logo"; explicit null means clear.
+Fix direction:
+  Send the existing logoData from the UI, or make the API treat undefined as no-change.
+
+7.3 Structure manual "Show photo" returns no photo
+Symptom:
+  Main chart usually shows photos, but manual "Show photo" button says "That photo could not be read."
+Evidence:
+  src/lib/structure.ts:379-381 fetches /api/structures/photos/{rosterId}.
+  That route exists at src/app/api/structures/photos/[rosterId]/route.ts:26-42 and calls
+  get_member_photo; it collapses forbidden/not_found to an empty photo at :44-53.
+  The query-shape route also exists at src/app/api/structures/photos/route.ts:21-49
+  (show_structure_holder_photo), and POST is at :51+ (persist_structure_holder_photo).
+  src/components/structure/StructureWorkspace.tsx:338-349 calls fetchMemberPhoto(rosterId).
+Expected:
+  Both read paths resolve the same persisted photo for the caller's chart scope; a real
+  miss shows initials rather than a hard error.
+Investigate:
+  Confirm rosterId is a valid UUID, the seated holder has a photo row, and the caller's
+  chart scope allows get_member_photo.
+
+7.4 Event claim note is ignored
+Symptom:
+  User types a claim note; saved claim has null note.
+Evidence:
+  src/components/dashboard/EventsWorkspace.tsx:324-333 sends { note: claimNoteInput }.
+  src/app/api/events/[id]/claim/route.ts:29-43 reads body.claimNote.
+Expected:
+  Claim note is saved in the claim trail.
+
+7.5 Multi-unit extension has no unit selector
+Symptom:
+  Cross-unit/multi-unit action always targets the first unit.
+Evidence:
+  src/components/dashboard/RequestSection.tsx:1314-1344 posts unitId: myUnitIds[0].
+Expected:
+  User chooses the target unit, or server derives it from the clicked record.
+
+7.6 Garbled separators in personal request event line
+Symptom:
+  Replacement characters (U+FFFD) between unit name, days, and status.
+Evidence:
+  src/components/dashboard/RequestSection.tsx:1396.
+Expected:
+  Clean separator characters.
+
+7.7 Survey link shapes differ
+Symptom:
+  Copy public link and detail-editor link point to different route families.
+Evidence:
+  src/components/dashboard/SurveyDetailEditor.tsx:381 -> /survey/{id}
+  src/components/dashboard/SurveysListPage.tsx:254 -> /{usg|lsg}/surveys/{id}
+Expected:
+  Public preview link and internal detail link are clearly distinguished and both work.
+
+7.8 Stale schema cache after a migration
+Symptom:
+  RPC "function does not exist" or old signature after applying SQL.
+Expected:
+  apply-migration.mjs reloads schema cache; if applying manually, run NOTIFY pgrst, 'reload schema'.
+
+
+8. VERIFICATION COMMANDS
+-------------------------
+
+Last full run at commit 36d0532:
+
+  npx tsc --noEmit                  PASS
+  npm run lint                      PASS
+  npm run build                     PASS
+  npx next build --webpack          PASS
+  npm run check:requested           PASS
+  npm run test:structure            34/34 PASS
+  npm run check:ai                  PASS
+  npm run check:units               PASS
+  npm run check:compliance          PASS
+  npm run check:tours               PASS
+  npm run check:federated           PASS
+  npm run check:dashboard           30/30 PASS
+  npm run check:smoke               56/56 PASS
+  npm run test:authority            229/229 PASS
+  npm run check:feedback-forms      118/118 PASS
+  npm run check:interactions        26/27 FAIL (section 7.1)
+  Production smoke                 56/56 PASS
+
+Local server gate pattern:
+  Set DASHBOARD_AUDIT_BASE_URL, SMOKE_BASE_URL, AUTH_BASE_URL, FEEDBACK_BASE_URL
+  to http://localhost:3100, then run the four server gates above.
+
+Gates not included in that final batch:
+  check:reveal, check:features, check:interactions:ui, check:tours:ui,
+  test:e2e, audit:connections, structure probes.
+
+
+9. TROUBLESHOOTING BY SYMPTOM
+-----------------------------
+
+Symptom                                      | Check first
+---------------------------------------------+---------------------------------------------------
+Redirected to /login unexpectedly            | Session expired/inactive; clear cookie; sign in.
+API says forbidden for LSG                    | Wrong role or wrong unit; run test:authority.
+Other unit's data appears or is missing       | Re-run authority; check forged-unit checks.
+Documents/search 500 "DELETE requires WHERE" | Migration 03480 must have "where true".
+Document download denied                      | Check get_catalog_document visibility + approval state.
+Accomplishment submit forbidden              | Check event_report_requirements and migration 03500.
+Accomplishment "Report reference not valid"  | Old wrapper bug; ensure 03500 applied.
+Approved budget not visible                   | Check 03470 list_budgets scope + schema cache.
+Actual spend rejected                         | actual_spent > approved_total.
+Structure photo missing after reload          | Check 03490 + localStorage cache + section 7.3.
+Feedback public link dead                     | Link was regenerated; old slug is invalid.
+No email received                             | Check /dev/outbox or SMTP env.
+Stale RPC signature                           | Reload PostgREST schema cache.
+Logo disappears on Save look                  | Section 7.2.
+Claim note empty                              | Section 7.4.
+Approve button missing on document            | Section 7.1.
+
+
+10. SEEDED DEMO DATA (for manual testing only)
+----------------------------------------------
+
+Seed script: scripts/seed-demo.mjs
+Credential file path is written by the seed script outside the repo. Do not commit it.
+Demo password is defined in the seed script; do not publish it in docs or chat.
+
+Seeded organization:
+  Demo University, federated.
+  5 colleges: Engineering, Education, Business Administration, Nursing, Arts and Sciences.
+
+Seeded accounts include:
+  Owner/Founder, USG President/Vice President/Secretary/Treasurer/Auditor,
+  LSG presidents for each college, one ordinary member.
+
+Seeded content:
+  units: 5
+  accounts: 14
+  proposals: 2
+  tasks: 3
+  events: 2
+  surveys: 2
+  personal requests: 2
+  structure: 1 if Engineering chart submit succeeds
+  program: Student Activity Fund 2026
+  survey: Engineering Council Feedback
+  chat thread: Second semester coordination (2 messages)
+
+Use seeded accounts only on a local/test environment. Rotate or delete before real use.
+
+
+11. KEY SOURCE ANCHORS
+----------------------
+
+Auth/session:
+  src/lib/auth/session.ts
+  src/lib/auth/rpc.ts
+
+Role/effective role:
+  src/lib/store.ts:105-111
+
+Status vocabularies:
+  scripts/check-federated-features.mjs:22-55
+  src/lib/budgets.ts:9-13,88-103
+  src/lib/accomplishment-reports.ts:3,67-83
+  src/lib/document-search.ts:7-19,44-54
+  src/lib/feedback.ts:26-34
+  src/lib/resolutions.ts:9-14
+  src/lib/monitoring.ts:1-8
+
+Workflows:
+  src/components/dashboard/RequestSection.tsx
+  src/components/dashboard/EventsWorkspace.tsx
+  src/components/dashboard/AccomplishmentPanel.tsx
+  src/components/dashboard/BudgetPanel.tsx
+  src/components/dashboard/LsgRequestBudgetPanel.tsx
+  src/components/dashboard/budget-store.tsx
+  src/components/dashboard/DocumentLibraryPanel.tsx
+  src/components/dashboard/DocumentSearchPanel.tsx
+  src/components/structure/StructureWorkspace.tsx
+  src/components/structure/StructureChart.tsx
+
+DB:
+  supabase/migrations/20260101003450_personal_request_decision_states.sql
+  supabase/migrations/20260101003460_event_report_requirements.sql
+  supabase/migrations/20260101003470_lsg_budget_propagation.sql
+  supabase/migrations/20260101003480_unified_submission_catalog.sql
+  supabase/migrations/20260101003490_structure_photo_persistence.sql
+  supabase/migrations/20260101003500_fix_accomplishment_report_requirements.sql
+
+Verification:
+  scripts/check-smoke.mjs
+  scripts/check-authority.mjs
+  scripts/check-dashboard-audit.mjs
+  scripts/check-feedback-forms.mjs
+  scripts/check-structure.mjs
+  scripts/check-interactions.mjs
+  scripts/check-requested-features.mjs

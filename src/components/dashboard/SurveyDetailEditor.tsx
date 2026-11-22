@@ -397,7 +397,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
         </p>
         {survey.status === "open" ? (
           <p data-tour="survey-public-link" className="mt-2 text-[0.8125rem] text-body">
-            Public link:{" "}
+            Public respondent link:{" "}
             <a href={publicUrl} className="font-medium text-brass-deep underline" target="_blank" rel="noreferrer">
               {publicUrl}
             </a>

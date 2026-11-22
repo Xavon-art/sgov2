@@ -21,7 +21,12 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  * Icons are keys, resolved in `AppShell`; a component cannot cross the server to
  * client boundary here.
  */
-export function buildUsgNav(role: WorkspaceRole): NavItem[] {
+export function buildUsgNav(input: WorkspaceRole): NavItem[] {
+  const role = input as WorkspaceRole & {
+    isCentral?: boolean;
+    governanceModel?: "federated" | "unitary" | null;
+  };
+  const centralized = role.isCentral || role.governanceModel === "unitary";
   const canManage = role.accountScope === "owner";
   // The workspace side is resolved by the database: every USG-side account is
   // the owner or an org reviewer, which is exactly the pair the document SQL
@@ -37,18 +42,21 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
     { label: "Budget", href: "/usg/manage?tab=budget" },
   ].filter(
     (_, index) =>
-      canManage || index === 3 ||
+      (!centralized || (index !== 0 && index !== 1)) &&
+      (canManage || index === 3 ||
       (canReviewDocuments && (index === 4 || index === 5)) ||
-      (canReviewDocuments && index === 6),
+      (canReviewDocuments && index === 6)),
   );
-  if (canReviewDocuments) {
+  if (!centralized && canReviewDocuments) {
     manageChildren.push({ label: "Monitoring", href: "/usg/manage?tab=monitoring" });
+  }
+  if (canReviewDocuments) {
     manageChildren.push({ label: "Feedback", href: "/usg/manage?tab=feedback" });
   }
-  if (canManage) {
-    // `/org-chart` is a full-page view of the published chart. It has to be
-    // reached from inside the app: the session guard ends a session that arrives
-    // by loading the URL, so a pasted link would sign the owner out.
+  // `/org-chart` is a full-page view of the published chart. It has to be
+  // reached from inside the app: the session guard ends a session that arrives
+  // by loading the URL, so a pasted link would sign the owner out.
+  if (!centralized && canManage) {
     manageChildren.push({ label: "Published chart", href: "/org-chart" });
     manageChildren.push({ label: "Accounts", href: "/usg/manage?tab=accounts" });
   }
@@ -64,11 +72,13 @@ export function buildUsgNav(role: WorkspaceRole): NavItem[] {
     {
       id: "manage",
       label: "Manage",
-      hint: canManage
-        ? "Your umbrella, invitations, and profile"
-        : canReviewDocuments
-          ? "Documents, search, and your profile"
-          : "Your profile",
+      hint: centralized
+        ? "Structure, documents, and your profile"
+        : canManage
+          ? "Your umbrella, invitations, and profile"
+          : canReviewDocuments
+            ? "Documents, search, and your profile"
+            : "Your profile",
       href: "/usg/manage",
       icon: "layers",
       children: manageChildren,

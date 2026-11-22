@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
+import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
+import { UUID_RE } from "@/lib/document-search";
 
 export const runtime = "nodejs";
 
@@ -23,6 +25,12 @@ type PhotoResult = RpcResult & {
   base64?: string | null;
 };
 
+function photoFailure(reason?: string): { reason: string; status: number } {
+  if (reason === "forbidden") return { reason: "forbidden", status: 403 };
+  if (reason === "not_found") return { reason: "not_found", status: 404 };
+  return { reason: "photo_read_failed", status: 400 };
+}
+
 export async function GET(_req: Request, ctx: { params: Promise<{ rosterId: string }> }) {
   const token = await readSessionToken();
   if (!token) {
@@ -31,8 +39,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ rosterId: stri
 
   const { rosterId } = await ctx.params;
 
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rosterId)) {
-    return NextResponse.json({ ok: false, message: "That is not a member." }, { status: 400 });
+  if (!UUID_RE.test(rosterId)) {
+    return NextResponse.json(
+      { ok: false, reason: "invalid_uuid", message: "That is not a member." },
+      { status: 400 },
+    );
   }
 
   try {
@@ -42,14 +53,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ rosterId: stri
     });
 
     if (!res.ok) {
-      // `forbidden` and `not_found` collapse to the same answer, because the
-      // difference would confirm that a person exists somewhere in the org.
-      return NextResponse.json({ ok: true, mime: null, bytes: 0, base64: null });
+      const failure = photoFailure(res.reason);
+      return NextResponse.json(
+        { ok: false, reason: failure.reason, message: messageFor(failure.reason) },
+        { status: failure.status },
+      );
     }
 
     return NextResponse.json(res);
   } catch (error) {
     console.error("[structures:photo]", error);
-    return NextResponse.json({ ok: true, mime: null, bytes: 0, base64: null });
+    return NextResponse.json(
+      { ok: false, reason: "photo_read_failed", message: "That photo could not be read. Please try again." },
+      { status: 503 },
+    );
   }
 }

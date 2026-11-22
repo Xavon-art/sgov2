@@ -107,6 +107,7 @@ export function effectiveRole(
   role: MemberRole | "",
 ): MemberRole | "" {
   if (model === "federated") return "usg_officer";
+  if (model === "unitary") return role || "council_officer";
   return role;
 }
 
@@ -171,15 +172,16 @@ export const useOrgDraft = create<Store>()((set) => ({
     set((state) => ({
       model,
       // Federated is USG-only, so the role is settled here rather than
-      // asked. Unitary keeps the picker, so a role that is no longer
-      // available under the new model is cleared.
+      // asked. Unitary keeps the picker and defaults to its founding role.
       account: {
         ...state.account,
         role:
           model === "federated"
             ? "usg_officer"
-            : rolesForModel(model).includes(state.account.role as MemberRole)
-              ? state.account.role
+            : model === "unitary"
+              ? rolesForModel(model).includes(state.account.role as MemberRole)
+                ? state.account.role
+                : "council_officer"
               : "",
       },
     })),

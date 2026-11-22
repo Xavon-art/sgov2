@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Reveal } from "@/components/fx/Reveal";
 import { Button } from "@/components/ui/Button";
 import { PasswordField, TextField } from "@/components/ui/Field";
@@ -36,6 +37,7 @@ type ProfilePayload = {
     name: string;
     accent: string;
     themeMode: string;
+    logoData?: string | null;
   } | null;
   canCustomise?: boolean;
 };
@@ -83,6 +85,7 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
   const [newPassword, setNewPassword] = useState("");
   const [accent, setAccent] = useState("#16324f");
   const [themeMode, setThemeMode] = useState("light");
+  const [logoData, setLogoData] = useState<string | undefined>(undefined);
 
   const [busy, setBusy] = useState<"name" | "identity" | "email" | "password" | "look" | null>(null);
   const [nameNote, setNameNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -99,6 +102,7 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
         setProfile(body.account ?? null);
         setOrg(body.organization ?? null);
         setCanCustomise(Boolean(body.canCustomise));
+        setLogoData(undefined);
         if (body.account?.displayName) setDisplayName(body.account.displayName);
         if (body.account?.universityName) setUniversityName(body.account.universityName);
         if (body.account?.campusName) setCampusName(body.account.campusName);
@@ -219,7 +223,14 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
     setBusy("look");
     setLookNote(null);
     try {
-      const body = await post("customisation", { accent, themeMode });
+      const payload: Record<string, unknown> = { accent, themeMode };
+      if (logoData !== undefined) payload.logoData = logoData;
+      const body = await post("customisation", payload);
+      if (body.ok && logoData !== undefined) {
+        setOrg((current) => (current ? { ...current, logoData: logoData || null } : current));
+        setLogoData(undefined);
+        router.refresh();
+      }
       setLookNote(
         body.ok
           ? { kind: "ok", text: "Saved. The dashboard picks the look up next time it loads." }
@@ -232,6 +243,7 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
     }
   }
 
+  const logoSource = logoData === undefined ? org?.logoData : logoData || null;
   const showCustomisation = allowCustomisation && canCustomise;
 
   return (
@@ -466,6 +478,51 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
                       </button>
                     ))}
                   </div>
+                </fieldset>
+
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="text-[0.75rem] tracking-[0.08em] text-muted uppercase">
+                    Organisation logo
+                  </legend>
+                  {logoSource ? (
+                    <div className="flex items-center gap-3">
+                      <Image src={logoSource} alt="Current organisation logo" width={48} height={48} unoptimized className="h-12 w-12 rounded border border-line object-contain" />
+                      <span className="text-[0.8125rem] text-muted">
+                        {logoData === undefined ? "Current logo" : "Pending logo"}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-[0.8125rem] text-muted">No logo is set.</p>
+                  )}
+                  <label className="inline-flex w-fit cursor-pointer items-center gap-2 text-[0.8125rem] text-muted">
+                    Replace logo
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="block text-[0.8125rem]"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () =>
+                          setLogoData(typeof reader.result === "string" ? reader.result : "");
+                        reader.readAsDataURL(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setLogoData("")}
+                    className="pressable w-fit rounded-full border border-line px-3 py-1 text-[0.8125rem] text-ink hover:bg-ink/[0.04]"
+                  >
+                    Remove logo
+                  </button>
+                  {logoData !== undefined ? (
+                    <p className="text-[0.8125rem] text-muted">
+                      {logoData ? "The new logo will be saved with the look." : "The logo will be removed with the look."}
+                    </p>
+                  ) : null}
                 </fieldset>
 
                 <div className="flex items-center gap-3">

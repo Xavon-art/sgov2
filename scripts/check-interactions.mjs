@@ -249,5 +249,69 @@ check(
     documentLibrary.includes("Reject"),
 );
 
+const documentsApi = src("src/app/api/documents/route.ts");
+check(
+  "document review permission is computed per row from the server authority flag",
+  documentsApi.includes("canApprove: reviewer && row.sourceKind === \"requirement_submission\"") &&
+    documentLibrary.includes("const canApprove = catalogCanApprove && row.canApprove === true;"),
+);
+
+const profileApi = src("src/app/api/profile/route.ts");
+check(
+  "profile logo uses an explicit tri-state instead of treating absence as a clear",
+  profileApi.includes("p_logo_data: \"logoData\" in body ? body.logoData ?? \"\" : undefined,") &&
+    profile.includes("logoData?: string | null;") &&
+    saveLook.includes("if (logoData !== undefined) payload.logoData = logoData;") &&
+    profile.includes("setLogoData(\"\")"),
+);
+
+const photoQuery = src("src/app/api/structures/photos/route.ts");
+const photoRoster = src("src/app/api/structures/photos/[rosterId]/route.ts");
+check(
+  "structure photo reads use the persisted DB photo and distinguish misses from failures",
+  structureLib.includes("fetchHolderPhoto(unitId: string, email: string)") &&
+    structureLib.includes("payload.reason === \"not_found\"") &&
+    structureWorkspace.includes("fetchHolderPhoto(unitId, email)") &&
+    photoQuery.includes("reason: \"invalid_uuid\"") &&
+    photoQuery.includes("reason: \"not_found\"") &&
+    photoRoster.includes("reason: \"forbidden\"") &&
+    photoRoster.includes("reason: \"not_found\"") &&
+    photoRoster.includes("status: 403") &&
+    photoRoster.includes("status: 404"),
+);
+
+const claimApi = src("src/app/api/events/[id]/claim/route.ts");
+check(
+  "event claim note uses the canonical field and is validated before persisting",
+  events.includes("body: JSON.stringify({ claimNote: claimNoteInput })") &&
+    !events.includes("body: JSON.stringify({ note: claimNoteInput })") &&
+    events.includes("Claim note (required)") &&
+    events.includes("Enter a claim note before claiming.") &&
+    claimApi.includes("body.claimNote ?? body.note") &&
+    claimApi.includes("if (!claimNote) {") &&
+    claimApi.includes("p_claim_note: claimNote"),
+);
+
+check(
+  "extension requests use a server-derived unit instead of a client-selected unit",
+  requests.includes("const { role } = useDashboard();") &&
+    requests.includes("const ownUnitId = role.unitId;") &&
+    requests.includes("ownUnitId={ownUnitId}") &&
+    requests.includes("unitId: resolvedTargetUnitId") &&
+    !requests.includes("myUnitIds[0]") &&
+    requests.includes("Target unit") &&
+    requests.includes("Own unit"),
+);
+check(
+  "replacement characters are not left in request UI strings",
+  !requests.includes("\uFFFD"),
+);
+
+check(
+  "survey links name the public respondent path and the internal detail path",
+  survey.includes("Public respondent link:") &&
+    surveys.includes("Open internal survey detail"),
+);
+
 console.log(`\n${passed}/${total} interaction checks passed.`);
 if (passed !== total) process.exitCode = 1;

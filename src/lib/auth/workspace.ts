@@ -1,5 +1,5 @@
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
-import { readSessionToken } from "@/lib/auth/session";
+import { readSessionToken, type GovernanceModel } from "@/lib/auth/session";
 
 /**
  * Which workspace an account belongs to.
@@ -24,6 +24,9 @@ export type WorkspaceRole = {
   unitName: string | null;
   accountScope: string;
   accountKind: string;
+  isCentral: boolean;
+  isUnitAccount: boolean;
+  governanceModel: GovernanceModel | null;
 };
 
 type RolePayload = RpcResult & Partial<WorkspaceRole>;
@@ -45,14 +48,19 @@ export async function resolveWorkspaceRole(): Promise<WorkspaceRole | null> {
 
   if (!data.ok || (data.side !== "usg" && data.side !== "lsg")) return null;
 
+  const isUnitAccount = Boolean(data.isUnitAccount);
+
   return {
-    side: data.side,
+    side: data.side === "usg" ? "usg" : "lsg",
     isAdmin: Boolean(data.isAdmin),
-    canInvite: Boolean(data.canInvite),
+    canInvite: !isUnitAccount && Boolean(data.canInvite),
     permissions: Array.isArray(data.permissions) ? data.permissions : [],
     unitId: data.unitId ?? null,
     unitName: data.unitName ?? null,
     accountScope: data.accountScope ?? "",
     accountKind: data.accountKind ?? "",
+    isCentral: Boolean(data.isCentral),
+    isUnitAccount,
+    governanceModel: data.governanceModel ?? null,
   };
 }

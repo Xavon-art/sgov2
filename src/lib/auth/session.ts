@@ -6,8 +6,9 @@ export const SESSION_COOKIE = "sgov_session";
 /** Matches the 30-day lifetime granted inside `smartgov.login_account`. */
 const SESSION_MAX_AGE = 60 * 60 * 24 * 30;
 
-export type AccountKind = "usg" | "central";
+export type AccountKind = "usg" | "central" | "lsg";
 export type AccountScope = "owner" | "invited";
+export type GovernanceModel = "federated" | "unitary";
 
 export type Account = {
   id: string;
@@ -18,6 +19,9 @@ export type Account = {
   organizationId: string | null;
   universityName: string;
   campusName: string;
+  unitId: string | null;
+  governanceModel: GovernanceModel | null;
+  isUnitAccount: boolean;
 };
 
 /** Row shape of `smartgov.resolve_account`, which is snake_case. */
@@ -30,6 +34,9 @@ type AccountRow = {
   organization_id: string | null;
   university_name: string;
   campus_name: string;
+  unit_id: string | null;
+  governance_model: GovernanceModel | null;
+  is_unit_account: boolean;
 };
 
 function toAccount(row: AccountRow): Account {
@@ -42,6 +49,9 @@ function toAccount(row: AccountRow): Account {
     organizationId: row.organization_id,
     universityName: row.university_name,
     campusName: row.campus_name,
+    unitId: row.unit_id,
+    governanceModel: row.governance_model,
+    isUnitAccount: row.is_unit_account,
   };
 }
 
@@ -89,7 +99,12 @@ export async function currentAccount(): Promise<Account | null> {
 
 /** True when the account owns its organization and may send invitations. */
 export function canInvite(account: Account | null): boolean {
-  return Boolean(account && account.accountScope === "owner" && account.organizationId);
+  return Boolean(
+    account &&
+      !account.isUnitAccount &&
+      account.accountScope === "owner" &&
+      account.organizationId,
+  );
 }
 
 /**

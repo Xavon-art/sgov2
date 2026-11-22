@@ -112,6 +112,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Select your role." }, { status: 400 });
   }
 
+  const canInvite = governanceModel === "federated";
+  const validOfficerRole = canInvite
+    ? officerRole === "usg_officer"
+    : officerRole === "council_officer" || officerRole === "advisor";
+  if (!validOfficerRole) {
+    return NextResponse.json(
+      { ok: false, message: "Select a role that matches the governance model." },
+      { status: 400 },
+    );
+  }
+
   // `type` is the contract the wizard now sends; `unitType` is still read
   // because the client and the database are not deployed in one step, and the
   // function accepts both keys for that window. Normalising to `type` here is

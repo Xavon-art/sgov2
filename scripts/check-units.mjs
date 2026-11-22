@@ -154,6 +154,7 @@ const m26 = readPendingMigration("20260101002600_documents_and_verification.sql"
 const m27 = readPendingMigration("20260101002700_document_hardening.sql");
 const m40 = readPendingMigration("20260101003040_officer_deactivation.sql");
 const m50 = readPendingMigration("20260101003050_proposal_review_flow.sql");
+const m36 = readPendingMigration("20260101003600_dual_governance_and_unit_accounts.sql");
 
 const steps = readFileSync(join(ROOT, "src/lib/steps.ts"), "utf8");
 const submit = readFileSync(join(ROOT, "src/lib/submit.ts"), "utf8");
@@ -616,6 +617,24 @@ check(
   /add column if not exists verify_token_hash text/.test(m11) &&
     /verify_token_hash = smartgov\.sha256\(p_verify_token\)/.test(m11Flat),
   "the raw token must never reach the database, in case the connection is compromised",
+);
+const dualOwnerCreate =
+  functionBlocks(m36).find((b) => b.name === "smartgov.create_owner_account")?.body ?? "";
+check(
+  "003600 preserves the pending activation-token owner flow",
+  /'pending', smartgov\.sha256\(v_verify_raw\), v_model, false/.test(dualOwnerCreate) &&
+    /'verifyToken', v_verify_raw/.test(dualOwnerCreate) &&
+    /'organizationName', v_org_name/.test(dualOwnerCreate),
+  "the dual-governance migration must not replace the magic-link registration with a direct active account",
+);
+const dualListUmbrella =
+  functionBlocks(m36).find((b) => b.name === "smartgov.list_umbrella")?.body ?? "";
+check(
+  "003600 preserves the umbrella members array consumed by Manage",
+  /'members', coalesce\(\(/.test(dualListUmbrella) &&
+    /from smartgov\.unit_memberships m/.test(dualListUmbrella) &&
+    /join smartgov\.roster r/.test(dualListUmbrella),
+  "the umbrella RPC must keep returning roster-backed members, not a single unit account object",
 );
 check(
   "001100 indexes the pending-owner lookup",

@@ -39,7 +39,7 @@
  * instead of the effective one. A check that cannot fail is decoration.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -101,6 +101,25 @@ const institution = readFileSync(
   "utf8",
 );
 const account = readFileSync(join(ROOT, "src/app/create/account/page.tsx"), "utf8");
+const governanceModelPage = readFileSync(
+  join(ROOT, "src/app/create/governance-model/page.tsx"),
+  "utf8",
+);
+const unitsPage = readFileSync(join(ROOT, "src/app/create/units/page.tsx"), "utf8");
+const usgNav = readFileSync(join(ROOT, "src/components/dashboard/usg-nav.ts"), "utf8");
+const lsgNav = readFileSync(join(ROOT, "src/components/dashboard/lsg-nav.ts"), "utf8");
+const usgLayout = readFileSync(join(ROOT, "src/app/usg/layout.tsx"), "utf8");
+const lsgLayout = readFileSync(join(ROOT, "src/app/lsg/layout.tsx"), "utf8");
+const dashboardContext = readFileSync(
+  join(ROOT, "src/components/dashboard/dashboard-context.tsx"),
+  "utf8",
+);
+const centralPagePath = join(ROOT, "src/app/central/page.tsx");
+const centralCatchAllPath = join(ROOT, "src/app/central/[...slug]/page.tsx");
+const centralPage = existsSync(centralPagePath) ? readFileSync(centralPagePath, "utf8") : "";
+const centralCatchAll = existsSync(centralCatchAllPath)
+  ? readFileSync(centralCatchAllPath, "utf8")
+  : "";
 const storeCode = withoutStrings(store);
 const storeLive = withoutComments(store);
 
@@ -239,6 +258,160 @@ check(
   "the account step gates the role picker on the governance model",
   /\{!federated\s*\?/.test(account) && /<fieldset/.test(account),
   "the role picker is not conditional, so a federated registrant can still pick LSG Officer",
+);
+
+const governanceLive = withoutComments(governanceModelPage);
+check(
+  "the setup offers a selectable unitary model labelled Centralized",
+  /id:\s*"unitary"[\s\S]{0,200}(name:\s*"Centralized"|alias:\s*"Centralized")/.test(
+    governanceLive,
+  ),
+  "the centralized card is still missing from the model choices",
+);
+check(
+  "the Coming soon centralized card is gone",
+  !/Coming soon/.test(governanceLive) && !/aria-disabled/.test(governanceLive),
+  "a disabled placeholder still stands in for the centralized model",
+);
+check(
+  "the centralized card explains that it has no LSG tier",
+  /No LSG tier/i.test(governanceLive),
+  "the no-LSG-tier promise disappeared from the selectable card",
+);
+check(
+  "the setup copy does not present a single supported model",
+  /[Cc]entralized/.test(unitsPage) && /org chart/i.test(unitsPage),
+  "the organization step still reads as federated-only",
+);
+
+check(
+  "effectiveRole defaults an empty unitary role to council_officer",
+  /model === "unitary"[\s\S]{0,80}return\s+role\s*\|\|\s*"council_officer"/.test(body),
+  body ? `body: ${body.trim()}` : "effectiveRole body not found",
+);
+check(
+  "rolesForModel keeps the unitary council/advisor pair",
+  /if \(model === "unitary"\) return \["council_officer", "advisor"\];/.test(storeLive),
+  "the unitary role list changed",
+);
+check(
+  "setModel settles a valid centralized role",
+  /model === "unitary"[\s\S]{0,200}council_officer/.test(
+    store.match(/setModel:[\s\S]*?\}\),\n/)?.[0] ?? "",
+  ),
+  "switching to centralized can leave an invalid role in the draft",
+);
+check(
+  "submit sends one council root for the centralized model",
+  /:\s*\[\{\s*name:\s*draft\.organizationName\.trim\(\),\s*unitType:\s*"council"\s*\}\]/.test(
+    submit,
+  ),
+  "the centralized branch no longer sends a single council root",
+);
+check(
+  "registerAccount maps the unitary model to a central account",
+  /accountKind:\s*draft\.model === "unitary"\s*\?\s*"central"\s*:\s*"usg"/.test(submit),
+  "centralized accounts are not registered on the central account kind",
+);
+
+check(
+  "USG nav derives centralized state from the shared role fields",
+  /const centralized = role\.isCentral \|\| role\.governanceModel === "unitary"/.test(usgNav),
+  "the USG nav has no shared-contract centralized predicate",
+);
+check(
+  "USG nav hides Umbrella and Invites when centralized",
+  /!centralized \|\| \(index !== 0 && index !== 1\)/.test(usgNav),
+  "centralized owners still see the federated umbrella links",
+);
+check(
+  "USG nav hides Monitoring when centralized",
+  /if \(!centralized && canReviewDocuments\)[\s\S]{0,160}Monitoring/.test(usgNav),
+  "the centralized nav still exposes cross-unit monitoring",
+);
+check(
+  "USG nav hides the published chart and Accounts when centralized",
+  /if \(!centralized && canManage\)[\s\S]{0,280}Accounts/.test(usgNav),
+  "the centralized nav still exposes owner-only federated links",
+);
+check(
+  "USG nav keeps the non-federated sections",
+  ["Government structure", "Profile and Customization", "Documents", "Search", "Budget"].every(
+    (label) => usgNav.includes(`label: "${label}"`),
+  ),
+  "a required centralized section disappeared from the USG nav",
+);
+check(
+  "LSG nav derives centralized state from the shared role fields",
+  /const centralized = role\.isCentral \|\| role\.governanceModel === "unitary"/.test(lsgNav),
+  "the LSG nav has no shared-contract centralized predicate",
+);
+check(
+  "LSG nav hides the cross-unit USG details and resolution gates when centralized",
+  /centralized \? \[\] : \[\{ label: "Unit details"/.test(lsgNav) &&
+    /centralized \? \[\] : \[\{ label: "Resolutions"/.test(lsgNav),
+  "centralized LSG nav still exposes cross-unit approval links",
+);
+check(
+  "LSG nav keeps its working sections",
+  ["Government structure", "Profile and Customization", "Documents", "Search", "Budget"].every(
+    (label) => lsgNav.includes(`label: "${label}"`),
+  ),
+  "a required centralized section disappeared from the LSG nav",
+);
+
+check(
+  "the USG layout keeps the anonymous and wrong-side server redirects",
+  /if \(!account\) redirect\("\/login"\)/.test(usgLayout) &&
+    /redirect\("\/lsg"\)/.test(usgLayout),
+  "a server-side redirect disappeared from the USG layout",
+);
+check(
+  "the USG layout refuses unit-bound LSG accounts",
+  /isUnitAccount[\s\S]{0,160}redirect\("\/lsg"\)/.test(usgLayout),
+  "a unit-bound LSG account can still be coerced into the USG shell",
+);
+check(
+  "the LSG layout sends central accounts back to the USG shell",
+  /isCentral[\s\S]{0,160}redirect\("\/usg"\)/.test(lsgLayout),
+  "a central account is not redirected out of the LSG shell",
+);
+check(
+  "both layouts mount the shared client workspace guard",
+  /<WorkspaceGuard section="usg" \/>/.test(usgLayout) &&
+    /<WorkspaceGuard section="lsg" \/>/.test(lsgLayout),
+  "one of the workspaces has no client-side guard",
+);
+check(
+  "the client guard redirects from live context using the shared contract fields",
+  /usePathname/.test(dashboardContext) &&
+    /useRouter/.test(dashboardContext) &&
+    /router\.replace/.test(dashboardContext) &&
+    /isCentral/.test(dashboardContext) &&
+    /isUnitAccount/.test(dashboardContext),
+  "the client guard cannot see the account and role identity fields",
+);
+
+check("the /central route exists", centralPage !== "", "src/app/central/page.tsx is missing");
+check(
+  "the /central root sends anonymous visitors to login and members to the USG workspace",
+  /if \(!account\) redirect\("\/login"\)/.test(centralPage) &&
+    /redirect\("\/usg"\)/.test(centralPage),
+  "the /central root does not resolve cleanly into the centralized workspace",
+);
+check("the /central catch-all route exists", centralCatchAll !== "", "src/app/central/[...slug]/page.tsx is missing");
+check(
+  "the catch-all awaits its dynamic params",
+  /params:\s*Promise<\{ slug: string\[\] \}>/.test(centralCatchAll) &&
+    /await params/.test(centralCatchAll),
+  "the catch-all reads params with the old synchronous convention",
+);
+check(
+  "the catch-all only forwards allowlisted workspace paths",
+  /ALLOWED_CENTRAL_SECTIONS/.test(centralCatchAll) &&
+    /redirect\(target\)/.test(centralCatchAll) &&
+    !/redirect\(`\/central/.test(centralCatchAll),
+  "an unsafe /central path can produce a broken redirect",
 );
 
 console.log(

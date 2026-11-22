@@ -2,13 +2,17 @@ import { redirect } from "next/navigation";
 import ShaderField from "@/components/fx/ShaderField";
 import { AppShell } from "@/components/dashboard/AppShell";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
-import { DashboardProvider, type DashboardMeta } from "@/components/dashboard/dashboard-context";
+import {
+  DashboardProvider,
+  WorkspaceGuard,
+  type DashboardMeta,
+} from "@/components/dashboard/dashboard-context";
 import { buildUsgNav } from "@/components/dashboard/usg-nav";
 import { ButtonLink } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
-import { resolveWorkspaceRole } from "@/lib/auth/workspace";
+import { resolveWorkspaceRole, type WorkspaceRole } from "@/lib/auth/workspace";
 
 // The layout resolves the session and live counters on every navigation, so it
 // must never be cached.
@@ -37,6 +41,20 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
 
   if (!role) redirect("/login");
   if (role.side !== "usg") redirect("/lsg");
+
+  const roleIdentity = role as WorkspaceRole & {
+    isCentral?: boolean;
+    isUnitAccount?: boolean;
+  };
+  const accountIdentity = account as typeof account & {
+    isCentral?: boolean;
+    isUnitAccount?: boolean;
+  };
+  const central = roleIdentity.isCentral === true || accountIdentity.isCentral === true;
+  const unitBound =
+    roleIdentity.isUnitAccount === true || accountIdentity.isUnitAccount === true;
+
+  if (unitBound && !central) redirect("/lsg");
 
   let data: WorkspacePayload | null = null;
   try {
@@ -93,6 +111,7 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
           __html: `document.documentElement.classList.toggle("dark", ${JSON.stringify(data.theme === "dark")});`,
         }}
       />
+      <WorkspaceGuard section="usg" />
       <SessionGuard>
         <div className="relative isolate min-h-dvh">
           <div aria-hidden className="pointer-events-none fixed inset-0 -z-10">

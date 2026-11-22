@@ -135,7 +135,8 @@ function fmtTime(s: string) {
 }
 
 export function RequestSection({ isUsg }: { isUsg: boolean }) {
-  useDashboard();
+  const { role } = useDashboard();
+  const ownUnitId = role.unitId;
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<"tasks" | "requirements" | "personal" | "resolutions">(
     searchParams.get("tab") === "personal"
@@ -488,7 +489,17 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
           </div>
 
           <div className="rounded-2xl border border-line bg-paper p-6">
-            <ExtensionsPanel taskId={selectedTask} isUsg={isUsg} myUnitIds={(detail as { myUnitIds?: string[] } | null)?.myUnitIds ?? []} />
+            <ExtensionsPanel
+              taskId={selectedTask}
+              isUsg={isUsg}
+              ownUnitId={ownUnitId}
+              targetUnits={
+                ((detail as { assignments?: Array<{ unitId: string; unitName: string }> } | null)
+                  ?.assignments ?? [])
+                  .map((a) => ({ id: a.unitId, name: a.unitName }))
+                  .filter((u, i, all) => all.findIndex((x) => x.id === u.id) === i)
+              }
+            />
           </div>
 
           <div className="rounded-2xl border border-line bg-paper p-6">
@@ -1311,13 +1322,25 @@ function PersonalRequestModal({ onClose, onDone }: { onClose: () => void; onDone
   );
 }
 
-function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: boolean; myUnitIds: string[] }) {
+function ExtensionsPanel({
+  taskId,
+  isUsg,
+  ownUnitId,
+  targetUnits,
+}: {
+  taskId: string;
+  isUsg: boolean;
+  ownUnitId?: string | null;
+  targetUnits?: Array<{ id: string; name: string }>;
+}) {
   const [exts, setExts] = useState<Array<Record<string, unknown>>>([]);
   const [show, setShow] = useState(false);
   const [days, setDays] = useState("3");
   const [reason, setReason] = useState("");
+  const [selectedUnitId, setSelectedUnitId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const resolvedTargetUnitId = isUsg ? selectedUnitId : ownUnitId ?? "";
 
   const load = useCallback(async () => {
     try {
@@ -1334,14 +1357,23 @@ function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: 
     void load();
   }, [load]);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelectedUnitId(isUsg ? targetUnits?.[0]?.id ?? "" : ownUnitId ?? "");
+  }, [isUsg, ownUnitId, targetUnits]);
+
   const request = async () => {
+    if (!resolvedTargetUnitId) {
+      setError("Choose a target unit before requesting an extension.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await mutate("/api/tasks/extensions", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "request", taskId, unitId: myUnitIds[0], days: Number(days), reason }),
+        body: JSON.stringify({ action: "request", taskId, unitId: resolvedTargetUnitId, days: Number(days), reason }),
       });
       setShow(false);
       setReason("");
@@ -1375,25 +1407,45 @@ function ExtensionsPanel({ taskId, isUsg, myUnitIds }: { taskId: string; isUsg: 
     <div>
       <div className="mb-2 text-sm font-medium">Extensions</div>
       <ActionError message={error} />
-      {!isUsg && (
-        <div className="mb-2">
-          <button onClick={() => setShow((v) => !v)} className="text-sm text-muted underline">
-            Request extension
-          </button>
-          {show && (
-            <div className="mt-2 grid gap-2">
-              <input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="rounded-lg border border-line px-2 py-1 text-sm" placeholder="Days" />
-              <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-line px-2 py-1 text-sm" placeholder="Reason" />
-              <button onClick={() => void request()} disabled={busy} className="rounded-full border border-line px-3 py-1 text-xs">Submit</button>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="mb-2">
+        <button onClick={() => setShow((v) => !v)} className="text-sm text-muted underline">
+          Request extension
+        </button>
+        {show && (
+          <div className="mt-2 grid gap-2">
+            {isUsg ? (
+              <label className="grid gap-1 text-xs text-muted">
+                Target unit
+                <select
+                  value={selectedUnitId}
+                  onChange={(e) => setSelectedUnitId(e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">Choose a unit</option>
+                  {(targetUnits ?? []).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p className="text-xs text-muted">Own unit: {ownUnitId ?? "Not available"}</p>
+            )}
+            <input type="number" value={days} onChange={(e) => setDays(e.target.value)} className="rounded-lg border border-line px-2 py-1 text-sm" placeholder="Days" />
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-lg border border-line px-2 py-1 text-sm" placeholder="Reason" />
+            <button onClick={() => void request()} disabled={busy || !resolvedTargetUnitId} className="rounded-full border border-line px-3 py-1 text-xs">Submit</button>
+            {!resolvedTargetUnitId ? (
+              <p className="text-xs text-muted">Choose a target unit before submitting.</p>
+            ) : null}
+          </div>
+        )}
+      </div>
       <div className="grid gap-2">
         {exts.map((e) => (
           <div key={String(e.id)} className="rounded-lg border border-line p-2 text-sm">
             <div className="flex items-center justify-between">
-              <span>{String(e.unitName ?? "")} � {String(e.requestedDays)} days � {String(e.status)}</span>
+              <span>{String(e.unitName ?? "")} | {String(e.requestedDays)} days | {String(e.status)}</span>
               {isUsg && e.status === "pending" && (
                 <div className="flex gap-1">
                   <button disabled={busy} onClick={() => void decide(String(e.id), "granted")} className="text-xs text-green-700 disabled:opacity-50">Approve</button>
