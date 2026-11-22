@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ActionError } from "@/components/dashboard/workspace-shared";
+import { useDashboard } from "@/components/dashboard/dashboard-context";
+import { refreshBudgetStore, useBudgetStore } from "@/components/dashboard/budget-store";
 import {
   STATUS_CLASS,
   STATUS_LABEL,
@@ -28,14 +30,13 @@ const money = (value: number) => `PHP ${formatMoney(value)}`;
  * linked column names whichever it is so a row is never anonymous. The four
  * figures at the top are deliberately different cuts of the same rows:
  * requested is everything still on the table, approved is what USG granted,
- * expenses is the full cost of the requests that were approved, and remaining
- * is the gap between the ask and the grant. There is no spending ledger behind
- * this, so "expenses" is the committed cost, not money already disbursed.
+ * expenses is what has actually been spent against approvals, and remaining
+ * is the gap between the ask and the grant.
  */
 function totalsFor(rows: BudgetRow[], summary: BudgetSummary | null): Totals {
   const expenses = rows
     .filter((row) => row.status === "approved")
-    .reduce((sum, row) => sum + Number(row.requestedTotal ?? 0), 0);
+    .reduce((sum, row) => sum + Number(row.actualSpent ?? 0), 0);
 
   if (summary?.totals) {
     return {
@@ -77,33 +78,64 @@ function LinkedTo({ row }: { row: BudgetRow }) {
   return <div className="text-sm text-muted">Standalone</div>;
 }
 
-export function BudgetPanel() {
-  const [rows, setRows] = useState<BudgetRow[]>([]);
-  const [summary, setSummary] = useState<BudgetSummary | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+function BudgetReviewActions({ budget }: { budget: BudgetRow }) {
+  const [remark, setRemark] = useState("");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setState("loading");
+  async function decide(decision: "approved" | "rejected") {
+    if (decision === "rejected" && !remark.trim()) {
+      setError("Add a remark before declining.");
+      return;
+    }
+
+    setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/budgets");
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-      setRows((json.budgets as BudgetRow[]) ?? []);
-      setSummary((json.summary as BudgetSummary | null) ?? null);
-      setState("ready");
+      const res = await fetch(`/api/budgets/${budget.id}/review`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ decision, remark: remark.trim() }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { ok?: boolean; message?: string };
+      if (!res.ok || !json.ok) {
+        throw new Error(json.message ?? "We could not record that decision.");
+      }
+      await refreshBudgetStore();
+      setRemark("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "We could not load the budget requests.");
-      setState("error");
+      setError(e instanceof Error ? e.message : "We could not record that decision.");
+    } finally {
+      setBusy(false);
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load]);
+  return (
+    <div className="flex w-52 flex-col gap-2">
+      <input
+        aria-label={`Remark for ${budget.title}`}
+        value={remark}
+        onChange={(event) => setRemark(event.target.value)}
+        placeholder="Remark (required to decline)"
+        className="h-8 w-full rounded-lg border border-line bg-canvas px-2 text-xs text-ink outline-none transition-colors placeholder:text-muted focus:border-line-strong"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" variant="brass" disabled={busy} onClick={() => void decide("approved")}>
+          Approve
+        </Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => void decide("rejected")}>
+          Decline
+        </Button>
+      </div>
+      <ActionError message={error} />
+    </div>
+  );
+}
 
+export function BudgetPanel() {
+  const { role } = useDashboard();
+  const isUsg = role.side === "usg";
+  const { budgets: rows, summary, loading, error, refresh } = useBudgetStore();
   const totals = totalsFor(rows, summary);
 
   return (
@@ -113,7 +145,7 @@ export function BudgetPanel() {
           Money requested by units, what USG approved, and what is left. Event budgets appear
           here as soon as an officer files one from the event detail.
         </p>
-        <Button size="sm" className="ml-auto" onClick={() => void load()}>
+        <Button size="sm" className="ml-auto" onClick={() => void refresh()}>
           Refresh
         </Button>
       </div>
@@ -124,7 +156,7 @@ export function BudgetPanel() {
         {[
           { label: "Requested", value: totals.requested, hint: "Everything still on the table" },
           { label: "Approved", value: totals.approved, hint: "Granted by the USG office" },
-          { label: "Expenses", value: totals.expenses, hint: "Cost of approved requests" },
+          { label: "Expenses", value: totals.expenses, hint: "Spent against approved requests" },
           { label: "Remaining", value: totals.remaining, hint: "Requested less approved" },
         ].map((card) => (
           <div key={card.label} className="rounded-2xl border border-line bg-paper p-4">
@@ -139,15 +171,15 @@ export function BudgetPanel() {
         ))}
       </div>
 
-      {state === "loading" && <p className="text-muted">Loading...</p>}
+      {loading && <p className="text-muted">Loading...</p>}
 
-      {state === "ready" && rows.length === 0 && (
+      {!loading && rows.length === 0 && (
         <div className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
           No budget requests yet. File one from an event, or from a proposal that is still open.
         </div>
       )}
 
-      {state === "ready" && rows.length > 0 && (
+      {rows.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border border-line bg-paper">
           <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
             <thead>
@@ -158,7 +190,9 @@ export function BudgetPanel() {
                 <th className="px-4 py-3 font-semibold">Status</th>
                 <th className="px-4 py-3 text-right font-semibold">Requested</th>
                 <th className="px-4 py-3 text-right font-semibold">Approved</th>
+                <th className="px-4 py-3 text-right font-semibold">Expenses</th>
                 <th className="px-4 py-3 font-semibold">Filed</th>
+                {isUsg ? <th className="px-4 py-3 font-semibold">Review</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -188,7 +222,19 @@ export function BudgetPanel() {
                   <td className="px-4 py-3 text-right tabular-nums text-ink">
                     {row.approvedTotal === null ? "—" : formatMoney(row.approvedTotal)}
                   </td>
+                  <td className="px-4 py-3 text-right tabular-nums text-ink">
+                    {row.actualSpent === null ? "—" : formatMoney(row.actualSpent)}
+                  </td>
                   <td className="px-4 py-3 text-muted">{formatDate(row.createdAt)}</td>
+                  {isUsg ? (
+                    <td className="px-4 py-3">
+                      {row.status === "submitted" || row.status === "returned" ? (
+                        <BudgetReviewActions budget={row} />
+                      ) : (
+                        <span className="text-xs text-muted">Decided</span>
+                      )}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

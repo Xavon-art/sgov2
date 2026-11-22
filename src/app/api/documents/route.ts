@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import type { DocumentRow, DocumentStatus } from "@/lib/document-search";
+import {
+  UUID_RE,
+  type DocumentGroupKind,
+  type DocumentRow,
+  type DocumentStatus,
+} from "@/lib/document-search";
 
 export const runtime = "nodejs";
 
@@ -12,6 +17,13 @@ type SearchResult = RpcResult & {
 };
 
 const STATUSES = new Set<DocumentStatus>(["pending", "approved", "rejected"]);
+const GROUPS = new Set<DocumentGroupKind>([
+  "requirement",
+  "resolution",
+  "event",
+  "request",
+  "task",
+]);
 
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
@@ -35,11 +47,28 @@ export async function GET(req: Request) {
   const q = searchParams.get("q")?.trim() ?? "";
   const type = searchParams.get("type")?.trim().toUpperCase() ?? "";
   const status = searchParams.get("status")?.trim().toLowerCase() ?? "";
+  const groupKind = searchParams.get("groupKind")?.trim().toLowerCase() ?? "";
+  const groupId = searchParams.get("groupId")?.trim() ?? "";
+  const originUnitId = searchParams.get("originUnitId")?.trim() ?? "";
   const limitRaw = searchParams.get("limit") ?? "";
 
   if (status && !STATUSES.has(status as DocumentStatus)) {
     return NextResponse.json(
       { ok: false, message: "Choose pending, approved, or rejected." },
+      { status: 400 },
+    );
+  }
+
+  if (groupKind && !GROUPS.has(groupKind as DocumentGroupKind)) {
+    return NextResponse.json(
+      { ok: false, message: "Choose a valid document group." },
+      { status: 400 },
+    );
+  }
+
+  if ((groupId && !UUID_RE.test(groupId)) || (originUnitId && !UUID_RE.test(originUnitId))) {
+    return NextResponse.json(
+      { ok: false, message: "That group or unit reference is not valid." },
       { status: 400 },
     );
   }
@@ -63,6 +92,9 @@ export async function GET(req: Request) {
       p_type: type || null,
       p_status: status || null,
       p_limit: limit,
+      p_group_kind: groupKind || null,
+      p_group_id: groupId || null,
+      p_origin_unit_id: originUnitId || null,
     });
 
     if (!res.ok) {

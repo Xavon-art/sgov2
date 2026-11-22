@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { TimezonePicker } from "@/components/ui/TimezonePicker";
@@ -10,11 +10,17 @@ import { IconCheckCircle, IconClose, IconEvents, IconPencil, IconShield } from "
 import { formatMoney, parseAmount, toDraftPayload, type BudgetRow } from "@/lib/budgets";
 import { CalendarPanel } from "@/components/dashboard/CalendarPanel";
 import { AccomplishmentPanel } from "@/components/dashboard/AccomplishmentPanel";
+import { useBudgetStore } from "./budget-store";
 
 type EvFile = { id: string; name: string; url: string | null; mimeType: string | null; sizeBytes: number | null };
 type EvScope = { unitType: string | null; unitId: string | null };
-type EvAssignee = { accountId: string; displayName: string };
-type AssigneeOption = { accountId: string; displayName: string; email: string };
+type ReportRequiredUnit = {
+  unitId: string;
+  unitName: string;
+  required: boolean;
+  reportStatus?: string | null;
+  reportId?: string | null;
+};
 type Ev = {
   id: string;
   title: string;
@@ -32,11 +38,14 @@ type Ev = {
   supportFiles: unknown;
   files: EvFile[];
   scopes: EvScope[];
-  assignees: EvAssignee[];
   assigneeCount: number;
   canAssign: boolean;
   isAssignedToMe: boolean;
   canReport: boolean;
+  requiredForMyUnit?: boolean;
+  reportStatus?: string | null;
+  reportId?: string | null;
+  reportRequiredUnits?: ReportRequiredUnit[];
   claimNote: string | null;
   decisionNote: string | null;
   linkedRequest: string | null;
@@ -118,16 +127,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   const [claimTarget, setClaimTarget] = useState<Ev | null>(null);
   const [claimNoteInput, setClaimNoteInput] = useState("");
 
-  // assignees
-  const [assignTarget, setAssignTarget] = useState<Ev | null>(null);
-  const [assignLoading, setAssignLoading] = useState(false);
-  const [assignSaving, setAssignSaving] = useState(false);
-  const [assignError, setAssignError] = useState<string | null>(null);
-  const [assignSelected, setAssignSelected] = useState<string[]>([]);
-  const [assignCandidates, setAssignCandidates] = useState<AssigneeOption[]>([]);
-
   // budget
-  const [budgets, setBudgets] = useState<BudgetRow[]>([]);
+  const { budgets, loading: budgetsLoading, refresh: refreshBudgets } = useBudgetStore();
   const [budgetTarget, setBudgetTarget] = useState<Ev | null>(null);
   const [budgetTitle, setBudgetTitle] = useState("");
   const [budgetJustification, setBudgetJustification] = useState("");
@@ -156,15 +157,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   }, []);
 
   const loadBudgets = useCallback(async () => {
-    try {
-      const res = await fetch("/api/budgets");
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-      setBudgets((json.budgets as BudgetRow[]) ?? []);
-    } catch {
-      setBudgets([]);
-    }
-  }, []);
+    await refreshBudgets();
+  }, [refreshBudgets]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -201,6 +195,16 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     if (filter === "cancelled") return e.cancelledAt !== null;
     return true;
   });
+
+  const approvedBudgets = useMemo(() => {
+    const map = new Map<string, BudgetRow>();
+    for (const row of budgets) {
+      if (row.status === "approved" && row.eventId) {
+        map.set(row.eventId, row);
+      }
+    }
+    return map;
+  }, [budgets]);
 
   const resetForm = () => {
     setTitle("");
@@ -341,48 +345,6 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     }
   };
 
-  const openAssign = async (ev: Ev) => {
-    setAssignTarget(ev);
-    setAssignError(null);
-    setAssignSelected([]);
-    setAssignCandidates([]);
-    setAssignLoading(true);
-    try {
-      const res = await fetch(`/api/events/${ev.id}/assignees`);
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-      const assignees = (json.assignees ?? []) as AssigneeOption[];
-      setAssignSelected(assignees.map((a) => a.accountId));
-      setAssignCandidates((json.candidates ?? []) as AssigneeOption[]);
-    } catch (e) {
-      setAssignError(e instanceof Error ? e.message : "Could not load the assignees.");
-    } finally {
-      setAssignLoading(false);
-    }
-  };
-
-  const saveAssign = async () => {
-    if (!assignTarget) return;
-    setAssignSaving(true);
-    setAssignError(null);
-    try {
-      const res = await fetch(`/api/events/${assignTarget.id}/assignees`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ accountIds: assignSelected }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-      setAssignTarget(null);
-      setNote("Assignees saved.");
-      await load();
-    } catch (e) {
-      setAssignError(e instanceof Error ? e.message : "Could not save the assignees.");
-    } finally {
-      setAssignSaving(false);
-    }
-  };
-
   const openBudget = (ev: Ev) => {
     setBudgetTarget(ev);
     setBudgetTitle(`${ev.title} budget`.slice(0, 140));
@@ -435,8 +397,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     }
   };
 
-  const approvedBudgetFor = (eventId: string) =>
-    budgets.find((row) => row.eventId === eventId && row.status === "approved") ?? null;
+  const approvedBudgetFor = (eventId: string) => approvedBudgets.get(eventId) ?? null;
 
   const openSpending = (ev: Ev, budget: BudgetRow) => {
     setSpendTarget({ event: ev, budget });
@@ -559,6 +520,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       </div>
 
       {loading && <p className="text-muted">Loading…</p>}
+      {budgetsLoading && !loading && <p className="text-xs text-muted">Loading budgets…</p>}
 
       {view === "list" && !loading && (
         <div data-tour="events-list" className="grid gap-3">
@@ -590,26 +552,28 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                       ))}
                     </div>
                   )}
-                  {e.assignees.length > 0 && (
+                  {e.reportRequiredUnits && e.reportRequiredUnits.length > 0 && (
                     <div className="mt-2 flex flex-wrap items-center gap-1">
-                      <span className="text-xs text-muted">Assigned to report:</span>
-                      {e.assignees.map((a) => (
+                      <span className="text-xs text-muted">Report required from:</span>
+                      {e.reportRequiredUnits.map((unit) => (
                         <span
-                          key={a.accountId}
+                          key={unit.unitId}
                           className="rounded-full border border-line px-2 py-0.5 text-xs text-ink"
                         >
-                          {a.displayName}
+                          {unit.unitName}
+                          {unit.reportStatus ? ` • ${unit.reportStatus}` : ""}
                         </span>
                       ))}
                     </div>
                   )}
+                  {(!e.reportRequiredUnits || e.reportRequiredUnits.length === 0) && e.requiredForMyUnit && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      <span className="text-xs text-muted">Report required from:</span>
+                      <span className="rounded-full border border-line px-2 py-0.5 text-xs text-ink">Your unit</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  {e.canAssign && !e.cancelledAt && (
-                    <Button size="sm" onClick={() => void openAssign(e)}>
-                      Assign
-                    </Button>
-                  )}
                   {e.canDecide && (
                     <Button size="sm" onClick={() => { setDecideTarget(e); setDecideOpen(true); }}>
                       <IconCheckCircle className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
@@ -622,7 +586,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                       Claim
                     </Button>
                   )}
-                  {!e.cancelledAt && (
+                  {!isUsg && !e.cancelledAt && (
                     <Button size="sm" onClick={() => openBudget(e)}>
                       Submit budget
                     </Button>
@@ -652,6 +616,24 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
               )}
               {e.claimNote && (
                 <p className="mt-1 text-sm text-muted">Claim note: {e.claimNote}</p>
+              )}
+              {!isUsg && approvedBudget && (
+                <div className="mt-3 grid gap-2 rounded-xl border border-line bg-canvas/40 p-3 sm:grid-cols-3">
+                  <div data-testid="event-approved-budget">
+                    <div className="text-xs text-muted">Approved budget</div>
+                    <div className="text-base font-medium tabular-nums text-ink">₱{formatMoney(approvedBudget.approvedTotal ?? 0)}</div>
+                  </div>
+                  <div data-testid="event-actual-spent">
+                    <div className="text-xs text-muted">Total expenses</div>
+                    <div className="text-base font-medium tabular-nums text-ink">₱{formatMoney(approvedBudget.actualSpent ?? 0)}</div>
+                  </div>
+                  <div data-testid="event-remaining-budget">
+                    <div className="text-xs text-muted">Remaining budget</div>
+                    <div className="text-base font-medium tabular-nums text-ink">
+                      ₱{formatMoney(Math.max(0, Number(approvedBudget.approvedTotal ?? 0) - Number(approvedBudget.actualSpent ?? 0)))}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
             );
@@ -881,69 +863,6 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
             setClaimNoteInput("");
           }}
         />
-      )}
-
-      {assignTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-auto rounded-2xl border border-line bg-paper p-6">
-            <div className="mb-1 flex items-center justify-between gap-4">
-              <div className="text-lg font-medium">Assign report filers</div>
-              <button
-                type="button"
-                onClick={() => setAssignTarget(null)}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="mb-4 text-sm text-muted">
-              {assignTarget.title}
-              <br />
-              Only the accounts you tick here can file an accomplishment report for this event.
-            </p>
-
-            {assignLoading && <p className="text-sm text-muted">Loading accounts…</p>}
-
-            {!assignLoading && (
-              <div className="grid gap-3">
-                <div className="grid gap-1 sm:grid-cols-2">
-                  {assignCandidates.map((candidate) => (
-                    <label key={candidate.accountId} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={assignSelected.includes(candidate.accountId)}
-                        onChange={(event) =>
-                          setAssignSelected((prev) =>
-                            event.target.checked
-                              ? [...prev, candidate.accountId]
-                              : prev.filter((id) => id !== candidate.accountId),
-                          )
-                        }
-                      />
-                      <span>
-                        {candidate.displayName}
-                        <span className="ml-1 text-xs text-muted">{candidate.email}</span>
-                      </span>
-                    </label>
-                  ))}
-                  {assignCandidates.length === 0 && (
-                    <span className="text-xs text-muted">No active accounts available.</span>
-                  )}
-                </div>
-
-                {assignError && (
-                  <p className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-sm font-medium text-[#a5442c]">
-                    {assignError}
-                  </p>
-                )}
-
-                <Button disabled={assignSaving} onClick={() => void saveAssign()}>
-                  {assignSaving ? "Saving…" : "Save assignees"}
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
       )}
 
       {budgetTarget && (

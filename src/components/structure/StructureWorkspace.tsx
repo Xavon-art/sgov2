@@ -14,6 +14,7 @@ import { Reveal } from "@/components/fx/Reveal";
 import { RowReorder } from "@/components/structure/RowReorder";
 import { useReorder, type ReorderRow } from "@/components/structure/reorder";
 import { StructureChartEditor } from "@/components/structure/StructureChartEditor";
+import { invalidateStructurePhotoCache } from "@/components/structure/StructureChart";
 import { ChartViewer } from "@/components/structure/ChartViewer";
 import { StructureStatusTracker } from "@/components/structure/StructureStatusTracker";
 import {
@@ -148,6 +149,145 @@ function photoDataUrl(photo?: string | null): string | null {
   if (photo.startsWith("iVBOR")) return `data:image/png;base64,${photo}`;
   if (photo.startsWith("UklGR")) return `data:image/webp;base64,${photo}`;
   return `data:image/jpeg;base64,${photo}`;
+}
+
+type PhotoPayload = {
+  ok: boolean;
+  reason?: string;
+  hasPhoto?: boolean;
+  rosterId?: string | null;
+  base64?: string | null;
+  mime?: string | null;
+};
+
+const photoCachePrefix = "smartgov:structure-photo:";
+const persistedPhotos = new Set<string>();
+
+function barePhoto(photo: string): string {
+  return photo.startsWith("data:") ? photo.slice(photo.indexOf(",") + 1) : photo;
+}
+
+function photoCacheKey(unitId: string, email: string): string {
+  return `${photoCachePrefix}${unitId}:${email}`;
+}
+
+function readPhotoCache(unitId: string, email: string): string | null {
+  try {
+    return localStorage.getItem(photoCacheKey(unitId, email));
+  } catch {
+    return null;
+  }
+}
+
+function writePhotoCache(unitId: string, email: string, url: string): void {
+  try {
+    localStorage.setItem(photoCacheKey(unitId, email), url);
+  } catch {
+    return;
+  }
+}
+
+function clearPhotoCache(unitId: string, email: string): void {
+  try {
+    localStorage.removeItem(photoCacheKey(unitId, email));
+  } catch {
+    return;
+  }
+}
+
+async function persistPhoto(unitId: string, email: string, photo: string): Promise<PhotoPayload | null> {
+  const bare = barePhoto(photo);
+  const address = email.trim().toLowerCase();
+  if (!unitId || !address || !bare) return null;
+  const key = `${unitId}:${address}:${bare.length}:${bare.slice(0, 48)}`;
+  if (persistedPhotos.has(key)) return null;
+  persistedPhotos.add(key);
+  try {
+    const res = await fetch("/api/structures/photos", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ unitId, email: address, photo: bare }),
+    });
+    const payload = (await res.json()) as PhotoPayload;
+    if (payload.ok) invalidateStructurePhotoCache();
+    return payload;
+  } catch {
+    persistedPhotos.delete(key);
+    return null;
+  }
+}
+
+async function loadStoredPhotos(unitId: string, holders: StructureHolder[]): Promise<Record<string, string>> {
+  const found: Record<string, string> = {};
+  await Promise.all(
+    holders.map(async (holder) => {
+      const email = holder.email.trim().toLowerCase();
+      if (!email || !holder.hasPhoto || holder.photo) return;
+      try {
+        const params = new URLSearchParams({ unitId, email });
+        const res = await fetch(`/api/structures/photos?${params.toString()}`);
+        if (!res.ok) throw new Error("photo read failed");
+        const payload = (await res.json()) as PhotoPayload;
+        if (payload.ok && payload.base64 && payload.mime) {
+          const url = `data:${payload.mime};base64,${payload.base64}`;
+          found[email] = url;
+          writePhotoCache(unitId, email, url);
+        } else {
+          clearPhotoCache(unitId, email);
+        }
+      } catch {
+        const cached = readPhotoCache(unitId, email);
+        if (cached) found[email] = cached;
+      }
+    }),
+  );
+  return found;
+}
+
+function collectHolders(doc: StructureDocument): StructureHolder[] {
+  const holders: StructureHolder[] = [];
+  for (const committee of doc.committees) {
+    for (const position of committee.positions) {
+      if (position.holder) holders.push(position.holder);
+      if (position.holders) holders.push(...position.holders);
+    }
+  }
+  return holders;
+}
+
+function withStoredPhoto(holder: StructureHolder, found: Record<string, string>): StructureHolder {
+  const url = found[holder.email.trim().toLowerCase()];
+  return url && !holder.photo ? { ...holder, photo: barePhoto(url) } : holder;
+}
+
+function withStoredPhotos(doc: StructureDocument, found: Record<string, string>): StructureDocument {
+  return {
+    ...doc,
+    committees: doc.committees.map((committee) => ({
+      ...committee,
+      positions: committee.positions.map((position) => ({
+        ...position,
+        holder: position.holder ? withStoredPhoto(position.holder, found) : position.holder,
+        holders: position.holders?.map((holder) => withStoredPhoto(holder, found)),
+      })),
+    })),
+  };
+}
+
+function queuePhotoPersists(prev: StructureDocument, next: StructureDocument, unitId: string): void {
+  const before = new Map<string, string>();
+  for (const holder of collectHolders(prev)) {
+    const email = holder.email.trim().toLowerCase();
+    if (holder.photo && email) before.set(email, barePhoto(holder.photo));
+  }
+  const seen = new Set<string>();
+  for (const holder of collectHolders(next)) {
+    const email = holder.email.trim().toLowerCase();
+    if (!email || !holder.photo || seen.has(email)) continue;
+    seen.add(email);
+    const photo = barePhoto(holder.photo);
+    if (photo && before.get(email) !== photo) void persistPhoto(unitId, email, photo);
+  }
 }
 
 function readStructureDraft(unitId: string): StoredStructureDraft | null {
@@ -302,6 +442,7 @@ function HolderEditor({
                 setPhotoUrl(`data:${file.type};base64,${base64}`);
                 setNote("");
                 onChange({ ...holder, photo: base64, hasPhoto: true });
+                void persistPhoto(unitId, holder.email, base64);
               }}
             />
           </label>
@@ -765,6 +906,7 @@ export function StructureWorkspace({
   const [conflict, setConflict] = useState<{ updatedAt: string } | null>(null);
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved" | "off">("idle");
   const savingRef = useRef(false);
+  const hydratedPhotos = useRef(new Set<string>());
 
   const layout = useMemo(() => normalizeLayout(doc.layout), [doc.layout]);
 
@@ -864,6 +1006,38 @@ export function StructureWorkspace({
     };
   }, [doc, unitId]);
 
+  useEffect(() => {
+    if (!readyUnitId || readyUnitId !== unitId) return;
+    const hydrated = hydratedPhotos.current;
+    const targets: StructureHolder[] = [];
+    const seen = new Set<string>();
+    for (const holder of collectHolders(doc)) {
+      const email = holder.email.trim().toLowerCase();
+      if (!email || !holder.hasPhoto || holder.photo || seen.has(email)) continue;
+      const key = `${unitId}:${email}`;
+      if (hydrated.has(key)) continue;
+      hydrated.add(key);
+      seen.add(email);
+      targets.push(holder);
+    }
+    if (!targets.length) return;
+    let cancelled = false;
+    let settled = false;
+    void (async () => {
+      const found = await loadStoredPhotos(unitId, targets);
+      settled = true;
+      if (cancelled || !Object.keys(found).length) return;
+      setDoc((prev) => withStoredPhotos(prev, found));
+    })();
+    return () => {
+      cancelled = true;
+      if (settled) return;
+      for (const holder of targets) {
+        hydrated.delete(`${unitId}:${holder.email.trim().toLowerCase()}`);
+      }
+    };
+  }, [doc, readyUnitId, unitId]);
+
   const persistDraft = useCallback(
     (next: StructureDocument, markDirty: boolean) => {
       if (readyUnitId !== unitId) return;
@@ -893,6 +1067,7 @@ export function StructureWorkspace({
   }, [doc, dirty, persistDraft]);
 
   function edit(next: StructureDocument) {
+    queuePhotoPersists(doc, next, unitId);
     setPast((prev) => [...prev.slice(-39), doc]);
     setFuture([]);
     setDoc(next);

@@ -79,22 +79,30 @@ export const THEMES: Record<StructureLayout["theme"], ThemeTokens> = {
 };
 
 /** Uploaded photos are fetched once per roster id and kept for the session. */
-const photoCache = new Map<string, string | null>();
+const photoCache = new Map<string, string>();
 const photoInflight = new Map<string, Promise<string | null>>();
+const photoListeners = new Set<() => void>();
+let photoGeneration = 0;
+
+export function invalidateStructurePhotoCache() {
+  photoGeneration += 1;
+  photoCache.clear();
+  photoInflight.clear();
+  for (const listener of photoListeners) listener();
+}
 
 async function loadPhoto(rosterId: string): Promise<string | null> {
-  if (photoCache.has(rosterId)) return photoCache.get(rosterId) ?? null;
+  const generation = photoGeneration;
+  const cached = photoCache.get(rosterId);
+  if (cached) return cached;
   const existing = photoInflight.get(rosterId);
   if (existing) return existing;
   const promise = fetchMemberPhoto(rosterId)
     .then((url) => {
-      photoCache.set(rosterId, url);
+      if (url && generation === photoGeneration) photoCache.set(rosterId, url);
       return url;
     })
-    .catch(() => {
-      photoCache.set(rosterId, null);
-      return null;
-    })
+    .catch(() => null)
     .finally(() => {
       photoInflight.delete(rosterId);
     });
@@ -104,9 +112,21 @@ async function loadPhoto(rosterId: string): Promise<string | null> {
 
 export function useChartPhotos(nodes: ChartNode[], enabled: boolean) {
   const [photos, setPhotos] = useState<Record<string, string | null>>({});
+  const [generation, setGeneration] = useState(0);
   const signature = nodes
     .map((node) => `${node.photoId ?? ""}:${node.primary?.hasPhoto ? 1 : 0}`)
     .join("|");
+
+  useEffect(() => {
+    const listener = () => {
+      setPhotos({});
+      setGeneration((value) => value + 1);
+    };
+    photoListeners.add(listener);
+    return () => {
+      photoListeners.delete(listener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -129,7 +149,7 @@ export function useChartPhotos(nodes: ChartNode[], enabled: boolean) {
           let changed = false;
           const next = { ...prev };
           batch.forEach((id, index) => {
-            if (!(id in next)) {
+            if (next[id] !== loaded[index]) {
               next[id] = loaded[index];
               changed = true;
             }
@@ -144,7 +164,7 @@ export function useChartPhotos(nodes: ChartNode[], enabled: boolean) {
     };
     // The signature captures exactly the inputs this effect reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, enabled]);
+  }, [signature, enabled, generation]);
 
   return photos;
 }

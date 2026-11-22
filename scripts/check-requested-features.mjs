@@ -218,5 +218,129 @@ includes("src/app/api/feedback/public/status/route.ts", [
   "public_feedback_response_status",
 ]);
 
+console.log("LSG/USG workflow completion");
+
+includes("supabase/migrations/20260101003490_structure_photo_persistence.sql", [
+  "persist_structure_holder_photo",
+  "show_structure_holder_photo",
+]);
+
+includes("src/app/api/structures/photos/route.ts", [
+  "persist_structure_holder_photo",
+  "POST",
+]);
+
+includes("src/components/structure/StructureWorkspace.tsx", [
+  "persistPhoto",
+  "loadStoredPhotos",
+  "invalidateStructurePhotoCache",
+]);
+
+includes("src/components/structure/StructureChart.tsx", [
+  "invalidateStructurePhotoCache",
+  "null",
+]);
+
+includes("supabase/migrations/20260101003450_personal_request_decision_states.sql", [
+  "personal_requests_status_check",
+  "needs_revision",
+  "submission_required",
+  "decide_personal_request",
+  "resubmit_personal_request",
+]);
+
+includes("src/components/dashboard/RequestSection.tsx", [
+  "DecisionSection",
+  "Need revision",
+  "Require submission",
+  "Resubmit",
+]);
+
+includes("supabase/migrations/20260101003460_event_report_requirements.sql", [
+  "event_report_requirements",
+  "sync_event_report_requirements",
+  "can_file_accomplishment",
+  "list_events",
+]);
+
+includes("supabase/migrations/20260101003500_fix_accomplishment_report_requirements.sql", [
+  "event_report_requirements_event_sync",
+  "event_report_requirements_scope_sync",
+  "smartgov.is_event_assignee(p_account.id, e.id)",
+  "smartgov.submit_accomplishment_report_v2_base",
+]);
+excludes("supabase/migrations/20260101003500_fix_accomplishment_report_requirements.sql", [
+  "return jsonb_build_object('ok', false, 'reason', 'forbidden');",
+]);
+
+includes("src/components/dashboard/EventsWorkspace.tsx", [
+  "Report required from:",
+  "!isUsg && !e.cancelledAt",
+  "event-approved-budget",
+  "event-actual-spent",
+  "event-remaining-budget",
+]);
+
+excludes("src/components/dashboard/EventsWorkspace.tsx", [">Assign<"]);
+
+includes("src/components/dashboard/AccomplishmentPanel.tsx", [
+  "Needs Submission",
+  "Accomplished Reports",
+  'status === "acknowledged"',
+]);
+
+includes("supabase/migrations/20260101003470_lsg_budget_propagation.sql", [
+  "budget_requests_org_status_created_idx",
+  "budget_requests_org_unit_status_created_idx",
+  "actual_spent = 0",
+  "b.status = 'approved'",
+  "list_budgets",
+]);
+
+includes("src/components/dashboard/budget-store.tsx", [
+  "refreshBudgetStore",
+  "visibilitychange",
+  "setInterval",
+]);
+
+includes("src/components/dashboard/BudgetPanel.tsx", [
+  "BudgetReviewActions",
+  "refreshBudgetStore",
+  "actualSpent",
+]);
+
+includes("src/components/dashboard/LsgRequestBudgetPanel.tsx", [
+  "Approved budgets",
+  "Remaining budget",
+  "refreshBudgetStore",
+]);
+
+includes("src/app/lsg/request/page.tsx", ["LsgRequestBudgetPanel"]);
+includes("src/components/dashboard/FederatedOverview.tsx", ["useBudgetStore"]);
+
+includes("supabase/migrations/20260101003480_unified_submission_catalog.sql", [
+  "filed_document_catalog",
+  "personal_requests",
+  "accomplishment_report_files",
+  "get_personal_request_file",
+  "get_catalog_document",
+  "delete from smartgov.filed_document_catalog where true",
+]);
+
+includes("src/lib/document-search.ts", ["downloadUrl", "sourceKind"]);
+includes("src/app/api/documents/route.ts", ["groupKind", "originUnitId"]);
+includes("src/components/dashboard/DocumentLibraryPanel.tsx", [
+  "row.downloadUrl",
+  "Event",
+]);
+includes("src/components/dashboard/DocumentSearchPanel.tsx", [
+  "groupKind",
+  "originUnitId",
+  "row.downloadUrl",
+]);
+includes("src/app/api/catalog-files/[documentKey]/route.ts", [
+  "get_catalog_document",
+]);
+
 console.log(`\n${checks - failures}/${checks} requested-feature checks passed`);
 if (failures > 0) process.exit(1);

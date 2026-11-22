@@ -28,6 +28,16 @@ type EventRow = {
   canAssign: boolean;
   isAssignedToMe: boolean;
   canReport: boolean;
+  requiredForMyUnit?: boolean;
+  reportStatus?: string | null;
+  reportId?: string | null;
+  reportRequiredUnits?: Array<{
+    unitId: string;
+    unitName: string;
+    required: boolean;
+    reportStatus?: string | null;
+    reportId?: string | null;
+  }>;
   claimNote: string | null;
   decisionNote: string | null;
   linkedRequest: string | null;

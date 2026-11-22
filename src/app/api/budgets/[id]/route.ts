@@ -6,6 +6,12 @@ import { parseAmount, type BudgetDetail } from "@/lib/budgets";
 
 export const runtime = "nodejs";
 
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
+
+function json(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, { ...init, headers: NO_STORE_HEADERS });
+}
+
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
   if (reason === "rate_limited") return 429;
@@ -30,7 +36,7 @@ type SpendResult = RpcResult & {
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const token = await readSessionToken();
   if (!token) {
-    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+    return json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
   const { id } = await ctx.params;
@@ -42,16 +48,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     });
 
     if (!res.ok) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: messageFor(res.reason), reason: res.reason },
         { status: statusForReason(res.reason) },
       );
     }
 
-    return NextResponse.json({ ok: true, budget: res });
+    return json({ ok: true, budget: res });
   } catch (error) {
     console.error("[budgets:detail]", error);
-    return NextResponse.json(
+    return json(
       { ok: false, message: "We could not load that request." },
       { status: 500 },
     );
@@ -61,7 +67,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const token = await readSessionToken();
   if (!token) {
-    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+    return json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
   const { id } = await ctx.params;
@@ -70,7 +76,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
+    return json(
       { ok: false, message: "Send the spending as JSON." },
       { status: 400 },
     );
@@ -84,7 +90,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         : null;
 
   if (actualSpent === null || !Number.isFinite(actualSpent) || actualSpent < 0) {
-    return NextResponse.json(
+    return json(
       { ok: false, message: "Enter a spending amount of zero or more.", reason: "invalid_amount" },
       { status: 400 },
     );
@@ -98,13 +104,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     });
 
     if (!res.ok) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: messageFor(res.reason), reason: res.reason },
         { status: statusForReason(res.reason) },
       );
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       budgetId: res.budgetId ?? id,
       actualSpent: res.actualSpent ?? actualSpent,
@@ -112,7 +118,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     });
   } catch (error) {
     console.error("[budgets:spend]", error);
-    return NextResponse.json(
+    return json(
       { ok: false, message: "We could not record that spending." },
       { status: 500 },
     );

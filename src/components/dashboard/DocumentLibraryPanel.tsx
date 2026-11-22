@@ -72,9 +72,8 @@ export function DocumentLibraryPanel() {
     <div className="grid gap-6">
       <div className="flex items-start gap-3">
         <p className="text-sm text-muted">
-          Descriptions, approvals, and downloads for documents filed against requirements.
-          Approved rows are visible to the whole organisation; everything else stays with the
-          filing unit and the USG office.
+          Every file and image filed by an LSG -- requirements, resolutions, requests, events,
+          reports and task answers -- with its group, originating LSG and a working download.
         </p>
         <Button size="sm" className="ml-auto" onClick={() => void load()}>
           Refresh
@@ -92,79 +91,95 @@ export function DocumentLibraryPanel() {
 
       {state === "ready" && rows.length === 0 && (
         <div className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
-          No documents have been filed yet. Documents appear here once a requirement includes a
-          confirmed upload.
+          No documents have been filed yet. Documents appear here once an LSG files a supported
+          upload, link, resolution, request or event.
         </div>
       )}
 
       {state === "ready" && rows.length > 0 && (
         <div className="grid gap-3">
-          {rows.map((row, i) => (
-            <Reveal key={row.submissionId} delay={i * ROW_STAGGER_MS}>
-              <div className="rounded-2xl border border-line bg-paper p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-lg font-medium">{row.title}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-                      <span className="font-semibold tracking-[0.06em] uppercase">{row.type}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{row.unitName ?? "Organization-wide"}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{formatDocumentDate(row.submittedAt)}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{row.groupLabel ?? GROUP_KIND_LABEL[row.groupKind]}</span>
+          {rows.map((row, i) => {
+            const href = row.downloadUrl ?? row.externalUrl;
+            const isExternal = !row.downloadUrl && Boolean(row.externalUrl);
+            const isRequirement = row.sourceKind === "requirement_submission";
+
+            return (
+              <Reveal key={row.documentKey || row.submissionId} delay={i * ROW_STAGGER_MS}>
+                <div className="rounded-2xl border border-line bg-paper p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-lg font-medium">{row.title}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+                        <span className="font-semibold tracking-[0.06em] uppercase">{row.type}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>LSG: {row.unitName ?? "Organization-wide"}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDocumentDate(row.submittedAt)}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                          {GROUP_KIND_LABEL[row.groupKind]}: {row.groupLabel ?? "—"}
+                        </span>
+                      </div>
                     </div>
+                    <StatusBadge status={row.status} />
                   </div>
-                  <StatusBadge status={row.status} />
-                </div>
 
-                {row.description && (
-                  <p className="mt-3 whitespace-pre-wrap text-sm text-body">{row.description}</p>
-                )}
-                {row.keywords && (
-                  <p className="mt-2 text-xs text-muted">Keywords: {row.keywords}</p>
-                )}
-                {row.approvalRemark && (
-                  <p className="mt-3 rounded-xl border border-line/60 bg-canvas/40 p-3 text-sm text-muted">
-                    Note: {row.approvalRemark}
-                  </p>
-                )}
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <a
-                    href={`/api/files/${row.submissionId}`}
-                    className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
-                  >
-                    Download
-                  </a>
-                  {(row.canEdit || canApprove) && (
-                    <Button size="sm" onClick={() => setEditing(row)}>
-                      <IconPencil className="h-4 w-4" /> Edit details
-                    </Button>
+                  {row.description && (
+                    <p className="mt-3 whitespace-pre-wrap text-sm text-body">{row.description}</p>
                   )}
-                  {canApprove && (
-                    <Button
-                      size="sm"
-                      onClick={() => setReviewing(reviewing === row.submissionId ? null : row.submissionId)}
-                    >
-                      Review
-                    </Button>
+                  {row.keywords && (
+                    <p className="mt-2 text-xs text-muted">Keywords: {row.keywords}</p>
+                  )}
+                  {row.approvalRemark && (
+                    <p className="mt-3 rounded-xl border border-line/60 bg-canvas/40 p-3 text-sm text-muted">
+                      Note: {row.approvalRemark}
+                    </p>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {href ? (
+                      <a
+                        href={href}
+                        target={isExternal ? "_blank" : undefined}
+                        rel={isExternal ? "noreferrer" : undefined}
+                        className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+                      >
+                        {isExternal ? "Open support link" : "Download"}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-muted">No attachment filed</span>
+                    )}
+                    {isRequirement && (row.canEdit || canApprove) && (
+                      <Button size="sm" onClick={() => setEditing(row)}>
+                        <IconPencil className="h-4 w-4" /> Edit details
+                      </Button>
+                    )}
+                    {isRequirement && canApprove && (
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          setReviewing(reviewing === row.sourceId ? null : row.sourceId)
+                        }
+                      >
+                        Review
+                      </Button>
+                    )}
+                  </div>
+
+                  {isRequirement && canApprove && reviewing === row.sourceId && (
+                    <ReviewBox
+                      submissionId={row.sourceId}
+                      onDone={async () => {
+                        setReviewing(null);
+                        await load();
+                      }}
+                      onError={setActionError}
+                    />
                   )}
                 </div>
-
-                {canApprove && reviewing === row.submissionId && (
-                  <ReviewBox
-                    submissionId={row.submissionId}
-                    onDone={async () => {
-                      setReviewing(null);
-                      await load();
-                    }}
-                    onError={setActionError}
-                  />
-                )}
-              </div>
-            </Reveal>
-          ))}
+              </Reveal>
+            );
+          })}
         </div>
       )}
 
@@ -265,7 +280,7 @@ function EditDocumentModal({
     setSaving(true);
     setError(null);
     try {
-      await mutate(`/api/documents/${row.submissionId}`, {
+      await mutate(`/api/documents/${row.sourceId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

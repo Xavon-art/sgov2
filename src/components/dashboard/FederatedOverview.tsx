@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "@/components/fx/Reveal";
 import { ButtonLink } from "@/components/ui/Button";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
+import { useBudgetStore } from "@/components/dashboard/budget-store";
 import { NAV_ICONS, type NavItem } from "@/components/dashboard/AppShell";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
-import { formatMoney, type BudgetDashboard } from "@/lib/budgets";
+import { formatMoney } from "@/lib/budgets";
 import type { ResolutionRow } from "@/lib/resolutions";
 import {
   IconArrowRight,
@@ -153,9 +154,9 @@ export function FederatedOverview({
   side: "usg" | "lsg";
 }) {
   const { account, meta } = useDashboard();
+  const { dashboard: budgetDashboard } = useBudgetStore();
   const [counts, setCounts] = useState<Counts | null>(null);
   const [breakdown, setBreakdown] = useState<NonNullable<OverviewPayload["breakdown"]> | null>(null);
-  const [budgetDashboard, setBudgetDashboard] = useState<BudgetDashboard | null>(null);
   const [letterCounts, setLetterCounts] = useState<LetterCounts | null>(null);
   const [error, setError] = useState("");
 
@@ -189,26 +190,6 @@ export function FederatedOverview({
       alive = false;
     };
   }, []);
-
-  useEffect(() => {
-    if (side !== "lsg") return;
-    let alive = true;
-    void (async () => {
-      try {
-        const res = await fetch("/api/budgets");
-        const body = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          dashboard?: BudgetDashboard | null;
-        };
-        if (alive && res.ok && body.ok) setBudgetDashboard(body.dashboard ?? null);
-      } catch {
-        if (alive) setBudgetDashboard(null);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [side]);
 
   useEffect(() => {
     if (side !== "lsg") return;

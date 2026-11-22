@@ -6,6 +6,12 @@ import type { BudgetDashboard, BudgetRow, BudgetSummary } from "@/lib/budgets";
 
 export const runtime = "nodejs";
 
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
+
+function json(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, { ...init, headers: NO_STORE_HEADERS });
+}
+
 type ListResult = RpcResult & { scope?: string; budgets?: BudgetRow[] };
 type SummaryResult = RpcResult & BudgetSummary;
 type DashboardResult = RpcResult & BudgetDashboard;
@@ -35,13 +41,13 @@ const UUID =
 export async function GET() {
   const token = await readSessionToken();
   if (!token) {
-    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+    return json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
   try {
     const res = await callRpc<ListResult>("list_budgets", { p_session_token: token });
     if (!res.ok) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: messageFor(res.reason), reason: res.reason },
         { status: statusForReason(res.reason) },
       );
@@ -69,7 +75,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       scope,
       budgets: res.budgets ?? [],
@@ -78,7 +84,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("[budgets:list]", error);
-    return NextResponse.json(
+    return json(
       { ok: false, message: "We could not load the budget requests." },
       { status: 500 },
     );
@@ -96,7 +102,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const token = await readSessionToken();
   if (!token) {
-    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+    return json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
   let body: {
@@ -109,7 +115,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
+    return json(
       { ok: false, message: "Send the request as JSON." },
       { status: 400 },
     );
@@ -117,7 +123,7 @@ export async function POST(req: Request) {
 
   const title = typeof body.title === "string" ? body.title.trim() : "";
   if (title.length < 4 || title.length > 140) {
-    return NextResponse.json(
+    return json(
       { ok: false, message: messageFor("invalid_title"), reason: "invalid_title" },
       { status: 400 },
     );
@@ -127,7 +133,7 @@ export async function POST(req: Request) {
   if (typeof body.proposalId === "string" && body.proposalId.trim()) {
     proposalId = body.proposalId.trim();
     if (!UUID.test(proposalId)) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: "That proposal reference is not valid." },
         { status: 400 },
       );
@@ -138,7 +144,7 @@ export async function POST(req: Request) {
   if (typeof body.eventId === "string" && body.eventId.trim()) {
     eventId = body.eventId.trim();
     if (!UUID.test(eventId)) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: "That event reference is not valid." },
         { status: 400 },
       );
@@ -146,7 +152,7 @@ export async function POST(req: Request) {
   }
 
   if (proposalId && eventId) {
-    return NextResponse.json(
+    return json(
       {
         ok: false,
         message: "A budget can link to a proposal or an event, not both.",
@@ -157,7 +163,7 @@ export async function POST(req: Request) {
   }
 
   if (!Array.isArray(body.items)) {
-    return NextResponse.json(
+    return json(
       { ok: false, message: messageFor("invalid_items"), reason: "invalid_items" },
       { status: 400 },
     );
@@ -173,7 +179,7 @@ export async function POST(req: Request) {
       Object.prototype.hasOwnProperty.call(item, "subtotal"),
   );
   if (sendsSubtotal) {
-    return NextResponse.json(
+    return json(
       {
         ok: false,
         message: "Send each line's label, quantity, and unit cost; totals are calculated on the server.",
@@ -199,13 +205,13 @@ export async function POST(req: Request) {
     >(rpc, args);
 
     if (!res.ok) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: messageFor(res.reason), reason: res.reason },
         { status: statusForReason(res.reason) },
       );
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       budgetId: res.budgetId,
       requestedTotal: res.requestedTotal,
@@ -213,7 +219,7 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     console.error("[budgets:submit]", error);
-    return NextResponse.json(
+    return json(
       { ok: false, message: "We could not send that request." },
       { status: 500 },
     );

@@ -5,6 +5,12 @@ import { readSessionToken } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
+const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
+
+function json(body: unknown, init?: ResponseInit) {
+  return NextResponse.json(body, { ...init, headers: NO_STORE_HEADERS });
+}
+
 type ReviewResult = RpcResult & {
   id?: string;
   status?: string;
@@ -36,7 +42,7 @@ function statusForReason(reason?: string): number {
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const token = await readSessionToken();
   if (!token) {
-    return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
+    return json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
   const { id } = await ctx.params;
@@ -45,7 +51,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
+    return json(
       { ok: false, message: "Send the decision as JSON." },
       { status: 400 },
     );
@@ -53,7 +59,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const decision = typeof body.decision === "string" ? body.decision : "";
   if (!DECISIONS.has(decision)) {
-    return NextResponse.json(
+    return json(
       { ok: false, message: "Choose approve, return or reject." },
       { status: 400 },
     );
@@ -67,7 +73,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } else if (typeof body.approvedTotal === "string" && body.approvedTotal.trim()) {
     const n = Number(body.approvedTotal.replace(/[,\s]/g, ""));
     if (!Number.isFinite(n)) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: messageFor("invalid_amount"), reason: "invalid_amount" },
         { status: 400 },
       );
@@ -87,13 +93,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
 
     if (!res.ok) {
-      return NextResponse.json(
+      return json(
         { ok: false, message: messageFor(res.reason), reason: res.reason },
         { status: statusForReason(res.reason) },
       );
     }
 
-    return NextResponse.json({
+    return json({
       ok: true,
       budgetId: res.id,
       status: res.status,
@@ -102,7 +108,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     });
   } catch (error) {
     console.error("[budgets:review]", error);
-    return NextResponse.json(
+    return json(
       { ok: false, message: "We could not record that decision." },
       { status: 500 },
     );

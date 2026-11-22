@@ -62,6 +62,10 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isAccomplished(status: AccomplishmentReportStatus): boolean {
+  return status === "acknowledged";
+}
+
 export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventId, setEventId] = useState("");
@@ -220,6 +224,27 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
     if (reportable !== 0) return reportable;
     return (a.eventDate ?? "").localeCompare(b.eventDate ?? "");
   });
+  const needsSubmission = rows.filter((row) => !isAccomplished(row.status));
+  const accomplished = rows.filter((row) => isAccomplished(row.status));
+
+  const renderReportRow = (row: AccomplishmentReportRow, i: number) => (
+    <Reveal key={row.id} delay={i * ROW_STAGGER_MS}>
+      <button
+        onClick={() => void open(row.id)}
+        className="w-full rounded-2xl border border-line bg-paper p-5 text-left transition hover:border-ink/20"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-lg font-medium">{row.eventTitle}</div>
+            <div className="text-sm text-muted">
+              {row.unitName} • {formatAccomplishmentDate(row.submittedAt)}
+            </div>
+          </div>
+          <StatusBadge status={row.status} />
+        </div>
+      </button>
+    </Reveal>
+  );
 
   return (
     <div className="grid gap-6">
@@ -245,7 +270,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
                     title={
                       event.canReport
                         ? `File an accomplishment report for ${event.title}`
-                        : "Only people assigned to this event by the USG can file a report."
+                        : "Only the required units can file a report for this event."
                     }
                     onClick={() => {
                       setSelected(null);
@@ -281,7 +306,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
                           File report
                         </>
                       ) : (
-                        "Not assigned"
+                        "Not required"
                       )}
                     </span>
                   </button>
@@ -313,26 +338,24 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
               No accomplishment reports yet.
             </div>
           )}
-          {state === "ready" && (
-            <div className="grid gap-3">
-              {rows.map((row, i) => (
-                <Reveal key={row.id} delay={i * ROW_STAGGER_MS}>
-                  <button
-                    onClick={() => void open(row.id)}
-                    className="w-full rounded-2xl border border-line bg-paper p-5 text-left transition hover:border-ink/20"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-lg font-medium">{row.eventTitle}</div>
-                        <div className="text-sm text-muted">
-                          {row.unitName} • {formatAccomplishmentDate(row.submittedAt)}
-                        </div>
-                      </div>
-                      <StatusBadge status={row.status} />
-                    </div>
-                  </button>
-                </Reveal>
-              ))}
+          {state === "ready" && rows.length > 0 && (
+            <div className="grid gap-6">
+              <section>
+                <h3 className="mb-2 text-base font-medium">Needs Submission</h3>
+                {needsSubmission.length === 0 ? (
+                  <p className="text-sm text-muted">No reports need submission.</p>
+                ) : (
+                  <div className="grid gap-3">{needsSubmission.map(renderReportRow)}</div>
+                )}
+              </section>
+              <section>
+                <h3 className="mb-2 text-base font-medium">Accomplished Reports</h3>
+                {accomplished.length === 0 ? (
+                  <p className="text-sm text-muted">No accomplished reports yet.</p>
+                ) : (
+                  <div className="grid gap-3">{accomplished.map(renderReportRow)}</div>
+                )}
+              </section>
             </div>
           )}
         </>
@@ -567,7 +590,7 @@ function ReviewActions({
       />
       <div className="mt-2 flex flex-wrap gap-2">
         <Button size="sm" disabled={busy} onClick={() => void review("acknowledged")}>
-          Acknowledge
+          Approve
         </Button>
         <Button size="sm" disabled={busy || !remark.trim()} onClick={() => void review("returned")}>
           Return

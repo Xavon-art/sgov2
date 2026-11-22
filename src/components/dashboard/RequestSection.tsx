@@ -118,7 +118,7 @@ type PersonalReq = {
   neededOn: string | null;
   neededTime: string | null;
   neededTimezone: string | null;
-  status: "submitted" | "granted" | "declined" | "withdrawn" | "expired";
+  status: "submitted" | "granted" | "declined" | "needs_revision" | "submission_required" | "withdrawn" | "expired";
   decisionNote: string | null;
   decidedAt: string | null;
   document?: { storagePath: string; originalName: string; mimeType: string; sizeBytes: number } | null;
@@ -560,11 +560,14 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
                     {pr.unitName} • {pr.status}
                   </div>
                 </div>
-                {isUsg && pr.status === "submitted" && <DecidePR prId={pr.id} onDone={loadPersonal} />}
                 {!isUsg && pr.status === "submitted" && <WithdrawPR prId={pr.id} onDone={loadPersonal} />}
               </div>
               <p className="mt-2 whitespace-pre-wrap text-sm text-body">{pr.coverLetter}</p>
               {pr.decisionNote && <p className="mt-2 text-sm text-muted">Note: {pr.decisionNote}</p>}
+              {isUsg && pr.status === "submitted" && <DecisionSection pr={pr} onDone={loadPersonal} />}
+              {!isUsg && (pr.status === "needs_revision" || pr.status === "submission_required") && (
+                <ResubmitPR pr={pr} onDone={loadPersonal} />
+              )}
             </div>
           ))}
         </div>
@@ -1052,54 +1055,105 @@ function CloseTaskButton({ taskId, onDone }: { taskId: string; onDone: () => voi
   );
 }
 
-function DecidePR({ prId, onDone }: { prId: string; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
-  const [decision, setDecision] = useState<"granted" | "declined">("granted");
+function DecisionSection({ pr, onDone }: { pr: PersonalReq; onDone: () => void }) {
+  const [note, setNote] = useState(pr.decisionNote ?? "");
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const decide = async () => {
+  const decisions = [
+    { decision: "granted", label: "Approve" },
+    { decision: "declined", label: "Decline" },
+    { decision: "needs_revision", label: "Need revision" },
+    { decision: "submission_required", label: "Require submission" },
+  ] as const;
+
+  const decide = async (decision: (typeof decisions)[number]["decision"]) => {
+    const trimmed = note.trim();
+    if (decision !== "granted" && trimmed.length < 2) {
+      setError("Write a decision note before choosing that action.");
+      return;
+    }
+    setBusy(true);
     setError(null);
     try {
       await mutate("/api/requests", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ requestId: prId, decision, note }),
+        body: JSON.stringify({ requestId: pr.id, decision, note: trimmed }),
       });
-      setOpen(false);
       onDone();
     } catch (e) {
       setError(actionMessage(e, "We could not update that request."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 rounded-xl border border-line bg-canvas/40 p-4">
+      <div className="mb-2 text-sm font-medium">Decision</div>
+      <textarea
+        aria-label="Decision note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={3}
+        placeholder="Decision note (optional to approve, required otherwise)"
+        className="w-full rounded-xl border border-line px-3 py-2 text-sm"
+      />
+      <div className="mt-2 flex flex-wrap gap-2">
+        {decisions.map((option) => (
+          <button
+            key={option.decision}
+            onClick={() => void decide(option.decision)}
+            disabled={busy || (option.decision !== "granted" && note.trim().length < 2)}
+            className="rounded-full border border-line px-3 py-1 text-xs disabled:opacity-50"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <ActionError message={error} />
+    </div>
+  );
+}
+
+function ResubmitPR({ pr, onDone }: { pr: PersonalReq; onDone: () => void }) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const resubmit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await mutate("/api/requests", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "resubmit", requestId: pr.id, note: note.trim() }),
+      });
+      onDone();
+    } catch (e) {
+      setError(actionMessage(e, "We could not resubmit that request."));
+    } finally {
+      setBusy(false);
     }
   };
   return (
-    <>
-      <div className="flex gap-2">
-        <button onClick={() => { setDecision("granted"); setOpen(true); }} className="rounded-full border border-line px-2 py-0.5 text-xs">
-          Grant
-        </button>
-        <button onClick={() => { setDecision("declined"); setOpen(true); }} className="rounded-full border border-line px-2 py-0.5 text-xs">
-          Decline
-        </button>
+    <div className="mt-4 rounded-xl border border-line bg-canvas/40 p-4">
+      <div className="mb-2 text-sm font-medium">Respond to USG</div>
+      <textarea
+        aria-label="Resubmit note"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={3}
+        placeholder="What did you change or submit?"
+        className="w-full rounded-xl border border-line px-3 py-2 text-sm"
+      />
+      <div className="mt-2 flex gap-2">
+        <Button size="sm" disabled={busy} onClick={() => void resubmit()}>
+          Resubmit
+        </Button>
       </div>
       <ActionError message={error} />
-      {open && (
-        <ConfirmDialog
-          open
-          title={decision === "granted" ? "Grant request" : "Decline request"}
-          description={
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              className="w-full rounded-lg border border-line px-2 py-1 text-sm"
-              placeholder={decision === "declined" ? "Reason required" : "Note (optional)"}
-            />
-          }
-          confirmLabel={decision === "granted" ? "Grant" : "Decline"}
-          onConfirm={decide}
-          onCancel={() => setOpen(false)}
-        />
-      )}
-    </>
+    </div>
   );
 }
 

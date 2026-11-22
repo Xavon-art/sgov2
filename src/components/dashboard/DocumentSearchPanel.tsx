@@ -9,6 +9,7 @@ import {
   DOCUMENT_STATUS_LABEL,
   GROUP_KIND_LABEL,
   formatDocumentDate,
+  type DocumentGroupKind,
   type DocumentRow,
   type DocumentStatus,
 } from "@/lib/document-search";
@@ -27,29 +28,47 @@ export function DocumentSearchPanel() {
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
+  const [groupKind, setGroupKind] = useState("");
+  const [originUnitId, setOriginUnitId] = useState("");
   const [rows, setRows] = useState<DocumentRow[]>([]);
+  const [origins, setOrigins] = useState<{ id: string; name: string }[]>([]);
   const [state, setState] = useState<SearchState>("loading");
   const [queried, setQueried] = useState(false);
 
   const run = useCallback(async () => {
+    const firstLoad = !queried;
     setState("loading");
     setQueried(true);
     const params = new URLSearchParams();
     if (q.trim()) params.set("q", q.trim());
     if (type.trim()) params.set("type", type.trim());
     if (status) params.set("status", status);
+    if (groupKind) params.set("groupKind", groupKind);
+    if (originUnitId) params.set("originUnitId", originUnitId);
     params.set("limit", "100");
 
     try {
       const res = await fetch(`/api/documents?${params.toString()}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
-      setRows((json.rows as DocumentRow[]) ?? []);
+      const nextRows = (json.rows as DocumentRow[]) ?? [];
+      setRows(nextRows);
+      if (firstLoad) {
+        const seen = new Map<string, string>();
+        for (const row of nextRows) {
+          if (row.originUnitId && row.unitName) seen.set(row.originUnitId, row.unitName);
+        }
+        setOrigins(
+          [...seen.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      }
       setState("ready");
     } catch {
       setState("error");
     }
-  }, [q, status, type]);
+  }, [groupKind, originUnitId, q, queried, status, type]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -79,7 +98,7 @@ export function DocumentSearchPanel() {
             className={selectClass}
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="mb-1 block text-sm text-muted" htmlFor="document-search-type">
               Type
@@ -108,6 +127,42 @@ export function DocumentSearchPanel() {
               <option value="rejected">Rejected</option>
             </select>
           </div>
+          <div>
+            <label className="mb-1 block text-sm text-muted" htmlFor="document-search-group">
+              Group
+            </label>
+            <select
+              id="document-search-group"
+              value={groupKind}
+              onChange={(e) => setGroupKind(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Any group</option>
+              {(Object.keys(GROUP_KIND_LABEL) as DocumentGroupKind[]).map((kind) => (
+                <option key={kind} value={kind}>
+                  {GROUP_KIND_LABEL[kind]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-muted" htmlFor="document-search-origin">
+              Originating LSG
+            </label>
+            <select
+              id="document-search-origin"
+              value={originUnitId}
+              onChange={(e) => setOriginUnitId(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Any LSG</option>
+              {origins.map((origin) => (
+                <option key={origin.id} value={origin.id}>
+                  {origin.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div className="flex justify-end">
           <Button type="submit" size="sm" disabled={state === "loading"}>
@@ -134,41 +189,54 @@ export function DocumentSearchPanel() {
 
       {state === "ready" && rows.length > 0 && (
         <div className="grid gap-3">
-          {rows.map((row, i) => (
-            <Reveal key={row.submissionId} delay={i * ROW_STAGGER_MS}>
-              <div className="rounded-2xl border border-line bg-paper p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-lg font-medium">{row.title}</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-                      <span className="font-semibold tracking-[0.06em] uppercase">{row.type}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{row.unitName ?? "Organization-wide"}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{formatDocumentDate(row.submittedAt)}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{row.groupLabel ?? GROUP_KIND_LABEL[row.groupKind]}</span>
+          {rows.map((row, i) => {
+            const href = row.downloadUrl ?? row.externalUrl;
+            const isExternal = !row.downloadUrl && Boolean(row.externalUrl);
+
+            return (
+              <Reveal key={row.documentKey || row.submissionId} delay={i * ROW_STAGGER_MS}>
+                <div className="rounded-2xl border border-line bg-paper p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-lg font-medium">{row.title}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+                        <span className="font-semibold tracking-[0.06em] uppercase">{row.type}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>LSG: {row.unitName ?? "Organization-wide"}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDocumentDate(row.submittedAt)}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                          {GROUP_KIND_LABEL[row.groupKind]}: {row.groupLabel ?? "—"}
+                        </span>
+                      </div>
                     </div>
+                    <StatusBadge status={row.status} />
                   </div>
-                  <StatusBadge status={row.status} />
-                </div>
 
-                {row.description && (
-                  <p className="mt-3 whitespace-pre-wrap text-sm text-body">{row.description}</p>
-                )}
-                {row.keywords && <p className="mt-2 text-xs text-muted">Keywords: {row.keywords}</p>}
+                  {row.description && (
+                    <p className="mt-3 whitespace-pre-wrap text-sm text-body">{row.description}</p>
+                  )}
+                  {row.keywords && <p className="mt-2 text-xs text-muted">Keywords: {row.keywords}</p>}
 
-                <div className="mt-4">
-                  <a
-                    href={`/api/files/${row.submissionId}`}
-                    className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
-                  >
-                    Download
-                  </a>
+                  <div className="mt-4">
+                    {href ? (
+                      <a
+                        href={href}
+                        target={isExternal ? "_blank" : undefined}
+                        rel={isExternal ? "noreferrer" : undefined}
+                        className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+                      >
+                        {isExternal ? "Open support link" : "Download"}
+                      </a>
+                    ) : (
+                      <span className="text-sm text-muted">No attachment filed</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </Reveal>
-          ))}
+              </Reveal>
+            );
+          })}
         </div>
       )}
     </div>

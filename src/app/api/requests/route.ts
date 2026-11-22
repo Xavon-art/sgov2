@@ -27,6 +27,16 @@ type RequestPayload = RpcResult & {
   status?: string;
 };
 
+const DECISIONS = new Set([
+  "granted",
+  "declined",
+  "needs_revision",
+  "submission_required",
+  "withdrawn",
+]);
+
+const ACTIONS = new Set(["resubmit"]);
+
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
   if (reason === "rate_limited") return 429;
@@ -145,12 +155,55 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
+  const action = typeof body.action === "string" ? body.action : "";
+  if (action && !ACTIONS.has(action)) {
+    return NextResponse.json(
+      { ok: false, reason: "invalid_request", message: messageFor("invalid_request") },
+      { status: 400 },
+    );
+  }
+
+  const note = typeof body.note === "string" ? body.note : "";
+
+  if (action === "resubmit") {
+    try {
+      const res = await callRpc<RequestPayload>("resubmit_personal_request", {
+        p_session_token: token,
+        p_request_id: requestId,
+        p_note: note,
+      });
+
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: statusForReason(res.reason) },
+        );
+      }
+
+      return NextResponse.json({ ok: true, status: res.status });
+    } catch (error) {
+      console.error("[requests:resubmit]", error);
+      return NextResponse.json(
+        { ok: false, message: "We could not resubmit that request. Please try again." },
+        { status: 500 },
+      );
+    }
+  }
+
+  const decision = typeof body.decision === "string" ? body.decision : "";
+  if (!DECISIONS.has(decision)) {
+    return NextResponse.json(
+      { ok: false, reason: "invalid_request", message: messageFor("invalid_request") },
+      { status: 400 },
+    );
+  }
+
   try {
     const res = await callRpc<RequestPayload>("decide_personal_request", {
       p_session_token: token,
       p_request_id: requestId,
-      p_decision: typeof body.decision === "string" ? body.decision : "",
-      p_note: typeof body.note === "string" ? body.note : "",
+      p_decision: decision,
+      p_note: note,
     });
 
     if (!res.ok) {
