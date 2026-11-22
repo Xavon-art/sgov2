@@ -67,6 +67,14 @@ check(
     moveQuestion.includes("await load();"),
 );
 
+const questionPatchRoute = src("src/app/api/surveys/[id]/questions/[qid]/route.ts");
+check(
+  "order-only question updates send a null title instead of an empty one",
+  questionPatchRoute.includes(
+    'p_title: typeof body.title === "string" && body.title.trim() ? body.title.trim() : null,',
+  ),
+);
+
 const orgChart = src("src/components/structure/OrgChartDragDrop.tsx");
 check(
   "org-chart photo upload uses one file input per node",

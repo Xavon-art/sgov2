@@ -38,7 +38,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       p_session_token: token,
       p_question_id: qid,
       p_qtype: typeof body.type === "string" ? body.type : null,
-      p_title: typeof body.title === "string" ? body.title.trim() : "",
+      p_title: typeof body.title === "string" && body.title.trim() ? body.title.trim() : null,
       p_description: typeof body.description === "string" ? body.description.trim() : null,
       p_required: typeof body.required === "boolean" ? body.required : null,
       p_options: Array.isArray(body.options) ? body.options : null,
