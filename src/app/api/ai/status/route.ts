@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { isAiConfigured, isVisionConfigured } from "@/lib/ai/config";
+import { isVisionConfigured } from "@/lib/ai/config";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    configured: isAiConfigured(),
+    configured: true,
     vision: isVisionConfigured(),
   });
 }

@@ -30,7 +30,7 @@ export function DraftWithAiButton({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const blocked = Boolean(disabled) || loading || ai.loading || !ai.configured;
+  const blocked = Boolean(disabled) || loading || ai.loading;
 
   const generate = async () => {
     setLoading(true);
@@ -95,9 +95,6 @@ export function DraftWithAiButton({
         >
           {loading ? "Drafting..." : label}
         </Button>
-        {!ai.loading && !ai.configured ? (
-          <span className="text-[0.75rem] text-muted">AI is not configured</span>
-        ) : null}
         {error ? <span className="text-[0.75rem] text-[#a5442c]">{error}</span> : null}
       </div>
 

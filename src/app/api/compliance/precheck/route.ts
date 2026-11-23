@@ -13,9 +13,9 @@ import {
 } from "@/lib/compliance/precheck-request";
 import type { MatchedPrecheckItem } from "@/lib/compliance/precheck-request";
 import type { PreflightItemInput } from "@/lib/compliance/types";
-import { generateJson, transcribeImage } from "@/lib/ai/client";
-import { isAiConfigured, isVisionConfigured } from "@/lib/ai/config";
-import { buildAdvicePrompt } from "@/lib/ai/prompts";
+import { transcribeImage } from "@/lib/ai/client";
+import { isVisionConfigured } from "@/lib/ai/config";
+import { ASSISTANT_MODEL, localAdvice } from "@/lib/ai/local-assistant";
 import { adviceSchema } from "@/lib/ai/schemas";
 
 export const runtime = "nodejs";
@@ -116,7 +116,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const aiConfigured = isAiConfigured();
+    const aiConfigured = true;
     let advice: string | null = null;
     let fixes: string[] = [];
     let model: string | null = null;
@@ -128,22 +128,15 @@ export async function POST(req: Request) {
         item.status === "suspect",
     );
 
-    if (aiConfigured && needsAdvice) {
+    if (needsAdvice) {
       try {
-        const prompt = buildAdvicePrompt({
-          report,
-          context: body.context,
-        });
-        const generated = await generateJson({
-          system: prompt.system,
-          user: prompt.user,
-          temperature: 0.2,
-          schema: adviceSchema,
-          kind: "advice",
-        });
-        advice = generated.value.paragraph;
-        fixes = generated.value.fixes;
-        model = generated.meta.model;
+        const generated = await localAdvice({ report, context: body.context });
+        const checked = adviceSchema.safeParse(generated);
+        if (checked.success) {
+          advice = checked.data.paragraph;
+          fixes = checked.data.fixes;
+          model = ASSISTANT_MODEL;
+        }
       } catch {
         advice = null;
         fixes = [];

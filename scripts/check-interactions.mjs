@@ -10,6 +10,13 @@ const between = (text, start, end) => {
   return a < 0 || b < 0 ? "" : text.slice(a, b);
 };
 const count = (text, needle) => text.split(needle).length - 1;
+const maybeSrc = (p) => {
+  try {
+    return src(p);
+  } catch {
+    return "";
+  }
+};
 
 let passed = 0;
 let total = 0;
@@ -319,6 +326,16 @@ check(
   "survey links name the public respondent path and the internal detail path",
   survey.includes("Public respondent link:") &&
     surveys.includes("Open internal survey detail"),
+);
+
+const activationRoute = src("src/app/activate/route.ts");
+const activationHandoff = maybeSrc("src/app/activate/complete/page.tsx");
+check(
+  "activation uses a client handoff that marks the new document as booted",
+  activationRoute.includes("/activate/complete?token=") &&
+    activationHandoff.includes("markBooted()") &&
+    activationHandoff.includes("router.replace(") &&
+    !activationHandoff.includes("window.location"),
 );
 
 console.log(`\n${passed}/${total} interaction checks passed.`);

@@ -53,7 +53,9 @@ export async function GET(req: Request) {
       await setSessionCookie(res.token);
     }
 
-    return NextResponse.redirect(new URL("/dashboard", url.origin));
+    return NextResponse.redirect(
+      new URL(`/activate/complete?token=${encodeURIComponent(token)}`, url.origin),
+    );
   } catch (error) {
     console.error("[activate]", error);
     return NextResponse.redirect(new URL("/login", url.origin));

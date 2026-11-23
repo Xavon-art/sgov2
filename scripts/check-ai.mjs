@@ -142,6 +142,7 @@ assertFile("src/app/api/ai/status/route.ts");
     );
     check("status route returns configured", source.includes("configured"));
     check("status route returns vision", source.includes("vision"));
+    check("assistant experience is always available", source.includes("configured: true"));
     check(
       "status route exposes no configuration",
       !source.includes("AI_API_KEY") &&
@@ -150,6 +151,9 @@ assertFile("src/app/api/ai/status/route.ts");
     );
   }
 }
+
+assertIncludes("package.json", ["afinn-165"]);
+assertIncludes("src/lib/ai/local-assistant.ts", ['from "afinn-165"']);
 
 assertFile("src/lib/compliance/precheck-client.ts");
 assertFile("src/components/ai/useAiStatus.ts");
@@ -173,6 +177,7 @@ assertFile("src/app/api/compliance/precheck/route.ts");
     check("precheck route requires a session", source.includes("readSessionToken"));
     check("precheck route rate limits", source.includes("rateLimit"));
     check("precheck route runs the preflight engine", source.includes("runPreflightCheck"));
+    check("precheck route uses the local assistant", source.includes("localAdvice"));
   }
 }
 
@@ -210,7 +215,10 @@ assertFile("src/app/api/compliance/precheck/route.ts");
     check("precheck panel has a check action", source.includes("Check files"));
     check("precheck panel labels unchecked links", source.includes("Not inspected"));
     check("precheck panel has send anyway", source.includes("Send anyway"));
-    check("precheck panel shows the AI-off state", source.includes("AI is not configured"));
+    check(
+      "precheck panel hides configuration notices",
+      !source.includes("AI is not configured") && !source.includes("deterministic reading aid"),
+    );
     check("precheck panel reports blocked state", source.includes("onBlockedChange"));
   }
 }
@@ -250,6 +258,7 @@ assertFile("src/components/dashboard/SurveyAiSummary.tsx");
     check("summary route loads context", source.includes("survey_ai_context"));
     check("summary route consumes quota", source.includes("consume_ai_quota"));
     check("summary route returns 400 for no responses", source.includes("No responses to summarize yet."));
+    check("summary route uses the local assistant", source.includes("localSurveySummary"));
   }
 }
 
@@ -269,7 +278,10 @@ assertFile("src/components/dashboard/SurveyAiSummary.tsx");
     const source = entry.source;
     check("summary panel has a generate action", source.includes("Generate AI summary"));
     check("summary panel has a regenerate action", source.includes("Regenerate"));
-    check("summary panel shows the AI-off state", source.includes("AI is not configured"));
+    check(
+      "summary panel hides configuration notices",
+      !source.includes("AI is not configured"),
+    );
     check("summary panel flags stale summaries", source.includes("out of date"));
     check("summary panel shows the disclaimer", source.includes("AI-generated summary"));
     check(
@@ -279,6 +291,7 @@ assertFile("src/components/dashboard/SurveyAiSummary.tsx");
   }
 }
 
+assertFile("src/lib/ai/local-assistant.ts");
 assertFile("src/app/api/ai/draft/route.ts");
 assertFile("src/components/ai/DraftWithAiButton.tsx");
 
@@ -304,6 +317,7 @@ assertFile("src/components/ai/DraftWithAiButton.tsx");
         !source.includes('"update_'),
     );
     check("draft route clips fields", source.includes("2_000") || source.includes("2000"));
+    check("draft route uses the local assistant", source.includes("localDraft"));
   }
 }
 
@@ -316,6 +330,7 @@ assertFile("src/components/ai/DraftWithAiButton.tsx");
     check("draft control downloads", source.includes("Download .txt"));
     check("draft control shows a disclaimer", source.includes("AI-generated"));
     check("draft control uses the clipboard", source.includes("navigator.clipboard"));
+    check("draft control hides configuration notices", !source.includes("AI is not configured"));
   }
 }
 
@@ -358,8 +373,8 @@ assertIncludes(".env.local.example", [
 }
 assertIncludes("docs/REQUIREMENT-CHECK.md", ["Pre-flight check", "deterministic"]);
 assertIncludes("docs/DECISIONS.md", [
-  "AI assistance is optional",
-  "deterministic engine remains authoritative",
+  "SmartGov Assistant writes the advisory prose",
+  "the file check remains authoritative",
 ]);
 
 async function load(relativePath) {
@@ -390,6 +405,7 @@ async function runBehaviorChecks() {
   const schemas = await load("../src/lib/ai/schemas.ts");
   const prompts = await load("../src/lib/ai/prompts.ts");
   const precheck = await load("../src/lib/compliance/precheck-request.ts");
+  const assistant = await load("../src/lib/ai/local-assistant.ts");
 
   withEnv(
     {
@@ -560,6 +576,116 @@ async function runBehaviorChecks() {
   check(
     "draft defaults missing highlights",
     JSON.stringify(schemas.draftResponseSchema.parse({ draft: draftText }).highlights) === "[]",
+  );
+
+  const draftArgs = {
+    kind: "request_letter",
+    fields: {
+      subject: "Use of gym",
+      purpose: "For the intramural tournament",
+      neededOn: "2026-12-01",
+    },
+    account: {
+      displayName: "Student Council",
+      universityName: "Test University",
+      campusName: "Main Campus",
+    },
+  };
+  const firstDraft = await assistant.localDraft(draftArgs);
+  const secondDraft = await assistant.localDraft(draftArgs);
+  check(
+    "local draft matches the response schema",
+    schemas.draftResponseSchema.safeParse(firstDraft).success,
+  );
+  check(
+    "local draft uses the requested context",
+    firstDraft.draft.includes("Use of gym") &&
+      firstDraft.draft.includes("Test University") &&
+      firstDraft.draft.includes("2026-12-01"),
+  );
+  check(
+    "local draft is deterministic",
+    JSON.stringify(firstDraft) === JSON.stringify(secondDraft),
+  );
+
+  const summaryArgs = {
+    context: {
+      survey: { title: "Event feedback" },
+      questions: [{ id: "q1", type: "text" }],
+      responses: [
+        { answers: { q1: "The venue was good but the schedule was confusing" } },
+      ],
+    },
+    results: { questions: [] },
+    totalResponses: 1,
+    truncated: false,
+  };
+  const firstSummary = await assistant.localSurveySummary(summaryArgs);
+  const secondSummary = await assistant.localSurveySummary(summaryArgs);
+  check(
+    "local summary matches the response schema",
+    schemas.surveySummarySchema.safeParse(firstSummary).success,
+  );
+  check(
+    "local summary finds recurring themes",
+    firstSummary.themes.some((theme) => theme.label === "Venue and facilities") &&
+      firstSummary.themes.some((theme) => theme.label === "Schedule and timing"),
+  );
+  check(
+    "local summary is deterministic",
+    JSON.stringify(firstSummary) === JSON.stringify(secondSummary),
+  );
+
+  const negativeSummary = await assistant.localSurveySummary({
+    context: {
+      survey: { title: "Event feedback" },
+      questions: [{ id: "q1", type: "text" }],
+      responses: [{ answers: { q1: "The venue was terrible and the schedule was awful" } }],
+    },
+    results: { questions: [] },
+    totalResponses: 1,
+    truncated: false,
+  });
+  check(
+    "local summary uses the cloned AFINN sentiment model",
+    negativeSummary.sentiment.negative > negativeSummary.sentiment.positive,
+  );
+
+  const adviceReport = {
+    summary: { items: 2, present: 0, missing: 1, unreadable: 1, suspect: 0, ok: 0 },
+    items: [
+      {
+        status: "missing",
+        label: "Accomplishment report",
+        recommendation: "Attach the signed report.",
+      },
+      {
+        status: "unreadable",
+        label: "Liquidation report",
+        recommendation: "Re-export the liquidation as a text PDF.",
+      },
+    ],
+  };
+  const firstAdvice = await assistant.localAdvice({
+    report: adviceReport,
+    context: { title: "Year-end activity" },
+  });
+  const secondAdvice = await assistant.localAdvice({
+    report: adviceReport,
+    context: { title: "Year-end activity" },
+  });
+  check(
+    "local advice matches the response schema",
+    schemas.adviceSchema.safeParse(firstAdvice).success,
+  );
+  check(
+    "local advice names the items needing attention",
+    firstAdvice.paragraph.includes("Accomplishment report") &&
+      firstAdvice.fixes.some((fix) => fix.includes("text PDF")),
+  );
+  check(
+    "local advice is deterministic",
+    JSON.stringify(firstAdvice) === JSON.stringify(secondAdvice),
   );
 
   const summaryPrompt = prompts.buildSummaryPrompt({

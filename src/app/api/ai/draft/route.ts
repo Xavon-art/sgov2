@@ -2,11 +2,7 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
-import { generateJson } from "@/lib/ai/client";
-import { isAiConfigured } from "@/lib/ai/config";
-import { AiError } from "@/lib/ai/errors";
-import { reasonForAiError, statusForAiError } from "@/lib/ai/http";
-import { buildDraftPrompt } from "@/lib/ai/prompts";
+import { ASSISTANT_MODEL, localDraft } from "@/lib/ai/local-assistant";
 import { draftRequestSchema, draftResponseSchema } from "@/lib/ai/schemas";
 import type { DraftFields } from "@/lib/ai/types";
 
@@ -20,13 +16,6 @@ function statusForReason(reason?: string): number {
   if (reason === "forbidden") return 403;
   if (reason === "not_found") return 404;
   return 400;
-}
-
-function aiMessage(code: string): string {
-  if (code === "ai_not_configured") return "AI is not configured.";
-  if (code === "ai_timeout") return "The AI request timed out.";
-  if (code === "ai_invalid_output") return "The AI returned an unusable draft.";
-  return "The AI service is unavailable.";
 }
 
 function clipFields(fields: DraftFields): DraftFields {
@@ -52,17 +41,6 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { ok: false, message: "Sign in to continue." },
       { status: 401 },
-    );
-  }
-
-  if (!isAiConfigured()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: aiMessage("ai_not_configured"),
-        reason: "ai_not_configured",
-      },
-      { status: 503 },
     );
   }
 
@@ -99,7 +77,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const prompt = buildDraftPrompt({
+    const generated = await localDraft({
       kind,
       fields,
       account: {
@@ -108,31 +86,21 @@ export async function POST(req: Request) {
         campusName: account.campusName,
       },
     });
-
-    const generated = await generateJson({
-      system: prompt.system,
-      user: prompt.user,
-      temperature: 0.4,
-      schema: draftResponseSchema,
-      kind: "draft",
-    });
-
-    return NextResponse.json({
-      ok: true,
-      draft: generated.value.draft,
-      highlights: generated.value.highlights,
-      model: generated.meta.model,
-    });
-  } catch (error) {
-    if (error instanceof AiError) {
-      const code = reasonForAiError(error.code);
-      console.error("[ai:draft]", code);
+    const checked = draftResponseSchema.safeParse(generated);
+    if (!checked.success) {
       return NextResponse.json(
-        { ok: false, message: aiMessage(code), reason: code },
-        { status: statusForAiError(error.code) },
+        { ok: false, message: messageFor("retry") },
+        { status: 503 },
       );
     }
 
+    return NextResponse.json({
+      ok: true,
+      draft: checked.data.draft,
+      highlights: checked.data.highlights,
+      model: ASSISTANT_MODEL,
+    });
+  } catch (error) {
     console.error("[ai:draft]", error);
     return NextResponse.json(
       { ok: false, message: messageFor("retry") },

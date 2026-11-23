@@ -9,6 +9,9 @@ const TOUR_PAGES = path.join(SRC, "lib", "tours", "pages");
 const REDIRECT_ONLY = new Set([
   "/dashboard",
   "/dashboard/*",
+  "/activate/complete",
+  "/central",
+  "/central/*",
   "/usg/survey",
   "/usg/personal-requests",
   "/lsg/survey",

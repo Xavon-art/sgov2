@@ -2,13 +2,8 @@ import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import { generateJson } from "@/lib/ai/client";
-import { isAiConfigured } from "@/lib/ai/config";
-import { AiError } from "@/lib/ai/errors";
-import { reasonForAiError, statusForAiError } from "@/lib/ai/http";
-import { buildSummaryPrompt } from "@/lib/ai/prompts";
+import { ASSISTANT_MODEL, localSurveySummary } from "@/lib/ai/local-assistant";
 import { surveySummarySchema } from "@/lib/ai/schemas";
-import { buildSurveyTranscript } from "@/lib/ai/survey-summary";
 
 export const runtime = "nodejs";
 
@@ -38,13 +33,6 @@ function statusForReason(reason?: string): number {
   if (reason === "forbidden") return 403;
   if (reason === "not_found") return 404;
   return 400;
-}
-
-function aiMessage(code: string): string {
-  if (code === "ai_not_configured") return "AI is not configured.";
-  if (code === "ai_timeout") return "The AI request timed out.";
-  if (code === "ai_invalid_output") return "The AI returned an unusable summary.";
-  return "The AI service is unavailable.";
 }
 
 export async function GET(
@@ -104,17 +92,6 @@ export async function POST(
     );
   }
 
-  if (!isAiConfigured()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        message: aiMessage("ai_not_configured"),
-        reason: "ai_not_configured",
-      },
-      { status: 503 },
-    );
-  }
-
   const { id } = await ctx.params;
 
   try {
@@ -159,25 +136,26 @@ export async function POST(
       );
     }
 
-    const transcript = buildSurveyTranscript({ context, results });
-    const prompt = buildSummaryPrompt({
-      transcript,
+    const generated = await localSurveySummary({
+      context,
+      results,
+      totalResponses,
       truncated: context.truncated === true,
     });
-    const generated = await generateJson({
-      system: prompt.system,
-      user: prompt.user,
-      temperature: 0.2,
-      schema: surveySummarySchema,
-      kind: "summary",
-    });
+    const checked = surveySummarySchema.safeParse(generated);
+    if (!checked.success) {
+      return NextResponse.json(
+        { ok: false, message: messageFor("retry") },
+        { status: 503 },
+      );
+    }
 
     const saved = await callRpc<RpcResult>("set_survey_ai_summary", {
       p_session_token: token,
       p_survey_id: id,
-      p_summary: generated.value,
+      p_summary: checked.data,
       p_response_count: totalResponses,
-      p_model: generated.meta.model,
+      p_model: ASSISTANT_MODEL,
     });
     if (!saved.ok) {
       return NextResponse.json(
@@ -188,21 +166,12 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      summary: generated.value,
+      summary: checked.data,
       responseCount: totalResponses,
       generatedAt: new Date().toISOString(),
-      model: generated.meta.model,
+      model: ASSISTANT_MODEL,
     });
   } catch (error) {
-    if (error instanceof AiError) {
-      const code = reasonForAiError(error.code);
-      console.error("[surveys:ai-summary:post]", code);
-      return NextResponse.json(
-        { ok: false, message: aiMessage(code), reason: code },
-        { status: statusForAiError(error.code) },
-      );
-    }
-
     console.error("[surveys:ai-summary:post]", error);
     return NextResponse.json(
       { ok: false, message: messageFor("retry") },

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { useAiStatus } from "@/components/ai/useAiStatus";
 import {
   extractForPrecheck,
   runPrecheck,
@@ -55,7 +54,6 @@ function RequirementPrecheckPanelInner({
   onBlockedChange,
   disabled,
 }: Props) {
-  const ai = useAiStatus();
   const [report, setReport] = useState<PreflightReport | null>(null);
   const [advice, setAdvice] = useState<string | null>(null);
   const [fixes, setFixes] = useState<string[]>([]);
@@ -156,19 +154,13 @@ function RequirementPrecheckPanelInner({
         <div>
           <div className="text-sm font-medium">Pre-check files</div>
           <p className="text-xs text-muted">
-            A deterministic reading aid. Nothing is stored or submitted here.
+            Reviews your files and suggests fixes before you submit. Nothing is stored here.
           </p>
         </div>
         <Button size="sm" variant="outline" disabled={disabled || busy} onClick={() => void check()}>
           {busy ? "Checking..." : "Check files"}
         </Button>
       </div>
-
-      {!ai.loading && !ai.configured && (
-        <p className="mt-2 rounded-lg border border-line bg-paper px-3 py-2 text-xs text-muted">
-          AI is not configured. The deterministic file check still works.
-        </p>
-      )}
 
       {error && (
         <p className="mt-2 rounded-lg border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3 py-2 text-xs text-[#a5442c]">

@@ -135,7 +135,7 @@ export function SurveyAiSummary({
     }
   };
 
-  const disabled = busy || ai.loading || !ai.configured || responseCount === 0;
+  const disabled = busy || ai.loading || responseCount === 0;
   const stale = cached !== null && cached.responseCount !== responseCount;
 
   return (
@@ -144,7 +144,7 @@ export function SurveyAiSummary({
         <div>
           <p className="eyebrow">AI summary</p>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-muted">
-            Summarise the newest responses. The deterministic results below remain the authority.
+            Summarise the newest responses into themes, sentiment, and suggested actions.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -162,12 +162,6 @@ export function SurveyAiSummary({
           </Button>
         </div>
       </div>
-
-      {!ai.loading && !ai.configured ? (
-        <p className="mt-4 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm text-ink-muted">
-          AI is not configured; results are still available below.
-        </p>
-      ) : null}
 
       {responseCount === 0 ? (
         <p className="mt-4 rounded-xl border border-line bg-canvas px-3.5 py-3 text-sm text-ink-muted">
@@ -263,7 +257,7 @@ export function SurveyAiSummary({
             ) : null}
           </div>
         </div>
-      ) : responseCount > 0 && ai.configured ? (
+      ) : responseCount > 0 ? (
         <p className="mt-4 text-sm text-ink-muted">
           No saved summary yet. Generate one when you are ready.
         </p>

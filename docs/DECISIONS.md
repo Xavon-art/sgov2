@@ -226,18 +226,17 @@ over-long literal at page width. Every one of those was found by running real by
 
 ## AI assistance
 
-### Optional assistance on top of the deterministic engine
+### SmartGov Assistant on top of the deterministic engine
 
-Chosen: optional AI assistance for natural-language survey summaries, pre-flight advice,
-and letter/report drafts.
+Chosen: SmartGov Assistant writes the advisory prose for natural-language survey summaries,
+pre-flight advice, and letter/report drafts.
 
 Why: summaries and drafts are open-ended prose, which the deterministic engine deliberately
-does not produce. A model is the right tool for that narrow, optional layer.
+does not produce. The assistant handles that narrow prose layer while the file-reading
+engine handles the evidence.
 
-Cost: one server-side secret and per-call spend, bounded by daily quotas and request
-rate limits. No AI key is ever exposed to the browser.
+Cost: no external key or per-call spend. Daily quotas and request rate limits still apply.
 
-Guardrail: AI assistance is optional; the deterministic engine remains authoritative. AI
-cannot change requirement statuses, block submissions, or write domain records. When the
-key is absent, the deterministic features keep working and the AI controls report that AI
-is not configured.
+Guardrail: the assistant writes advisory prose only; the file check remains authoritative
+for statuses and blocking. It cannot change requirement statuses, block submissions, or
+write domain records. The assistant is available in every deployment.
