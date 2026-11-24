@@ -844,6 +844,8 @@ const LSG_SAMPLE_OFFICERS: SampleOfficer[] = [
  */
 function lsgSampleCommittees(spec: LsgSampleSpec): StructureCommittee[] {
   const officer = (index: number) => LSG_SAMPLE_OFFICERS[index % LSG_SAMPLE_OFFICERS.length];
+  const committeeStart = 2 + spec.board.length;
+  const repStart = committeeStart + spec.committees.length;
   const presidentKey = `${spec.prefix}-president`;
   const viceKey = `${spec.prefix}-vice`;
 
@@ -876,7 +878,7 @@ function lsgSampleCommittees(spec: LsgSampleSpec): StructureCommittee[] {
           title,
           2,
           index,
-          officer(index + 5),
+          officer(committeeStart + index),
           viceKey,
         ),
       ),
@@ -890,7 +892,7 @@ function lsgSampleCommittees(spec: LsgSampleSpec): StructureCommittee[] {
           title,
           2,
           spec.committees.length + index,
-          officer(index + 9),
+          officer(repStart + index),
           viceKey,
         ),
       ),
