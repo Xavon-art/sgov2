@@ -172,6 +172,10 @@ function AppShellInner({
   const workspaceIndex = pathSegments.findIndex((segment) => segment === "usg" || segment === "lsg");
   const sideLabel = workspaceIndex >= 0 ? pathSegments[workspaceIndex].toUpperCase() : "Workspace";
   const hasDeeperSegment = workspaceIndex >= 0 && pathSegments.length > workspaceIndex + 1;
+  const parentHref =
+    workspaceIndex >= 0
+      ? `/${pathSegments[workspaceIndex]}${pathSegments.length > workspaceIndex + 2 ? `/${pathSegments.slice(workspaceIndex + 1, -1).join("/")}` : ""}`
+      : "/dashboard";
 
   useEffect(() => {
     let alive = true;
@@ -626,7 +630,7 @@ function AppShellInner({
                 data-tour="workspace-back"
                 aria-label="Back"
                 title="Back"
-                onClick={() => router.back()}
+                onClick={() => router.push(parentHref)}
                 className="pressable grid size-9 shrink-0 place-items-center rounded-full text-ink-soft hover:bg-ink/[0.05] hover:text-ink"
               >
                 <IconArrowLeft className="h-5 w-5" strokeWidth={1.7} />

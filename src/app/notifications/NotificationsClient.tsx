@@ -93,7 +93,7 @@ export function NotificationsClient({
           <h1 className="text-xl font-semibold text-ink-deep">Notifications</h1>
           <p className="text-[0.8125rem] text-muted">{accountName}</p>
         </div>
-        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => router.back()}>
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={() => router.push("/dashboard")}>
           Back
         </Button>
       </div>

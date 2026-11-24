@@ -16,6 +16,7 @@
     "check:ai": "node scripts/check-ai.mjs",
     "check:requested": "node scripts/check-requested-features.mjs",
     "check:interactions": "node scripts/check-interactions.mjs",
+    "check:navigation": "node scripts/check-navigation.mjs",
     "check:interactions:ui": "node scripts/check-interactions-ui.mjs",
     "check:tours": "node scripts/check-tours.mjs",
     "check:tours:ui": "node scripts/check-tours-ui.mjs",
