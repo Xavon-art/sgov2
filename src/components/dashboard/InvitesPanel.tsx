@@ -18,6 +18,7 @@ import {
   selectClass,
 } from "./workspace-shared";
 import { useAccount } from "./dashboard-context";
+import { CreateLsgPanel } from "./CreateLsgPanel";
 import type { InviteRow } from "@/app/api/invites/route";
 import type { UnitOption } from "@/app/api/units/route";
 
@@ -258,6 +259,23 @@ export function InvitesPanel() {
 
   return (
     <div data-tour="manage-invites" className="flex flex-col gap-6">
+      {isUsg ? (
+        <CreateLsgPanel
+          onCreated={() => {
+            void (async () => {
+              const list = await fetchUnits();
+              if (list) setUnits(list);
+            })();
+          }}
+          onInvited={() => {
+            void (async () => {
+              const rows = await fetchInvites();
+              if (rows) setInvites(rows);
+            })();
+          }}
+        />
+      ) : null}
+
       <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
         {isUsg ? (
           <>

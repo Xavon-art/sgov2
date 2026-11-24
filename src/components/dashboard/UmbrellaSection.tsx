@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Reveal } from "@/components/fx/Reveal";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/Field";
 
 /**
@@ -41,6 +41,8 @@ type Unit = {
   name: string;
   unitType: string;
   structureKey: string | null;
+  address?: string | null;
+  locationCode?: string | null;
   memberCount: number;
   members: Member[];
 };
@@ -197,10 +199,19 @@ export function UmbrellaSection() {
 
       {units.length === 0 ? (
         <Reveal delay={0.04}>
-          <div className="rounded-2xl border border-line bg-paper/70 px-5 py-6">
-            <p className="text-[0.9375rem] leading-relaxed text-body">
-              No units yet. Invite a campus or department and it will appear here, under you.
-            </p>
+          <div className="flex flex-col items-start gap-4 rounded-2xl border border-dashed border-line-strong bg-paper/70 px-5 py-6">
+            <div>
+              <p className="text-[0.9375rem] font-medium text-ink">
+                You don&rsquo;t have any LSG under you yet.
+              </p>
+              <p className="mt-1 max-w-xl text-[0.875rem] leading-relaxed text-body">
+                Create the campus, college, or department first, then invite its officer.
+                Every LSG you add will show up here.
+              </p>
+            </div>
+            <ButtonLink href="/usg/manage?tab=invites" size="sm">
+              Invite an LSG
+            </ButtonLink>
           </div>
         </Reveal>
       ) : (
@@ -226,6 +237,9 @@ export function UmbrellaSection() {
                         .filter(Boolean)
                         .join(" · ")}
                     </span>
+                    {u.address ? (
+                      <span className="mt-0.5 block text-[0.75rem] text-muted">{u.address}</span>
+                    ) : null}
                   </button>
 
                   <span

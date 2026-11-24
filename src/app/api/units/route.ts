@@ -98,9 +98,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Sign in to continue." }, { status: 401 });
   }
 
-  let body: { name?: string; unitType?: string };
+  let body: { name?: string; unitType?: string; address?: string; locationCode?: string };
   try {
-    body = ((await req.json()) ?? {}) as { name?: string; unitType?: string };
+    body = ((await req.json()) ?? {}) as {
+      name?: string;
+      unitType?: string;
+      address?: string;
+      locationCode?: string;
+    };
   } catch {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
@@ -136,11 +141,33 @@ export async function POST(req: Request) {
     );
   }
 
-  try {
-    const res = await callRpc<RpcResult & { unitId?: string; name?: string; unitType?: string }>(
-      "add_unit",
-      { p_session_token: token, p_name: name, p_unit_type: unitType },
+  // Optional location metadata. The picker sends a PSGC code so a department
+  // can be found later even when two campuses share a familiar name.
+  const address = typeof body.address === "string" ? body.address.trim().slice(0, 240) : "";
+  const locationCode = typeof body.locationCode === "string" ? body.locationCode.trim() : "";
+  if (locationCode && !/^[0-9]{9}$/.test(locationCode)) {
+    return NextResponse.json(
+      { ok: false, reason: "invalid_location", message: "Choose a location from the list." },
+      { status: 400 },
     );
+  }
+
+  try {
+    const res = await callRpc<
+      RpcResult & {
+        unitId?: string;
+        name?: string;
+        unitType?: string;
+        address?: string | null;
+        locationCode?: string | null;
+      }
+    >("add_unit_with_location", {
+      p_session_token: token,
+      p_name: name,
+      p_unit_type: unitType,
+      p_address: address || null,
+      p_location_code: locationCode || null,
+    });
 
     if (!res.ok) {
       return NextResponse.json(
@@ -154,6 +181,8 @@ export async function POST(req: Request) {
       unitId: res.unitId,
       name: res.name,
       unitType: res.unitType,
+      address: res.address ?? address,
+      locationCode: res.locationCode ?? locationCode,
     });
   } catch (error) {
     console.error("[units:create]", error);
