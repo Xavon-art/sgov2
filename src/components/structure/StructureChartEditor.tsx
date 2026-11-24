@@ -146,7 +146,6 @@ export function StructureChartEditor({
   const [active, setActive] = useState<string | null>(null);
   const [wizard, setWizard] = useState(false);
   const [branchName, setBranchName] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -178,24 +177,12 @@ export function StructureChartEditor({
     if (!node) return;
 
     // Packet Tracer-style canvas: dragging moves the seat, it does not
-    // silently change the reporting line. Use the translated DOM rect rather
-    // than `event.delta`: dnd-kit adds auto-scroll to the delta, which sent
-    // nodes flying when a drag approached the edge of the canvas.
-    const translated = event.active.rect.current.translated;
-    const canvas = canvasRef.current;
-    let x: number;
-    let y: number;
-    if (canvas && translated) {
-      const bounds = canvas.getBoundingClientRect();
-      x = Math.round(translated.left - bounds.left);
-      y = Math.round(translated.top - bounds.top);
-    } else {
-      x = Math.round(node.x + event.delta.x);
-      y = Math.round(node.y + event.delta.y);
-    }
-    if (Math.abs(x - node.x) < 1 && Math.abs(y - node.y) < 1) return;
-    x = Math.max(0, x);
-    y = Math.max(0, y);
+    // silently change the reporting line. Auto-scroll is disabled on the
+    // DndContext, so `event.delta` is exactly the pointer movement and the
+    // node stays where it was dropped.
+    if (!event.delta.x && !event.delta.y) return;
+    const x = Math.max(0, Math.round(node.x + event.delta.x));
+    const y = Math.max(0, Math.round(node.y + event.delta.y));
     onChange(patchPosition(doc, key, (position) => ({ ...position, x, y })));
   }
 
@@ -458,9 +445,9 @@ export function StructureChartEditor({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+        <DndContext sensors={sensors} autoScroll={false} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="overflow-auto rounded-2xl border border-line bg-canvas/40 p-2" style={{ maxHeight: 680 }}>
-            <div ref={canvasRef} className="relative" style={chartFrameStyle(geometry, layout)}>
+            <div className="relative" style={chartFrameStyle(geometry, layout)}>
               <ChartEdges geometry={geometry} layout={layout} />
               <ChartBands geometry={geometry} layout={layout} />
 
