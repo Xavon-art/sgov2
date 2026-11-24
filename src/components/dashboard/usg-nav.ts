@@ -7,6 +7,7 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  *
  *   Overview     what needs a decision, and a way into everything else
  *   Manage       the umbrella: your LSGs, invitations, and your own profile
+ *   Inbox        messages with the student governments, always one click away
  *   Request      the core of the system -- tasks pushed down to LSGs, and the
  *                personal requests they send back up
  *   Events       the calendar of events and acts
@@ -53,9 +54,8 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
   if (canReviewDocuments) {
     manageChildren.push({ label: "Feedback", href: "/usg/manage?tab=feedback" });
   }
-  // `/org-chart` is a full-page view of the published chart. It has to be
-  // reached from inside the app: the session guard ends a session that arrives
-  // by loading the URL, so a pasted link would sign the owner out.
+  // `/org-chart` is a full-page view of the published chart. It is linked from
+  // Manage, and the session guard no longer signs a reload out.
   if (!centralized && canManage) {
     manageChildren.push({ label: "Published chart", href: "/org-chart" });
     manageChildren.push({ label: "Accounts", href: "/usg/manage?tab=accounts" });
@@ -84,6 +84,13 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
       children: manageChildren,
     },
     {
+      id: "messages",
+      label: "Inbox",
+      hint: "Messages with the student governments",
+      href: "/usg/messages",
+      icon: "compass",
+    },
+    {
       id: "request",
       label: "Request",
       hint: "Tasks and personal requests",
@@ -91,7 +98,6 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
       icon: "submission",
       children: [
         { label: "Tasks", href: "/usg/request" },
-        { label: "Inbox", href: "/usg/messages" },
         { label: "Personal Requests", href: "/usg/personal-requests" },
         { label: "Resolutions", href: "/usg/request?tab=resolutions" },
       ],

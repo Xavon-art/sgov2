@@ -6,6 +6,7 @@ import { Enter } from "@/components/fx/Presence";
 import { SwapText } from "@/components/fx/SwapText";
 import { TextField } from "@/components/ui/Field";
 import { useAccount } from "@/components/dashboard/dashboard-context";
+import { useRealtimeSignals } from "@/lib/realtime";
 
 type Conv = {
   id: string;
@@ -127,6 +128,13 @@ export function MessagesPanel() {
     }
   }, []);
 
+  // Realtime signal: refresh only after the database confirms a change for
+  // this account. The slower poll stays as a reconnect fallback.
+  useRealtimeSignals(account.id, ["message"], () => {
+    void loadConversations();
+    if (selectedId) void loadMessages(selectedId);
+  });
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadConversations();
@@ -149,7 +157,7 @@ export function MessagesPanel() {
     }
     void loadMessages(selectedId);
     if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => void loadMessages(selectedId), 4000);
+    pollRef.current = setInterval(() => void loadMessages(selectedId), 15000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };

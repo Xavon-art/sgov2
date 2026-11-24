@@ -7,13 +7,15 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const STABLE_NAV_IDS = Object.freeze([
   "overview",
   "manage",
+  "messages",
   "request",
   "events",
   "survey",
   "settings",
 ]);
-// The LSG workspace exposes its inbox as a first-class top-level destination;
-// USG keeps Inbox nested under Request. Both lists are intentional.
+// Both workspaces expose the inbox as a first-class top-level destination.
+// Keeping the alias makes the LSG-specific assertion read clearly while the
+// two sides share the same visible structure.
 export const LSG_STABLE_NAV_IDS = Object.freeze([
   "overview",
   "manage",

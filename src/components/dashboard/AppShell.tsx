@@ -1,12 +1,14 @@
 "use client";
 
-import { Suspense, useEffect, useState, type CSSProperties } from "react";
+import { Suspense, useCallback, useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Seal, Wordmark } from "@/components/ui/Seal";
 import { TourHelpButton } from "@/components/tours/HelpButton";
 import { loadTourProgress, saveTourProgress } from "@/lib/tours/progress";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
+import { useAccount } from "@/components/dashboard/dashboard-context";
+import { useRealtimeSignals } from "@/lib/realtime";
 import { Enter } from "@/components/fx/Presence";
 import {
   IconArrowLeft,
@@ -154,6 +156,7 @@ function AppShellInner({
   roleLabel?: string;
   children: React.ReactNode;
 }) {
+  const account = useAccount();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   // Manual expand/collapse per section. When a key is absent the section follows
@@ -210,45 +213,66 @@ function AppShellInner({
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifs, setNotifs] = useState<{ id: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string }[]>([]);
 
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/notifications/unread");
-        const data = await res.json();
-        if (alive && res.ok && data.ok) setUnread(data.count ?? 0);
-      } catch {
-        // ignore
-      }
-    };
-    void load();
-    const id = setInterval(load, 30000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
+  const loadUnread = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications/unread");
+      const data = await res.json();
+      if (res.ok && data.ok) setUnread(data.count ?? 0);
+    } catch {
+      // ignore
+    }
   }, []);
+
+  const loadNotificationList = useCallback(async () => {
+    try {
+      // The drawer is a preview: only the three newest matter here. The full
+      // list lives on /notifications.
+      const res = await fetch("/api/notifications?limit=3");
+      const data = await res.json();
+      if (res.ok && data.ok) setNotifs(data.notifications ?? []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useRealtimeSignals(account.id, ["notification"], () => {
+    void loadUnread();
+    if (notifOpen) void loadNotificationList();
+  });
+
+  useEffect(() => {
+    void loadUnread();
+    const id = setInterval(() => void loadUnread(), 30000);
+    return () => clearInterval(id);
+  }, [loadUnread]);
 
   async function openNotifs() {
     setNotifOpen((v) => !v);
-    if (!notifOpen) {
-      try {
-        const res = await fetch("/api/notifications?limit=20");
-        const data = await res.json();
-        if (res.ok && data.ok) setNotifs(data.notifications ?? []);
-      } catch {
-        // ignore
-      }
-    }
+    if (!notifOpen) await loadNotificationList();
   }
 
   async function markRead(id: string) {
+    const target = notifs.find((n) => n.id === id);
     try {
       const res = await fetch(`/api/notifications/${id}/read`, { method: "POST" });
       const data = await res.json();
       if (!res.ok || !data.ok) return;
-      setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, readAt: new Date().toISOString() } : n)));
-      setUnread((u) => Math.max(0, u - 1));
+      // Once the target has been opened, the preview has done its job.
+      setNotifs((prev) => prev.filter((n) => n.id !== id));
+      if (target && !target.readAt) setUnread((u) => Math.max(0, u - 1));
+    } catch {
+      // ignore
+    }
+  }
+
+  async function deleteNotification(id: string) {
+    const target = notifs.find((n) => n.id === id);
+    try {
+      const res = await fetch(`/api/notifications/${id}/delete`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) return;
+      setNotifs((prev) => prev.filter((n) => n.id !== id));
+      if (target && !target.readAt) setUnread((u) => Math.max(0, u - 1));
     } catch {
       // ignore
     }
@@ -646,7 +670,7 @@ function AppShellInner({
                             const res = await fetch("/api/notifications/read-all", { method: "POST" });
                             const data = await res.json();
                             if (!res.ok || !data.ok) return;
-                            setNotifs((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+                            setNotifs([]);
                             setUnread(0);
                           } catch {
                             // ignore
@@ -660,41 +684,65 @@ function AppShellInner({
                     {notifs.length === 0 ? (
                       <p className="px-4 py-6 text-[0.8125rem] text-muted">No notifications yet.</p>
                     ) : (
-                      <ul className="flex flex-col">
-                        {notifs.map((n) => (
-                          <li key={n.id}>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void markRead(n.id);
-                                setNotifOpen(false);
-                                if (n.link) {
-                                  const cMatch = n.link.match(/[?&]c=([^&]+)/);
-                                  const mMatch = n.link.match(/[?&]m=([^&]+)/);
-                                  if (cMatch) {
-                                    const conversationId = decodeURIComponent(cMatch[1]);
-                                    const messageId = mMatch ? decodeURIComponent(mMatch[1]) : null;
-                                    window.dispatchEvent(
-                                      new CustomEvent("smartgov:open-conversation", {
-                                        detail: { conversationId, messageId },
-                                      }),
-                                    );
-                                  }
-                                  if (n.link.startsWith("/")) router.push(n.link);
-                                  else window.open(n.link, "_blank", "noopener,noreferrer");
-                                }
-                              }}
-                              className={`w-full px-4 py-3 text-left transition-colors hover:bg-canvas ${
-                                n.readAt ? "opacity-60" : ""
-                              }`}
-                            >
-                              <p className="text-[0.875rem] font-medium text-ink-deep">{n.title}</p>
-                              {n.body ? <p className="mt-0.5 text-[0.75rem] text-body">{n.body}</p> : null}
-                              <p className="mt-1 text-[0.625rem] text-muted">{new Date(n.createdAt).toLocaleString()}</p>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+                      <>
+                        <ul className="flex flex-col divide-y divide-line">
+                          {notifs.map((n) => (
+                            <li key={n.id} className={n.readAt ? "bg-paper" : "bg-brass-soft/20"}>
+                              <div className="flex items-start gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void markRead(n.id);
+                                    setNotifOpen(false);
+                                    if (n.link) {
+                                      const cMatch = n.link.match(/[?&]c=([^&]+)/);
+                                      const mMatch = n.link.match(/[?&]m=([^&]+)/);
+                                      if (cMatch) {
+                                        const conversationId = decodeURIComponent(cMatch[1]);
+                                        const messageId = mMatch ? decodeURIComponent(mMatch[1]) : null;
+                                        window.dispatchEvent(
+                                          new CustomEvent("smartgov:open-conversation", {
+                                            detail: { conversationId, messageId },
+                                          }),
+                                        );
+                                      }
+                                      if (n.link.startsWith("/")) router.push(n.link);
+                                      else window.open(n.link, "_blank", "noopener,noreferrer");
+                                    }
+                                  }}
+                                  className={`min-w-0 flex-1 px-4 py-3 text-left transition-colors hover:bg-canvas ${
+                                    n.readAt ? "opacity-70" : ""
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {!n.readAt ? (
+                                      <span aria-label="Unread" className="size-1.5 shrink-0 rounded-full bg-brass" />
+                                    ) : null}
+                                    <p className="text-[0.875rem] font-medium text-ink-deep">{n.title}</p>
+                                  </div>
+                                  {n.body ? <p className="mt-0.5 text-[0.75rem] text-body">{n.body}</p> : null}
+                                  <p className="mt-1 text-[0.625rem] text-muted">{new Date(n.createdAt).toLocaleString()}</p>
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Delete notification"
+                                  onClick={() => void deleteNotification(n.id)}
+                                  className="mr-3 mt-3 shrink-0 rounded-full px-2 py-1 text-[0.625rem] text-muted hover:bg-[#a5442c]/[0.06] hover:text-[#a5442c]"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        <Link
+                          href="/notifications"
+                          onClick={() => setNotifOpen(false)}
+                          className="block border-t border-line px-4 py-2.5 text-center text-[0.75rem] font-semibold text-ink hover:bg-canvas"
+                        >
+                          See more
+                        </Link>
+                      </>
                     )}
                   </div>
                 ) : null}

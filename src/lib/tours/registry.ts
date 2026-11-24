@@ -35,6 +35,7 @@ import orgChartTour from "./pages/org-chart";
 import myCouncilTour from "./pages/my-council";
 import councilStructureTour from "./pages/council-structure";
 import devOutboxTour from "./pages/dev-outbox";
+import notificationsTour from "./pages/notifications";
 
 export const TOURS: PageTour[] = [
   publicHomeTour,
@@ -67,6 +68,7 @@ export const TOURS: PageTour[] = [
   myCouncilTour,
   councilStructureTour,
   devOutboxTour,
+  notificationsTour,
   inviteVerifyTour,
   inviteSetupTour,
   publicSurveyTour,

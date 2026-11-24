@@ -7,6 +7,7 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  *
  *   Overview   what your unit owes, and what it has back
  *   Manage     your profile and your own government structure
+ *   Inbox      messages with the student government
  *   Request    the tasks USG sent down, and the requests you send up
  *   Events     your calendar, and whether USG honoured each entry
  *   Survey     respond, and build your own
@@ -61,7 +62,6 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
       icon: "submission",
       children: [
         { label: "Tasks", href: "/lsg/request" },
-        { label: "Inbox", href: "/lsg/messages" },
         { label: "My Personal Requests", href: "/lsg/personal-requests" },
         ...(centralized ? [] : [{ label: "Resolutions", href: "/lsg/request?tab=resolutions" }]),
       ],
