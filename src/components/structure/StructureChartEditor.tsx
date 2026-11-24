@@ -116,35 +116,6 @@ function tierNextOrder(doc: StructureDocument, tier: number): number {
   return max + 1;
 }
 
-function reindexTiers(doc: StructureDocument): StructureDocument {
-  const byTier = new Map<number, string[]>();
-  for (const committee of doc.committees) {
-    for (const position of committee.positions) {
-      const tier = position.tier ?? 0;
-      const list = byTier.get(tier) ?? [];
-      list.push(position.key);
-      byTier.set(tier, list);
-    }
-  }
-  const orders = new Map<string, number>();
-  for (const list of byTier.values()) {
-    list
-      .map((key) => ({ key, at: findPosition(doc, key)?.position.order ?? 0 }))
-      .sort((a, b) => a.at - b.at)
-      .forEach((entry, index) => orders.set(entry.key, index));
-  }
-  return withDoc(
-    doc,
-    doc.committees.map((committee) => ({
-      ...committee,
-      positions: committee.positions.map((position) => ({
-        ...position,
-        order: orders.get(position.key) ?? position.order ?? 0,
-      })),
-    })),
-  );
-}
-
 function toBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -205,32 +176,13 @@ export function StructureChartEditor({
     const node = geometry.nodes.find((n) => n.key === key);
     if (!node) return;
 
-    // A Packet Tracer-style canvas keeps the seat where it was dropped. The
-    // tier/parent still follows the drop target so the reporting line stays
-    // meaningful, but `x`/`y` are the authored position from now on.
+    // Packet Tracer-style canvas: dragging moves the seat, it does not
+    // silently change the reporting line. Keep the authored x/y so the node
+    // stays exactly where it was dropped instead of snapping back.
+    if (!event.delta.x && !event.delta.y) return;
     const x = Math.max(0, Math.round(node.x + event.delta.x));
     const y = Math.max(0, Math.round(node.y + event.delta.y));
-    const overId = event.over ? String(event.over.id) : null;
-    let extras: Partial<StructurePosition> = {};
-
-    if (overId?.startsWith("tier:")) {
-      const tier = Number(overId.slice(5));
-      extras = { tier, order: tierNextOrder(doc, tier), parentKey: null };
-    } else if (overId?.startsWith("node:")) {
-      const targetKey = overId.slice(5);
-      const target = targetKey === key ? null : findPosition(doc, targetKey);
-      if (target) {
-        const tier = Math.min(12, (target.position.tier ?? 0) + 1);
-        extras = { tier, order: tierNextOrder(doc, tier), parentKey: targetKey };
-      }
-    }
-
-    if (!event.delta.x && !event.delta.y && !Object.keys(extras).length) return;
-    onChange(
-      reindexTiers(
-        patchPosition(doc, key, (position) => ({ ...position, x, y, ...extras })),
-      ),
-    );
+    onChange(patchPosition(doc, key, (position) => ({ ...position, x, y })));
   }
 
   function addSeat(committeeKey?: string) {
