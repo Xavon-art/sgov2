@@ -34,6 +34,7 @@ export type StructureHolder = {
   termNote?: string;
   birthdate?: string;
   course?: string;
+  section?: string;
   yearLevel?: string;
   gender?: string;
   contactNumber?: string;

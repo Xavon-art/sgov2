@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useAccount } from "@/components/dashboard/dashboard-context";
+import { useRealtimeSignals } from "@/lib/realtime";
 import {
   checkDocument,
   emptyCommittee,
@@ -1268,6 +1270,7 @@ export function StructureWorkspace({
   capability: StructureCapability;
 }) {
   const pathname = usePathname();
+  const account = useAccount();
   const returnTo = pathname.includes("manage") ? `${pathname}?tab=structure` : pathname;
   const [doc, setDoc] = useState<StructureDocument>(emptyDocument);
   const [structureId, setStructureId] = useState<string | null>(null);
@@ -1299,6 +1302,12 @@ export function StructureWorkspace({
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved" | "off">("idle");
   const savingRef = useRef(false);
   const hydratedPhotos = useRef(new Set<string>());
+  const dirtyRef = useRef(dirty);
+  const conflictRef = useRef(conflict);
+  const updatedAtRef = useRef(updatedAt);
+  dirtyRef.current = dirty;
+  conflictRef.current = conflict;
+  updatedAtRef.current = updatedAt;
   const rosterIds = useRef(new Map<string, string>());
   const rosterByEmail = useCallback((email: string): string | undefined => {
     return rosterIds.current.get(email.trim().toLowerCase());
@@ -1386,6 +1395,35 @@ export function StructureWorkspace({
       cancelled = true;
     };
   }, [unitId]);
+
+  // Realtime carries only "a structure changed". Reload through the normal API,
+  // and never overwrite edits the officer is still making in this tab.
+  useRealtimeSignals(account.id, ["structure"], () => {
+    if (dirtyRef.current || conflictRef.current || savingRef.current) return;
+    void (async () => {
+      try {
+        const res = await fetchStructure(unitId);
+        const open = res.draft ?? null;
+        if (!open || open.updatedAt === updatedAtRef.current) return;
+        setDraft(open);
+        setDoc(normalizeDocument(open.document));
+        setStructureId(open.id);
+        setTemplateKey(open.templateKey);
+        setTermLabel(open.termLabel);
+        setStartsOn(open.startsOn);
+        setEndsOn(open.endsOn);
+        setNote(open.note ?? "");
+        setUpdatedAt(open.updatedAt ?? null);
+        setDirty(false);
+        setPast([]);
+        setFuture([]);
+        setAutosave("saved");
+        setStatus("Synced with the live structure.");
+      } catch {
+        // A failed refresh leaves the last good view untouched.
+      }
+    })();
+  });
 
   useEffect(() => {
     if (!readyUnitId || readyUnitId !== unitId) return;

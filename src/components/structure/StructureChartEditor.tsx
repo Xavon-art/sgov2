@@ -183,6 +183,15 @@ export function StructureChartEditor({
 
   const selected = selectedKey ? findPosition(doc, selectedKey) : null;
 
+  function removeBranch() {
+    if (!selected || selected.committee.isUnit) return;
+    onChange({
+      ...doc,
+      committees: doc.committees.filter((c) => c.key !== selected.committee.key),
+    });
+    onSelect(null);
+  }
+
   function onDragStart(event: DragStartEvent) {
     const id = String(event.active.id);
     if (id.startsWith("pos:")) setActive(id.slice(4));
@@ -381,6 +390,16 @@ export function StructureChartEditor({
             </Button>
             <Button type="button" variant="paper" size="sm" onClick={() => setBranchName("")} disabled={busy}>
               Add branch
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={removeBranch}
+              disabled={busy || !selected || selected.committee.isUnit}
+              title={selected?.committee.isUnit ? "The council branch cannot be removed" : "Remove the selected branch"}
+            >
+              Remove branch
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => setWizard(true)} disabled={busy}>
               Add officer
@@ -923,6 +942,26 @@ function Inspector({
                   onChange={(e) => patchHolder(index, { lastName: e.target.value })}
                   placeholder="Last name"
                   className="rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <input
+                  value={holder.course ?? ""}
+                  onChange={(e) => patchHolder(index, { course: e.target.value })}
+                  placeholder="Course"
+                  className="min-w-0 rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
+                />
+                <input
+                  value={holder.section ?? ""}
+                  onChange={(e) => patchHolder(index, { section: e.target.value })}
+                  placeholder="Section"
+                  className="min-w-0 rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
+                />
+                <input
+                  value={holder.yearLevel ?? ""}
+                  onChange={(e) => patchHolder(index, { yearLevel: e.target.value })}
+                  placeholder="Year"
+                  className="min-w-0 rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
                 />
               </div>
               <input
