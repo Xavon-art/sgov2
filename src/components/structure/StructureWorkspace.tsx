@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useAccount } from "@/components/dashboard/dashboard-context";
+import { useOptionalAccount } from "@/components/dashboard/dashboard-context";
 import { useRealtimeSignals } from "@/lib/realtime";
 import {
   checkDocument,
@@ -1270,7 +1270,7 @@ export function StructureWorkspace({
   capability: StructureCapability;
 }) {
   const pathname = usePathname();
-  const account = useAccount();
+  const account = useOptionalAccount();
   const returnTo = pathname.includes("manage") ? `${pathname}?tab=structure` : pathname;
   const [doc, setDoc] = useState<StructureDocument>(emptyDocument);
   const [structureId, setStructureId] = useState<string | null>(null);
@@ -1398,7 +1398,7 @@ export function StructureWorkspace({
 
   // Realtime carries only "a structure changed". Reload through the normal API,
   // and never overwrite edits the officer is still making in this tab.
-  useRealtimeSignals(account.id, ["structure"], () => {
+  useRealtimeSignals(account?.id ?? null, ["structure"], () => {
     if (dirtyRef.current || conflictRef.current || savingRef.current) return;
     void (async () => {
       try {

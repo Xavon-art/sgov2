@@ -75,6 +75,11 @@ export function useAccount(): Account {
   return useDashboard().account;
 }
 
+/** For surfaces mounted outside the dashboard provider, such as the council structure page. */
+export function useOptionalAccount(): Account | null {
+  return useContext(DashboardContext)?.account ?? null;
+}
+
 type IdentityFields = {
   isCentral?: boolean;
   isUnitAccount?: boolean;
