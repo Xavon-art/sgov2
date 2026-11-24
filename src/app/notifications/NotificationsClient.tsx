@@ -63,12 +63,14 @@ export function NotificationsClient({
   }
 
   async function remove(id: string) {
-    setNotifs((prev) => prev.filter((n) => n.id !== id));
+    setError(null);
     try {
       const res = await fetch(`/api/notifications/${id}/delete`, { method: "DELETE" });
-      if (!res.ok) await load();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error("delete");
+      setNotifs((prev) => prev.filter((n) => n.id !== id));
     } catch {
-      await load();
+      setError("Could not delete that notification. Please try again.");
     }
   }
 

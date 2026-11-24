@@ -212,6 +212,7 @@ function AppShellInner({
   const [unread, setUnread] = useState(0);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifs, setNotifs] = useState<{ id: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string }[]>([]);
+  const [notifError, setNotifError] = useState<string | null>(null);
 
   const loadUnread = useCallback(async () => {
     try {
@@ -267,14 +268,15 @@ function AppShellInner({
 
   async function deleteNotification(id: string) {
     const target = notifs.find((n) => n.id === id);
+    setNotifError(null);
     try {
       const res = await fetch(`/api/notifications/${id}/delete`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok || !data.ok) return;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error("delete");
       setNotifs((prev) => prev.filter((n) => n.id !== id));
       if (target && !target.readAt) setUnread((u) => Math.max(0, u - 1));
     } catch {
-      // ignore
+      setNotifError("Could not delete that notification. Please try again.");
     }
   }
 
@@ -681,6 +683,9 @@ function AppShellInner({
                         Mark all read
                       </button>
                     </div>
+                    {notifError ? (
+                      <p className="border-b border-line px-4 py-2 text-[0.75rem] text-[#a5442c]">{notifError}</p>
+                    ) : null}
                     {notifs.length === 0 ? (
                       <p className="px-4 py-6 text-[0.8125rem] text-muted">No notifications yet.</p>
                     ) : (
