@@ -20,13 +20,18 @@ export function useRealtimeSignals(
   changeRef.current = onChange;
   const kindsRef = useRef(kinds);
   kindsRef.current = kinds;
+  const instanceRef = useRef(Math.random().toString(36).slice(2));
 
   useEffect(() => {
     const client = supabase;
     if (!accountId || !client) return;
 
+    // Supabase reuses channels by topic. If another mounted listener already
+    // subscribed to the same topic, calling .on() on it throws after
+    // subscribe(), which tears down the whole page. Give every listener its
+    // own topic so multiple panels can watch the same account safely.
     const channel = client
-      .channel(`sgov-signals-${accountId}`)
+      .channel(`sgov-signals-${accountId}-${instanceRef.current}`)
       .on(
         "postgres_changes",
         {
