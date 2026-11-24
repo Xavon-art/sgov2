@@ -26,11 +26,16 @@ type Msg = {
 
 type Acct = { id: string; email: string; displayName: string | null; accountKind: string; accountScope: string };
 
+function readDeepLinkedConversation(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("c");
+}
+
 export function MessagesPanel() {
   const account = useAccount();
   const [conversations, setConversations] = useState<Conv[]>([]);
   const [accounts, setAccounts] = useState<Acct[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(readDeepLinkedConversation);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +52,26 @@ export function MessagesPanel() {
   const [sending, setSending] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const selectConversation = useCallback((id: string | null) => {
+    setSelectedId(id);
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("c", id);
+    else url.searchParams.delete("c");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  // A notification clicked while the inbox is already open cannot rely on a
+  // remount, so it announces the target thread here as well as in the URL.
+  useEffect(() => {
+    const openFromNotification = (event: Event) => {
+      const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
+      if (id) selectConversation(id);
+    };
+    window.addEventListener("smartgov:open-conversation", openFromNotification);
+    return () => window.removeEventListener("smartgov:open-conversation", openFromNotification);
+  }, [selectConversation]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -133,7 +158,7 @@ export function MessagesPanel() {
       setNewRecipient("");
       setNote("Conversation started.");
       await loadConversations();
-      setSelectedId(data.conversationId);
+      selectConversation(data.conversationId);
     } catch {
       setActionError("We could not reach the server. Check your connection.");
     } finally {
@@ -196,7 +221,7 @@ export function MessagesPanel() {
         return;
       }
       if (selectedId === id) {
-        setSelectedId(null);
+        selectConversation(null);
         setMessages([]);
       }
       await loadConversations();
@@ -267,7 +292,7 @@ export function MessagesPanel() {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setSelectedId(c.id)}
+                    onClick={() => selectConversation(c.id)}
                 className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left transition-colors ${
                   selectedId === c.id ? "border-ink bg-ink/[0.04]" : "border-line bg-paper hover:bg-canvas"
                 }`}

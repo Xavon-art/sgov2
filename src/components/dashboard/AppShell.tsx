@@ -667,7 +667,17 @@ function AppShellInner({
                               type="button"
                               onClick={() => {
                                 void markRead(n.id);
+                                setNotifOpen(false);
                                 if (n.link) {
+                                  const match = n.link.match(/[?&]c=([^&]+)/);
+                                  if (match) {
+                                    const conversationId = decodeURIComponent(match[1]);
+                                    window.dispatchEvent(
+                                      new CustomEvent("smartgov:open-conversation", {
+                                        detail: { conversationId },
+                                      }),
+                                    );
+                                  }
                                   if (n.link.startsWith("/")) router.push(n.link);
                                   else window.open(n.link, "_blank", "noopener,noreferrer");
                                 }
