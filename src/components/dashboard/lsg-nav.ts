@@ -47,13 +47,21 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
       ],
     },
     {
+      id: "messages",
+      label: "Inbox",
+      hint: "Messages with the student government",
+      href: "/lsg/messages",
+      icon: "compass",
+    },
+    {
       id: "request",
       label: "Request",
       hint: "Tasks from the student government, and what you send up",
       href: "/lsg/request",
       icon: "submission",
       children: [
-        { label: "Tasks and Inbox", href: "/lsg/request" },
+        { label: "Tasks", href: "/lsg/request" },
+        { label: "Inbox", href: "/lsg/messages" },
         { label: "My Personal Requests", href: "/lsg/personal-requests" },
         ...(centralized ? [] : [{ label: "Resolutions", href: "/lsg/request?tab=resolutions" }]),
       ],

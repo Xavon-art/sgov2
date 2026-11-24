@@ -12,13 +12,25 @@ type Conv = {
   subject: string | null;
   createdAt: string;
   updatedAt: string;
-  lastMessage: { body: string | null; createdAt: string; senderId: string; unsent: boolean } | null;
+  lastMessage: {
+    body: string | null;
+    createdAt: string;
+    senderId: string;
+    senderName?: string;
+    senderEmail?: string;
+    senderCampus?: string;
+    unsent: boolean;
+  } | null;
   unreadCount: number;
 };
 
 type Msg = {
   id: string;
   senderId: string;
+  senderName?: string;
+  senderEmail?: string;
+  senderCampus?: string;
+  senderKind?: string;
   body: string | null;
   createdAt: string;
   unsent: boolean;
@@ -26,16 +38,17 @@ type Msg = {
 
 type Acct = { id: string; email: string; displayName: string | null; accountKind: string; accountScope: string };
 
-function readDeepLinkedConversation(): string | null {
+function readDeepLinkedParam(key: "c" | "m"): string | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get("c");
+  return new URLSearchParams(window.location.search).get(key);
 }
 
 export function MessagesPanel() {
   const account = useAccount();
   const [conversations, setConversations] = useState<Conv[]>([]);
   const [accounts, setAccounts] = useState<Acct[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(readDeepLinkedConversation);
+  const [selectedId, setSelectedId] = useState<string | null>(() => readDeepLinkedParam("c"));
+  const [highlightId, setHighlightId] = useState<string | null>(() => readDeepLinkedParam("m"));
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,12 +66,15 @@ export function MessagesPanel() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const selectConversation = useCallback((id: string | null) => {
+  const selectConversation = useCallback((id: string | null, messageId?: string | null) => {
     setSelectedId(id);
+    setHighlightId(messageId ?? null);
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     if (id) url.searchParams.set("c", id);
     else url.searchParams.delete("c");
+    if (id && messageId) url.searchParams.set("m", messageId);
+    else url.searchParams.delete("m");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
 
@@ -66,8 +82,8 @@ export function MessagesPanel() {
   // remount, so it announces the target thread here as well as in the URL.
   useEffect(() => {
     const openFromNotification = (event: Event) => {
-      const id = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId;
-      if (id) selectConversation(id);
+      const detail = (event as CustomEvent<{ conversationId?: string; messageId?: string }>).detail;
+      if (detail?.conversationId) selectConversation(detail.conversationId, detail.messageId ?? null);
     };
     window.addEventListener("smartgov:open-conversation", openFromNotification);
     return () => window.removeEventListener("smartgov:open-conversation", openFromNotification);
@@ -129,6 +145,12 @@ export function MessagesPanel() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [selectedId, loadMessages]);
+
+  useEffect(() => {
+    if (!highlightId || messages.length === 0) return;
+    const target = document.querySelector(`[data-message-id="${highlightId}"]`);
+    target?.scrollIntoView({ block: "center" });
+  }, [highlightId, messages]);
 
   async function createConversation(e: React.FormEvent) {
     e.preventDefault();
@@ -292,7 +314,7 @@ export function MessagesPanel() {
               <button
                 key={c.id}
                 type="button"
-                    onClick={() => selectConversation(c.id)}
+                onClick={() => selectConversation(c.id)}
                 className={`flex flex-col gap-1 rounded-xl border px-3 py-2 text-left transition-colors ${
                   selectedId === c.id ? "border-ink bg-ink/[0.04]" : "border-line bg-paper hover:bg-canvas"
                 }`}
@@ -308,8 +330,15 @@ export function MessagesPanel() {
                   ) : null}
                 </div>
                 {c.lastMessage ? (
-                  <span className="truncate text-[0.75rem] text-muted">
-                    {c.lastMessage.unsent ? "Message removed" : c.lastMessage.body}
+                  <span className="flex flex-col gap-0.5">
+                    {c.lastMessage.senderCampus || c.lastMessage.senderEmail ? (
+                      <span className="truncate text-[0.625rem] font-medium text-ink-soft">
+                        {[c.lastMessage.senderCampus, c.lastMessage.senderEmail].filter(Boolean).join(" · ")}
+                      </span>
+                    ) : null}
+                    <span className="truncate text-[0.75rem] text-muted">
+                      {c.lastMessage.unsent ? "Message removed" : c.lastMessage.body}
+                    </span>
                   </span>
                 ) : null}
               </button>
@@ -340,9 +369,21 @@ export function MessagesPanel() {
                   {messages.map((m) => (
                     <div
                       key={m.id}
-                      className={`flex ${m.senderId === account.id ? "justify-end" : "justify-start"}`}
+                      data-message-id={m.id}
+                      className={`flex ${m.senderId === account.id ? "justify-end" : "justify-start"} ${
+                        highlightId === m.id ? "rounded-xl bg-brass-soft/40 ring-2 ring-brass/50" : ""
+                      }`}
                     >
-                      <div className="max-w-[75%] rounded-2xl border border-line bg-canvas px-3 py-2">
+                      <div
+                        className={`max-w-[75%] rounded-2xl border bg-canvas px-3 py-2 ${
+                          highlightId === m.id ? "border-brass/60" : "border-line"
+                        }`}
+                      >
+                        {m.senderCampus || m.senderEmail ? (
+                          <p className="mb-1 text-[0.625rem] font-semibold tracking-[0.02em] text-muted">
+                            {[m.senderCampus, m.senderEmail].filter(Boolean).join(" · ")}
+                          </p>
+                        ) : null}
                         {m.unsent ? (
                           <p className="text-[0.8125rem] italic text-muted">Message removed</p>
                         ) : (

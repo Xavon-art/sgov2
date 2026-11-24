@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import pg from "pg";
-import { assertNavIdsStable, STABLE_NAV_IDS } from "./check-federated-features.mjs";
+import { assertNavIdsStable, LSG_STABLE_NAV_IDS, STABLE_NAV_IDS } from "./check-federated-features.mjs";
 
 export const DASHBOARD_AUDIT_TARGET = 30;
 
@@ -273,7 +273,7 @@ async function overviewCheck(page) {
 async function lsgRequestTourCheck(page) {
   await signIn(page, account(17));
   await page.evaluate(() => window.next.router.push("/lsg/request"));
-  await page.locator('[data-tour="request-tabs"]').first().waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
+  await page.locator('[data-tour="request-file-personal"]').first().waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
   await dismissTour(page);
   check("LSG Request tour can find the File request control", (await page.locator('[data-tour="request-file-personal"]').count()) > 0);
   check("LSG Request tour can find the Task list", (await page.locator('[data-tour="request-task-list"]').count()) > 0);
@@ -281,7 +281,7 @@ async function lsgRequestTourCheck(page) {
 
 async function main() {
   assertNavIdsStable("usg", STABLE_NAV_IDS);
-  assertNavIdsStable("lsg", STABLE_NAV_IDS);
+  assertNavIdsStable("lsg", LSG_STABLE_NAV_IDS);
   await feedbackOrphanChecks();
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

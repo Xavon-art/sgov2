@@ -12,6 +12,17 @@ export const STABLE_NAV_IDS = Object.freeze([
   "survey",
   "settings",
 ]);
+// The LSG workspace exposes its inbox as a first-class top-level destination;
+// USG keeps Inbox nested under Request. Both lists are intentional.
+export const LSG_STABLE_NAV_IDS = Object.freeze([
+  "overview",
+  "manage",
+  "messages",
+  "request",
+  "events",
+  "survey",
+  "settings",
+]);
 export const STABLE_WIDGET_IDS = Object.freeze([
   "stats",
   "reports",
@@ -446,7 +457,7 @@ const isMainEntry =
 if (isMainEntry) {
   console.log("\nfederated feature contract\n");
   assertNavStable("usg", STABLE_NAV_IDS);
-  assertNavStable("lsg", STABLE_NAV_IDS);
+  assertNavStable("lsg", LSG_STABLE_NAV_IDS);
   assertWidgetListStable("src/components/dashboard/FederatedOverview.tsx", STABLE_WIDGET_IDS);
   assertWidgetWhitelistStable(
     "supabase/migrations/20260101003194_dashboard_widget_preferences.sql",

@@ -669,12 +669,14 @@ function AppShellInner({
                                 void markRead(n.id);
                                 setNotifOpen(false);
                                 if (n.link) {
-                                  const match = n.link.match(/[?&]c=([^&]+)/);
-                                  if (match) {
-                                    const conversationId = decodeURIComponent(match[1]);
+                                  const cMatch = n.link.match(/[?&]c=([^&]+)/);
+                                  const mMatch = n.link.match(/[?&]m=([^&]+)/);
+                                  if (cMatch) {
+                                    const conversationId = decodeURIComponent(cMatch[1]);
+                                    const messageId = mMatch ? decodeURIComponent(mMatch[1]) : null;
                                     window.dispatchEvent(
                                       new CustomEvent("smartgov:open-conversation", {
-                                        detail: { conversationId },
+                                        detail: { conversationId, messageId },
                                       }),
                                     );
                                   }
