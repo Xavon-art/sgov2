@@ -148,6 +148,7 @@ const RPC_MESSAGES: Record<string, string> = {
   invalid_cover_letter: "Write a cover letter of at least 10 characters.",
   message_empty: "Write something before sending.",
   message_too_long: "That message is too long. Keep it under 4000 characters.",
+  not_your_message: "Only the person who sent this message can unsend it.",
   invalid_reaction: "That reaction is not one of the four available.",
   invalid_narrative: "Write what was accomplished in at least 10 characters.",
   invalid_highlights: "Keep the highlights under 2000 characters.",

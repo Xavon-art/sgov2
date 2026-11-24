@@ -104,6 +104,7 @@ type Msg = {
   unsent: boolean;
   hiddenFromOffice: boolean;
   hiddenFromUnit: boolean;
+  canUnsend?: boolean;
   createdAt: string;
   reactions: Array<{ reaction: string; count: number; mine: boolean }>;
 };
@@ -257,6 +258,11 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
 
   const unsend = useCallback(async (mid: string) => {
     setActionError(null);
+    const target = msgs.find((m) => m.id === mid);
+    if (target && target.canUnsend === false) {
+      setActionError("Only the person who sent this message can unsend it.");
+      return;
+    }
     try {
       await mutate("/api/tasks/thread", {
         method: "POST",
@@ -267,7 +273,7 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
     } catch (e) {
       setActionError(actionMessage(e, "We could not unsend that message."));
     }
-  }, [selectedTask, openTask]);
+  }, [selectedTask, openTask, msgs]);
 
   const react = useCallback(async (mid: string, r: string) => {
     setActionError(null);
@@ -521,9 +527,11 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
                       <button onClick={() => react(m.id, "👍")} className="text-muted">
                         👍 {m.reactions?.find((x) => x.reaction === "👍")?.count || 0}
                       </button>
-                      <button onClick={() => unsend(m.id)} className="text-muted">
-                        Unsend
-                      </button>
+                      {m.canUnsend ? (
+                        <button onClick={() => unsend(m.id)} className="text-muted">
+                          Unsend
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}

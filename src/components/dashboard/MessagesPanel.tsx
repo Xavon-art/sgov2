@@ -12,6 +12,10 @@ type Conv = {
   subject: string | null;
   createdAt: string;
   updatedAt: string;
+  withName?: string;
+  withEmail?: string;
+  withCampus?: string;
+  withKind?: string;
   lastMessage: {
     body: string | null;
     createdAt: string;
@@ -31,9 +35,14 @@ type Msg = {
   senderEmail?: string;
   senderCampus?: string;
   senderKind?: string;
+  recipientName?: string;
+  recipientEmail?: string;
+  recipientCampus?: string;
+  recipientKind?: string;
   body: string | null;
   createdAt: string;
   unsent: boolean;
+  canUnsend?: boolean;
 };
 
 type Acct = { id: string; email: string; displayName: string | null; accountKind: string; accountScope: string };
@@ -215,6 +224,13 @@ export function MessagesPanel() {
 
   async function unsend(mid: string) {
     if (!selectedId || busyId) return;
+    const target = messages.find((m) => m.id === mid);
+    // The server already refuses non-authors. This keeps the button honest in
+    // the UI too, so nobody can even try to take back someone else's message.
+    if (target && !target.canUnsend && target.senderId !== account.id) {
+      setActionError("Only the person who sent this message can unsend it.");
+      return;
+    }
     setBusyId(mid);
     try {
       const res = await fetch(`/api/conversations/${selectedId}/unsend/${mid}`, { method: "POST" });
@@ -329,16 +345,18 @@ export function MessagesPanel() {
                     </span>
                   ) : null}
                 </div>
-                {c.lastMessage ? (
+                {c.withCampus || c.withEmail || c.lastMessage ? (
                   <span className="flex flex-col gap-0.5">
-                    {c.lastMessage.senderCampus || c.lastMessage.senderEmail ? (
+                    {c.withCampus || c.withEmail ? (
                       <span className="truncate text-[0.625rem] font-medium text-ink-soft">
-                        {[c.lastMessage.senderCampus, c.lastMessage.senderEmail].filter(Boolean).join(" · ")}
+                        {[c.withCampus, c.withEmail].filter(Boolean).join(" · ")}
                       </span>
                     ) : null}
-                    <span className="truncate text-[0.75rem] text-muted">
-                      {c.lastMessage.unsent ? "Message removed" : c.lastMessage.body}
-                    </span>
+                    {c.lastMessage ? (
+                      <span className="truncate text-[0.75rem] text-muted">
+                        {c.lastMessage.unsent ? "Message removed" : c.lastMessage.body}
+                      </span>
+                    ) : null}
                   </span>
                 ) : null}
               </button>
@@ -353,8 +371,15 @@ export function MessagesPanel() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between border-b border-line px-4 py-2">
-                <p className="text-[0.9375rem] font-medium text-ink-deep">{selected.subject || "(no subject)"}</p>
+              <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[0.9375rem] font-medium text-ink-deep">{selected.subject || "(no subject)"}</p>
+                  {selected.withCampus || selected.withEmail ? (
+                    <p className="truncate text-[0.625rem] text-muted">
+                      with {[selected.withCampus, selected.withEmail].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   disabled={busyId === selected.id}
@@ -379,9 +404,9 @@ export function MessagesPanel() {
                           highlightId === m.id ? "border-brass/60" : "border-line"
                         }`}
                       >
-                        {m.senderCampus || m.senderEmail ? (
+                        {m.recipientCampus || m.recipientEmail ? (
                           <p className="mb-1 text-[0.625rem] font-semibold tracking-[0.02em] text-muted">
-                            {[m.senderCampus, m.senderEmail].filter(Boolean).join(" · ")}
+                            with {[m.recipientCampus, m.recipientEmail].filter(Boolean).join(" · ")}
                           </p>
                         ) : null}
                         {m.unsent ? (
@@ -393,7 +418,7 @@ export function MessagesPanel() {
                           <span className="text-[0.625rem] text-muted">
                             {new Date(m.createdAt).toLocaleTimeString()}
                           </span>
-                          {!m.unsent ? (
+                          {!m.unsent && (m.canUnsend ?? m.senderId === account.id) ? (
                             <button
                               type="button"
                               disabled={busyId === m.id}
