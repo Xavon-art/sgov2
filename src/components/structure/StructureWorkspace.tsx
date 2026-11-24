@@ -1744,7 +1744,7 @@ export function StructureWorkspace({
       if (readyUnitId !== unitId) return;
       const stored: StoredStructureDraft = {
         document: next,
-        termLabel,
+        termLabel: effectiveTermLabel,
         startsOn,
         endsOn,
         note,
@@ -1760,7 +1760,7 @@ export function StructureWorkspace({
         return;
       }
     },
-    [draftKey, readyUnitId, unitId, termLabel, startsOn, endsOn, note, templateKey, structureId, updatedAt],
+    [draftKey, readyUnitId, unitId, effectiveTermLabel, startsOn, endsOn, note, templateKey, structureId, updatedAt],
   );
 
   useEffect(() => {
