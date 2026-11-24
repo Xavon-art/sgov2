@@ -91,10 +91,11 @@ export default function LsgManagePage() {
       {tab === "structure" ? (
         <div className="rounded-2xl border border-line bg-paper/70 p-4 sm:p-5">
           <p className="eyebrow">Government structure</p>
-          <h2 className="mt-1 text-[1.25rem] leading-tight">Your officers and committees</h2>
+          <h2 className="mt-1 text-[1.25rem] leading-tight">Your unit&rsquo;s officers and committees</h2>
           <p className="mt-2 text-[0.875rem] leading-relaxed text-body">
-            Build and maintain your council&rsquo;s chart — the officers, positions, and committees
-            your unit is accountable for — directly below.
+            The USG keeps its own umbrella chart, and every campus, college, department, and other
+            LSG beneath it keeps its own. Build and maintain this unit&rsquo;s officers, positions,
+            and committees directly below; choose a matching sample format or start from scratch.
           </p>
           <div className="mt-4">
             <StructureEditorPanel />

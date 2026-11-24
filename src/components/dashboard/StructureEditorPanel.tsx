@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
 import { ReviewQueue } from "@/components/structure/ReviewQueue";
-import type { StructureReadPayload, StructureSummary } from "@/lib/structure";
+import { structureFormat, type StructureReadPayload, type StructureSummary } from "@/lib/structure";
 
 /**
  * The structure editor, embedded in Manage.
@@ -83,6 +83,7 @@ export function StructureEditorPanel({
         unitId={data.unit.id}
         unitName={data.unit.name}
         scope={data.unit.isRoot || data.unit.unitType === "usg" ? "usg" : "lsg"}
+        format={structureFormat({ isRoot: data.unit.isRoot, unitType: data.unit.unitType })}
         capability={data.capability}
       />
 

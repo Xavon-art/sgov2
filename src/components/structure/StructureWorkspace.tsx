@@ -23,6 +23,7 @@ import { StructureStatusTracker } from "@/components/structure/StructureStatusTr
 import {
   DEFAULT_LAYOUT,
   MAX_PHOTO_BYTES,
+  STRUCTURE_FORMAT_LABELS,
   fetchHolderPhoto,
   fetchMemberPhoto,
   fetchStructure,
@@ -37,6 +38,7 @@ import {
   type StructureCapability,
   type StructureCommittee,
   type StructureDocument,
+  type StructureFormat,
   type StructureHolder,
   type StructureLayout,
   type StructurePosition,
@@ -777,6 +779,7 @@ function sampleSeat(
 
 function sampleTemplate(
   scope: StructureScope,
+  format: StructureFormat,
   key: string,
   name: string,
   description: string,
@@ -796,10 +799,103 @@ function sampleTemplate(
     category: "NEUST sample",
     isBuiltin: false,
     scope,
+    format,
     document,
     committees: committees.length,
     seats: committees.reduce((sum, committee) => sum + committee.positions.length, 0),
   };
+}
+
+type LsgSampleSpec = {
+  prefix: string;
+  unitName: string;
+  presidentTitle: string;
+  viceTitle: string;
+  board: string[];
+  committeeName: string;
+  committees: string[];
+  repsName: string;
+  reps: string[];
+};
+
+const LSG_SAMPLE_OFFICERS: SampleOfficer[] = [
+  { first: "Gabriel A.", last: "Reyes", course: "BS Electrical Engineering", yearLevel: "4th Year" },
+  { first: "Princess B.", last: "Ocampo", course: "BS Nursing", yearLevel: "3rd Year" },
+  { first: "Joshua C.", last: "Mendoza", course: "BS Computer Science", yearLevel: "3rd Year" },
+  { first: "Alyssa D.", last: "Garcia", course: "BS Accountancy", yearLevel: "2nd Year" },
+  { first: "Marcus E.", last: "Flores", course: "BS Civil Engineering", yearLevel: "3rd Year" },
+  { first: "Stephanie F.", last: "Lopez", course: "BA Communication", yearLevel: "2nd Year" },
+  { first: "Rowena G.", last: "Cruz", course: "BSEd Mathematics", yearLevel: "4th Year" },
+  { first: "Nathan H.", last: "Santos", course: "BS Tourism", yearLevel: "3rd Year" },
+  { first: "Jasmine I.", last: "Ramos", course: "BS Social Work", yearLevel: "3rd Year" },
+  { first: "Kevin J.", last: "Torres", course: "BS Business Administration", yearLevel: "2nd Year" },
+  { first: "Bea K.", last: "Villanueva", course: "BS Architecture", yearLevel: "1st Year" },
+  { first: "Cyril L.", last: "Dela Cruz", course: "BS Information Technology", yearLevel: "2nd Year" },
+  { first: "Dana M.", last: "Bautista", course: "BS Biology", yearLevel: "3rd Year" },
+  { first: "Ethan N.", last: "Ocampo", course: "BS Mechanical Engineering", yearLevel: "4th Year" },
+  { first: "Farrah O.", last: "Santos", course: "BS Psychology", yearLevel: "3rd Year" },
+  { first: "Gil P.", last: "Mendoza", course: "BS Economics", yearLevel: "4th Year" },
+];
+
+/**
+ * Every non-USG unit is its own council: a campus, college or department sits
+ * under the USG but files its own document. These variants give each shape of
+ * council a seat format without ever mixing in USG-only positions.
+ */
+function lsgSampleCommittees(spec: LsgSampleSpec): StructureCommittee[] {
+  const officer = (index: number) => LSG_SAMPLE_OFFICERS[index % LSG_SAMPLE_OFFICERS.length];
+  const presidentKey = `${spec.prefix}-president`;
+  const viceKey = `${spec.prefix}-vice`;
+
+  return [
+    {
+      key: `${spec.prefix}-board`,
+      isUnit: true,
+      name: spec.unitName,
+      positions: [
+        sampleSeat(presidentKey, spec.presidentTitle, 0, 0, officer(0)),
+        sampleSeat(viceKey, spec.viceTitle, 1, 0, officer(1), presidentKey),
+        ...spec.board.map((title, index) =>
+          sampleSeat(
+            `${spec.prefix}-board-${index}`,
+            title,
+            1,
+            index + 1,
+            officer(index + 2),
+            presidentKey,
+          ),
+        ),
+      ],
+    },
+    {
+      key: `${spec.prefix}-committees`,
+      name: spec.committeeName,
+      positions: spec.committees.map((title, index) =>
+        sampleSeat(
+          `${spec.prefix}-committee-${index}`,
+          title,
+          2,
+          index,
+          officer(index + 5),
+          viceKey,
+        ),
+      ),
+    },
+    {
+      key: `${spec.prefix}-reps`,
+      name: spec.repsName,
+      positions: spec.reps.map((title, index) =>
+        sampleSeat(
+          `${spec.prefix}-rep-${index}`,
+          title,
+          2,
+          spec.committees.length + index,
+          officer(index + 9),
+          viceKey,
+        ),
+      ),
+    },
+  ];
 }
 
 /**
@@ -810,6 +906,7 @@ function sampleTemplate(
  */
 export const NEUST_SAMPLES: StructureTemplate[] = [
   sampleTemplate(
+    "usg",
     "usg",
     "neust-usg-sample",
     "NEUST University Student Government",
@@ -897,6 +994,7 @@ export const NEUST_SAMPLES: StructureTemplate[] = [
     ],
   ),
   sampleTemplate(
+    "lsg",
     "lsg",
     "neust-lsg-sample",
     "NEUST Local Student Government",
@@ -1007,6 +1105,75 @@ export const NEUST_SAMPLES: StructureTemplate[] = [
       },
     ],
   ),
+  sampleTemplate(
+    "lsg",
+    "campus",
+    "neust-campus-lsg-sample",
+    "NEUST Campus Student Government",
+    "A campus-level LSG sample with campus officers, committees and college representatives.",
+    lsgSampleCommittees({
+      prefix: "neust-campus",
+      unitName: "Campus Student Council",
+      presidentTitle: "Campus Student Council President",
+      viceTitle: "Vice President for Campus Affairs",
+      board: ["Secretary", "Treasurer", "Auditor", "Public Information Officer"],
+      committeeName: "Campus Committees",
+      committees: ["Academic Affairs Chair", "Student Welfare Chair", "Events Chair", "Finance Chair"],
+      repsName: "College Representatives",
+      reps: [
+        "College of Arts Representative",
+        "College of Engineering Representative",
+        "College of Business Representative",
+        "College of Education Representative",
+      ],
+    }),
+  ),
+  sampleTemplate(
+    "lsg",
+    "college",
+    "neust-college-lsg-sample",
+    "NEUST College Student Government",
+    "A college-level LSG sample with college officers, committees and year-level representatives.",
+    lsgSampleCommittees({
+      prefix: "neust-college",
+      unitName: "College Student Council",
+      presidentTitle: "College Student Council President",
+      viceTitle: "Vice President for College Affairs",
+      board: ["Secretary", "Treasurer", "Auditor", "Public Information Officer"],
+      committeeName: "College Committees",
+      committees: ["Academic Affairs Chair", "Events Chair", "Student Welfare Chair", "Finance Chair"],
+      repsName: "Year-Level Representatives",
+      reps: [
+        "First Year Representative",
+        "Second Year Representative",
+        "Third Year Representative",
+        "Fourth Year Representative",
+      ],
+    }),
+  ),
+  sampleTemplate(
+    "lsg",
+    "department",
+    "neust-department-lsg-sample",
+    "NEUST Department Student Government",
+    "A department-level LSG sample with department officers, committees and year-level representatives.",
+    lsgSampleCommittees({
+      prefix: "neust-department",
+      unitName: "Department Student Council",
+      presidentTitle: "Department Student Council President",
+      viceTitle: "Vice President for Department Affairs",
+      board: ["Secretary", "Treasurer", "Public Information Officer"],
+      committeeName: "Department Committees",
+      committees: ["Academic Affairs Chair", "Research Chair", "Student Welfare Chair"],
+      repsName: "Year-Level Representatives",
+      reps: [
+        "First Year Representative",
+        "Second Year Representative",
+        "Third Year Representative",
+        "Fourth Year Representative",
+      ],
+    }),
+  ),
 ];
 
 /** The preview page edits its own copy; the shipped sample stays pristine. */
@@ -1020,6 +1187,7 @@ function TemplateGallery({
   canSaveTemplates,
   unitId,
   scope,
+  format,
   returnTo,
   onApply,
   onSaveCurrent,
@@ -1028,6 +1196,7 @@ function TemplateGallery({
   canSaveTemplates: boolean;
   unitId: string;
   scope: StructureScope;
+  format: StructureFormat;
   returnTo: string;
   onApply: (template: StructureTemplate) => void;
   onSaveCurrent: () => void;
@@ -1046,8 +1215,16 @@ function TemplateGallery({
     setTemplates(res.templates ?? []);
   }
 
-  const visibleSamples = NEUST_SAMPLES.filter((sample) => sample.scope === scope);
+  // All LSG formats stay selectable: a campus, college or department is its
+  // own council and may choose the seat format that fits it. Its own format
+  // simply comes first in the gallery.
+  const visibleSamples = NEUST_SAMPLES.filter((sample) => sample.scope === scope).sort((a, b) => {
+    const aMatch = a.format === format ? 0 : 1;
+    const bMatch = b.format === format ? 0 : 1;
+    return aMatch - bMatch;
+  });
   const scopeLabel = scope === "usg" ? "USG" : "LSG";
+  const formatLabel = STRUCTURE_FORMAT_LABELS[format];
 
   return (
     <Panel>
@@ -1075,13 +1252,15 @@ function TemplateGallery({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Label>NEUST {scopeLabel} sample charts</Label>
           <span className="rounded-full border border-[#8a6d31]/35 bg-[#8a6d31]/[0.08] px-2.5 py-1 text-[0.625rem] font-semibold tracking-[0.08em] text-[#6b5121] uppercase">
-            {scopeLabel} positions only
+            {scopeLabel} positions only &middot; {formatLabel} first
           </span>
         </div>
         <p className="text-[0.8125rem] leading-relaxed text-muted">
-          Only {scopeLabel} charts appear here. Open the full structure to preview it, add officer
-          photos, or apply it to your live draft. Names and NEUST emails are placeholders — replace
-          them before saving or submitting.
+          Only {scopeLabel} charts appear here. Every unit keeps its own structure; {scope === "usg"
+            ? "this is the umbrella chart."
+            : "campus, college, department and local council formats are all available."} Your own
+          format opens first. Preview the full chart, then apply it to this unit&rsquo;s live draft.
+          Names and NEUST emails are placeholders — replace them before saving.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1090,6 +1269,7 @@ function TemplateGallery({
               template: sample.key,
               unitId,
               scope: sample.scope ?? scope,
+              format: sample.format ?? format,
               returnTo,
             });
             return (
@@ -1097,8 +1277,13 @@ function TemplateGallery({
                 <p className="text-[0.9375rem] font-medium text-ink-deep">{sample.name}</p>
                 <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">{sample.description}</p>
                 <p className="mt-2 text-[0.6875rem] tracking-[0.08em] text-muted uppercase">
-                  {sample.committees} branches &middot; {sample.seats} seats &middot; editable after use
+                  {STRUCTURE_FORMAT_LABELS[sample.format ?? format]} &middot; {sample.committees} branches &middot; {sample.seats} seats
                 </p>
+                {sample.format === format ? (
+                  <p className="mt-1 text-[0.6875rem] font-semibold tracking-[0.08em] text-brass-deep uppercase">
+                    Suggested for this unit
+                  </p>
+                ) : null}
                 <div className="mt-3">
                   <ButtonLink
                     href={`/structure/preview?${params.toString()}`}
@@ -1243,11 +1428,13 @@ export function StructureWorkspace({
   unitId,
   unitName,
   scope,
+  format,
   capability,
 }: {
   unitId: string;
   unitName: string;
   scope: StructureScope;
+  format: StructureFormat;
   capability: StructureCapability;
 }) {
   const pathname = usePathname();
@@ -1810,6 +1997,7 @@ export function StructureWorkspace({
           canSaveTemplates={capability.isReviewer}
           unitId={unitId}
           scope={scope}
+          format={format}
           returnTo={returnTo}
           busy={busy}
           onApply={(t) => {

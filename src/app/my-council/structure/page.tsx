@@ -9,6 +9,7 @@ import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
 import { fetchUnitChartResult, isUnitScopeChart } from "@/lib/chart";
+import { structureFormat } from "@/lib/structure";
 import { fetchStructureForSession } from "@/lib/structure-server";
 
 /**
@@ -164,6 +165,7 @@ export default async function StructurePage() {
             unitId={own.id}
             unitName={own.name}
             scope={isOwner ? "usg" : "lsg"}
+            format={structureFormat({ isRoot: isOwner, unitType: own.unitType })}
             capability={structure.capability}
           />
         </div>

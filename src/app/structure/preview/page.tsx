@@ -9,12 +9,18 @@ import {
   NEUST_SAMPLES,
   cloneSampleDocument,
 } from "@/components/structure/StructureWorkspace";
-import type { StructureScope } from "@/lib/structure";
+import {
+  STRUCTURE_FORMAT_LABELS,
+  structureFormat,
+  type StructureFormat,
+  type StructureScope,
+} from "@/lib/structure";
 
 type PreviewSearch = Promise<{
   template?: string | string[];
   unitId?: string | string[];
   scope?: string | string[];
+  format?: string | string[];
   returnTo?: string | string[];
 }>;
 
@@ -25,6 +31,14 @@ function one(value: string | string[] | undefined): string | null {
 function scopeOf(value: string | string[] | undefined): StructureScope | null {
   const candidate = one(value);
   return candidate === "usg" || candidate === "lsg" ? candidate : null;
+}
+
+function formatOf(value: string | string[] | undefined): StructureFormat | null {
+  const candidate = one(value);
+  return candidate === "usg" || candidate === "lsg" || candidate === "campus" ||
+    candidate === "college" || candidate === "department"
+    ? candidate
+    : null;
 }
 
 function safeReturn(value: string | string[] | undefined): string {
@@ -43,9 +57,11 @@ export default function StructureTemplatePreviewPage({
   const router = useRouter();
   const templateKey = one(params.template);
   const requestedScope = scopeOf(params.scope);
+  const requestedFormat = formatOf(params.format);
   const unitId = one(params.unitId);
   const returnTo = safeReturn(params.returnTo);
   const [resolvedScope, setResolvedScope] = useState<StructureScope | null>(null);
+  const [resolvedFormat, setResolvedFormat] = useState<StructureFormat | null>(null);
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,17 +81,17 @@ export default function StructureTemplatePreviewPage({
           unit?: { unitType?: string; isRoot?: boolean } | null;
         };
         if (cancelled) return;
-        const unitType = payload.unit?.unitType ?? "";
-        const next: StructureScope =
-          unitType === "usg" || payload.unit?.isRoot ? "usg" : "lsg";
+        const nextFormat = structureFormat(payload.unit ?? {});
+        const nextScope: StructureScope = nextFormat === "usg" ? "usg" : "lsg";
         if (!res.ok || !payload.ok || !payload.unit) {
           setScopeError("We could not confirm which council this preview belongs to.");
           return;
         }
-        setResolvedScope(next);
-        if (requestedScope && requestedScope !== next) {
+        setResolvedScope(nextScope);
+        setResolvedFormat(nextFormat);
+        if (requestedScope && requestedScope !== nextScope) {
           setScopeError(
-            `This sample is for ${requestedScope.toUpperCase()} only. You are editing a ${next.toUpperCase()} structure.`,
+            `This sample is for ${requestedScope.toUpperCase()} only. You are editing a ${nextScope.toUpperCase()} structure.`,
           );
         }
       } catch {
@@ -100,7 +116,9 @@ export default function StructureTemplatePreviewPage({
       (entry) => entry.key === templateKey && entry.scope === resolvedScope,
     ),
   );
-  const canApply = Boolean(unitId && resolvedScope && !scopeError && !wrongTemplate && sample.scope === resolvedScope);
+  const canApply = Boolean(
+    unitId && resolvedScope && resolvedFormat && !scopeError && !wrongTemplate && sample.scope === resolvedScope,
+  );
   const doc = useMemo(() => cloneSampleDocument(sample), [sample]);
 
   function applyTemplate() {
@@ -108,7 +126,7 @@ export default function StructureTemplatePreviewPage({
       setError("Open this preview from the structure editor, then apply the template.");
       return;
     }
-    if (!canApply || !resolvedScope) {
+    if (!canApply || !resolvedScope || !resolvedFormat) {
       setError(scopeError ?? "This sample does not belong to the structure you are editing.");
       return;
     }
@@ -118,6 +136,7 @@ export default function StructureTemplatePreviewPage({
         JSON.stringify({
           templateKey: sample.key,
           scope: resolvedScope,
+          format: resolvedFormat,
           document: doc,
           appliedAt: Date.now(),
         }),
@@ -130,6 +149,7 @@ export default function StructureTemplatePreviewPage({
 
   const visibleError = error ?? scopeError ?? (wrongTemplate ? "This sample is for the other council. Open the sample from your own structure editor." : null);
   const scopeLabel = sample.scope === "lsg" ? "LSG" : "USG";
+  const formatLabel = STRUCTURE_FORMAT_LABELS[sample.format ?? resolvedFormat ?? "lsg"];
 
   return (
     <SessionGuard>
@@ -139,10 +159,10 @@ export default function StructureTemplatePreviewPage({
             <p className="eyebrow">Full structure preview</p>
             <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">{sample.name}</h1>
             <p className="mt-3 text-[0.9375rem] leading-relaxed text-body">
-              {scopeLabel} positions only. Preview-only view. Use the template to open it in the full
-              structure editor, where you can edit seats, add branches, upload photos, and save it as
-              your government structure. Names and NEUST emails are samples — replace them before
-              saving or submitting.
+              {scopeLabel} positions only &middot; {formatLabel} format. Preview-only view. Use the
+              template to open it in the full structure editor, where you can edit seats, add
+              branches, upload photos, and save it as this unit&rsquo;s own government structure.
+              Names and NEUST emails are samples — replace them before saving or submitting.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -165,7 +185,7 @@ export default function StructureTemplatePreviewPage({
           <ChartViewer
             doc={doc}
             title={sample.name}
-            subtitle={`${scopeLabel} sample preview — editable only after you use this template`}
+            subtitle={`${scopeLabel} · ${formatLabel} sample preview — editable only after you use this template`}
             filename={`${sample.key}-preview`}
             maxHeight={780}
           />

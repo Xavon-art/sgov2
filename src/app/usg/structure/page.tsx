@@ -92,8 +92,9 @@ export default async function UsgStructurePage() {
               Your government structure
             </h1>
             <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
-              Build your own structure — add officers, positions, and committees — and review the
-              structures your units have submitted below.
+              Build the USG umbrella structure — add officers, positions, and committees — and
+              review the separate structures each campus, college, department, and LSG submits
+              below.
             </p>
           </Reveal>
         </div>
@@ -104,6 +105,7 @@ export default async function UsgStructurePage() {
               unitId={ownUnit.id}
               unitName={ownUnit.name}
               scope="usg"
+              format="usg"
               capability={structure.capability}
             />
           </div>

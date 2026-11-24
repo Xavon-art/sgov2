@@ -201,6 +201,32 @@ export type StructureReadPayload = RpcResult & {
 /** Which council a NEUST sample belongs to. Saved DB templates stay unscoped. */
 export type StructureScope = "usg" | "lsg";
 
+/**
+ * The shape of the council behind the scope. USG is the umbrella; every other
+ * unit type is an LSG underneath it and keeps its own document keyed by unit id.
+ */
+export type StructureFormat = "usg" | "lsg" | "campus" | "college" | "department";
+
+export const STRUCTURE_FORMAT_LABELS: Record<StructureFormat, string> = {
+  usg: "University Student Government",
+  lsg: "Local Student Government",
+  campus: "Campus Student Government",
+  college: "College Student Government",
+  department: "Department Student Government",
+};
+
+/** The unit types the app lets an owner create, plus the two built-in scopes. */
+export function structureFormat(unit: {
+  isRoot?: boolean;
+  unitType?: string | null;
+}): StructureFormat {
+  if (unit.isRoot || unit.unitType === "usg") return "usg";
+  if (unit.unitType === "campus" || unit.unitType === "college" || unit.unitType === "department") {
+    return unit.unitType;
+  }
+  return "lsg";
+}
+
 export type StructureTemplate = {
   id: string;
   key: string;
@@ -210,6 +236,8 @@ export type StructureTemplate = {
   isBuiltin: boolean;
   /** Present on NEUST samples only; used to keep USG and LSG samples apart. */
   scope?: StructureScope;
+  /** The unit format the sample was written for; all LSG formats stay editable by LSGs. */
+  format?: StructureFormat;
   /**
    * The skeleton itself, holder-free. It is safe to hand back in the list
    * precisely because a template cannot contain a holder: `import_structure_template`
