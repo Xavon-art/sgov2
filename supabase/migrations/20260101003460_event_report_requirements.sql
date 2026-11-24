@@ -90,8 +90,23 @@ revoke all on function smartgov.sync_event_report_requirements(uuid) from public
 
 select smartgov.sync_event_report_requirements(e.id) from smartgov.events e;
 
-alter function smartgov.create_event_v2(text, text, text, date, time, text, text, text, uuid[], text[], jsonb, uuid, text)
-  rename to create_event_v2_base;
+-- Guard the rename so re-applying this migration after a partial run does not
+-- fail with "function create_event_v2_base ... already exists".
+do $$
+begin
+  if exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'create_event_v2' and p.pronargs = 13
+  ) and not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'create_event_v2_base' and p.pronargs = 13
+  ) then
+    alter function smartgov.create_event_v2(text, text, text, date, time, text, text, text, uuid[], text[], jsonb, uuid, text)
+      rename to create_event_v2_base;
+  end if;
+end $$;
 
 create or replace function smartgov.create_event_v2(
   p_session_token text,
@@ -130,8 +145,19 @@ end;
 $$;
 revoke all on function smartgov.create_event_v2(text, text, text, date, time, text, text, text, uuid[], text[], jsonb, uuid, text) from public;
 
-alter function smartgov.update_event(text, uuid, text, text, date, time, text, text)
-  rename to update_event_base;
+do $$
+begin
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'update_event' and p.pronargs = 8
+  ) and not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'update_event_base' and p.pronargs = 8
+  ) then
+    alter function smartgov.update_event(text, uuid, text, text, date, time, text, text)
+      rename to update_event_base;
+  end if;
+end $$;
 
 create or replace function smartgov.update_event(
   p_session_token text,
@@ -192,7 +218,18 @@ as $$
 $$;
 revoke all on function smartgov.can_file_accomplishment(smartgov.accounts, uuid) from public;
 
-alter function smartgov.list_events(text) rename to list_events_base;
+do $$
+begin
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'list_events' and p.pronargs = 1
+  ) and not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'list_events_base' and p.pronargs = 1
+  ) then
+    alter function smartgov.list_events(text) rename to list_events_base;
+  end if;
+end $$;
 
 create or replace function smartgov.list_events(p_session_token text)
 returns jsonb
@@ -272,8 +309,19 @@ end;
 $$;
 revoke all on function smartgov.list_events(text) from public;
 
-alter function smartgov.submit_accomplishment_report_v2(text, uuid, text, text, uuid, text[])
-  rename to submit_accomplishment_report_v2_base;
+do $$
+begin
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'submit_accomplishment_report_v2' and p.pronargs = 6
+  ) and not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'smartgov' and p.proname = 'submit_accomplishment_report_v2_base' and p.pronargs = 6
+  ) then
+    alter function smartgov.submit_accomplishment_report_v2(text, uuid, text, text, uuid, text[])
+      rename to submit_accomplishment_report_v2_base;
+  end if;
+end $$;
 
 create or replace function smartgov.submit_accomplishment_report_v2(
   p_session_token text,
