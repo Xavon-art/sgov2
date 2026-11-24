@@ -20,10 +20,10 @@ export const usgEventsTour: PageTour = {
       placement: "bottom",
     },
     {
-      target: "events-toolbar",
+      target: "workspace-nav",
       title: "Event views",
-      body: "The toolbar also opens the Calendar, Future Events, and Accomplishment tabs.",
-      placement: "bottom",
+      body: "Calendar, Future Events, and Accomplishment are sidebar links — the toolbar only holds actions and filters.",
+      placement: "right",
     },
     {
       target: "events-create",

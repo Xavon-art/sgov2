@@ -62,6 +62,7 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
       icon: "submission",
       children: [
         { label: "Tasks", href: "/lsg/request" },
+        { label: "Requirements", href: "/lsg/request?tab=requirements" },
         { label: "My Personal Requests", href: "/lsg/personal-requests" },
         ...(centralized ? [] : [{ label: "Resolutions", href: "/lsg/request?tab=resolutions" }]),
       ],

@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -70,8 +70,6 @@ const SCOPE_OPTIONS = [
 const UNIT_TYPES = ["usg", "lsg", "department", "council", "committee"];
 
 export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
   const view: "list" | "calendar" | "future" | "accomplishment" =
@@ -82,13 +80,6 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
         : tabParam === "accomplishment"
           ? "accomplishment"
           : "list";
-  const setView = (next: "list" | "calendar" | "future" | "accomplishment") => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === "list") params.delete("tab");
-    else params.set("tab", next);
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
 
   const [events, setEvents] = useState<Ev[]>([]);
   const [loading, setLoading] = useState(true);
@@ -507,12 +498,6 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
           <IconPencil className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           {isUsg ? "Create event" : "Add event"}
         </Button>
-        <div className="flex gap-1">
-          <button onClick={() => setView("list")} className={`rounded-full px-3 py-1 text-sm ${view === "list" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>List</button>
-          <button onClick={() => setView("calendar")} className={`rounded-full px-3 py-1 text-sm ${view === "calendar" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Calendar</button>
-          <button onClick={() => setView("future")} className={`rounded-full px-3 py-1 text-sm ${view === "future" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Future Events</button>
-          <button onClick={() => setView("accomplishment")} className={`rounded-full px-3 py-1 text-sm ${view === "accomplishment" ? "bg-ink text-canvas" : "border border-line text-ink"}`}>Accomplishment</button>
-        </div>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-line px-3 py-1.5 text-sm">
           <option value="all">All</option>
           <option value="open">Open</option>

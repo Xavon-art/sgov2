@@ -1,5 +1,3 @@
-import { callRpc, type RpcResult } from "@/lib/auth/rpc";
-
 export type FeedbackStatus = "new" | "acknowledged";
 
 export type FeedbackEntry = {
@@ -10,17 +8,6 @@ export type FeedbackEntry = {
   createdAt: string;
   acknowledgedAt: string | null;
   acknowledgedBy: string | null;
-};
-
-export type CreateFeedbackResult = RpcResult & { id?: string };
-
-export type ListFeedbackResult = RpcResult & { rows?: FeedbackEntry[] };
-
-export type GetFeedbackResult = RpcResult & { item?: FeedbackEntry | null };
-
-export type AcknowledgeFeedbackResult = RpcResult & {
-  id?: string;
-  status?: FeedbackStatus;
 };
 
 export const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, string> = {
@@ -44,44 +31,5 @@ export function formatFeedbackDate(iso: string | null | undefined): string {
     day: "numeric",
     month: "short",
     year: "numeric",
-  });
-}
-
-export async function createFeedback(
-  sessionToken: string,
-  input: { subject: string; message: string },
-): Promise<CreateFeedbackResult> {
-  return callRpc<CreateFeedbackResult>("create_feedback", {
-    p_session_token: sessionToken,
-    p_subject: input.subject,
-    p_message: input.message,
-  });
-}
-
-export async function listFeedback(
-  sessionToken: string,
-): Promise<ListFeedbackResult> {
-  return callRpc<ListFeedbackResult>("list_feedback", {
-    p_session_token: sessionToken,
-  });
-}
-
-export async function getFeedback(
-  sessionToken: string,
-  feedbackId: string,
-): Promise<GetFeedbackResult> {
-  return callRpc<GetFeedbackResult>("get_feedback", {
-    p_session_token: sessionToken,
-    p_feedback_id: feedbackId,
-  });
-}
-
-export async function acknowledgeFeedback(
-  sessionToken: string,
-  feedbackId: string,
-): Promise<AcknowledgeFeedbackResult> {
-  return callRpc<AcknowledgeFeedbackResult>("acknowledge_feedback", {
-    p_session_token: sessionToken,
-    p_feedback_id: feedbackId,
   });
 }

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import { acknowledgeFeedback, UUID_RE } from "@/lib/feedback";
+import { UUID_RE } from "@/lib/feedback";
+import { acknowledgeFeedback } from "@/lib/feedback-server";
 
 export const runtime = "nodejs";
 

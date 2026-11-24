@@ -98,6 +98,7 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
       icon: "submission",
       children: [
         { label: "Tasks", href: "/usg/request" },
+        { label: "Requirements", href: "/usg/request?tab=requirements" },
         { label: "Personal Requests", href: "/usg/personal-requests" },
         { label: "Resolutions", href: "/usg/request?tab=resolutions" },
       ],

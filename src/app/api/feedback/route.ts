@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
-import {
-  createFeedback,
-  listFeedback,
-  type FeedbackEntry,
-} from "@/lib/feedback";
+import { type FeedbackEntry } from "@/lib/feedback";
+import { createFeedback, listFeedback } from "@/lib/feedback-server";
 
 export const runtime = "nodejs";
 

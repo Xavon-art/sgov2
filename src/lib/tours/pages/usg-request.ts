@@ -14,16 +14,10 @@ export const usgRequestTour: PageTour = {
       placement: "bottom",
     },
     {
-      target: "request-tabs",
-      title: "Request tabs",
-      body: "Switch between incoming requests and tasks you have already handled.",
-      placement: "bottom",
-    },
-    {
-      target: "request-tabs",
-      title: "Resolutions",
-      body: "The new Resolutions tab collects decisions from your office and the units below you.",
-      placement: "bottom",
+      target: "workspace-nav",
+      title: "Request sections",
+      body: "Tasks, Requirements, Personal Requests, and Resolutions are sidebar links — no duplicate tabs here.",
+      placement: "right",
     },
     {
       target: "request-create-task",

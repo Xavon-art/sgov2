@@ -561,6 +561,7 @@ if (isMainEntry) {
   // ---- Task 8: Federated accomplishment reports ----
   assertFile("supabase/migrations/20260101003250_accomplishment_reports.sql");
   assertFile("src/lib/accomplishment-reports.ts");
+  assertFile("src/lib/accomplishment-reports-server.ts");
   assertFile("src/app/api/accomplishment-reports/route.ts");
   assertFile("src/app/api/accomplishment-reports/[id]/route.ts");
   assertFile("src/app/api/accomplishment-reports/[id]/review/route.ts");
@@ -577,6 +578,8 @@ if (isMainEntry) {
   assertIncludes("src/lib/accomplishment-reports.ts", [
     "AccomplishmentReportStatus",
     "AccomplishmentReportRow",
+  ]);
+  assertIncludes("src/lib/accomplishment-reports-server.ts", [
     "listAccomplishmentReports",
     "submitAccomplishmentReport",
     "reviewAccomplishmentReport",
@@ -603,6 +606,7 @@ if (isMainEntry) {
   // ---- Task 9: In-app feedback ----
   assertFile("supabase/migrations/20260101003260_feedback.sql");
   assertFile("src/lib/feedback.ts");
+  assertFile("src/lib/feedback-server.ts");
   assertFile("src/app/api/feedback/route.ts");
   assertFile("src/app/api/feedback/[id]/route.ts");
   assertFile("src/app/api/feedback/[id]/acknowledge/route.ts");
@@ -620,6 +624,8 @@ if (isMainEntry) {
   assertIncludes("src/lib/feedback.ts", [
     "FeedbackStatus",
     "FeedbackEntry",
+  ]);
+  assertIncludes("src/lib/feedback-server.ts", [
     "createFeedback",
     "listFeedback",
     "getFeedback",

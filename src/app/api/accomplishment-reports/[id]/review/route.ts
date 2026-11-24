@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
 import {
-  reviewAccomplishmentReport,
   UUID_RE,
   type AccomplishmentDecision,
 } from "@/lib/accomplishment-reports";
+import { reviewAccomplishmentReport } from "@/lib/accomplishment-reports-server";
 
 export const runtime = "nodejs";
 

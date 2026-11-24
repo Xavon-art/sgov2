@@ -9,11 +9,8 @@ import { ActionError, SectionIcon } from "@/components/dashboard/workspace-share
 import {
   IconArchive,
   IconArrowLeft,
-  IconLayers,
   IconPencil,
   IconSubmission,
-  IconUser,
-  IconVerification,
 } from "@/components/ui/Icons";
 import { ResolutionPanel } from "@/components/dashboard/ResolutionPanel";
 import { RequirementsPanel } from "@/components/dashboard/RequirementsPanel";
@@ -310,45 +307,14 @@ export function RequestSection({ isUsg }: { isUsg: boolean }) {
         </header>
       </Reveal>
 
-      {isUsg ? (
-        <div data-tour="request-tabs" className="flex gap-2">
-          <button
-            onClick={() => setTab("tasks")}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "tasks" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
-          >
-            <IconSubmission className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-            Tasks
-          </button>
-          <button
-            onClick={() => setTab("requirements")}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "requirements" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
-          >
-            <IconLayers className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-            Requirements
-          </button>
-          <button
-            onClick={() => setTab("personal")}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "personal" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
-          >
-            <IconUser className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-            Personal requests
-          </button>
-          <button
-            onClick={() => setTab("resolutions")}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm ${tab === "resolutions" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
-          >
-            <IconVerification className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-            Resolutions
-          </button>
-          {tab === "tasks" && <CreateTaskButton onCreated={loadTasks} />}
-        </div>
-      ) : (
-        <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {isUsg && tab === "tasks" ? <CreateTaskButton onCreated={loadTasks} /> : null}
+        {!isUsg ? (
           <Button data-tour="request-file-personal" size="sm" onClick={() => setShowPR(true)}>
             <IconPencil className="h-4 w-4" /> File request
           </Button>
-        </div>
-      )}
+        ) : null}
+      </div>
 
       <ActionError message={actionError} />
 

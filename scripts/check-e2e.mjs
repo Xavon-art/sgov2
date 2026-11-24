@@ -14,10 +14,10 @@ const VIEWPORTS = [
 
 const FEDERATED_TABS = {
   usg: [
-    { parent: "Request", path: "/usg/request", href: "/usg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
-    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Request", path: "/usg/request", href: "/usg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "workspace-nav", kind: "nav", crumb: "Request" },
+    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
@@ -27,9 +27,9 @@ const FEDERATED_TABS = {
   ],
   lsg: [
     { parent: "Request", path: "/lsg/request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "workspace-nav", kind: "nav", crumb: "Request" },
-    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
+    { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
