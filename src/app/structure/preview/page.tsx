@@ -48,6 +48,11 @@ function safeReturn(value: string | string[] | undefined): string {
     : "/usg/manage?tab=structure";
 }
 
+function editorReturnTo(value: string, unitId: string | null): string {
+  if (!unitId || /[?&]unitId=/.test(value)) return value;
+  return `${value}${value.includes("?") ? "&" : "?"}unitId=${encodeURIComponent(unitId)}`;
+}
+
 export default function StructureTemplatePreviewPage({
   searchParams,
 }: {
@@ -59,37 +64,45 @@ export default function StructureTemplatePreviewPage({
   const requestedScope = scopeOf(params.scope);
   const requestedFormat = formatOf(params.format);
   const unitId = one(params.unitId);
-  const returnTo = safeReturn(params.returnTo);
+  const returnTo = editorReturnTo(safeReturn(params.returnTo), unitId);
   const [resolvedScope, setResolvedScope] = useState<StructureScope | null>(null);
   const [resolvedFormat, setResolvedFormat] = useState<StructureFormat | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
   const [scopeError, setScopeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The URL comes from the gallery, but it is still user-controlled. Ask the
-  // server which council this session actually edits before allowing an apply.
+  // server for the target unit itself, not merely the caller's own unit, so a
+  // USG owner can prepare a structure for any council beneath the umbrella.
   useEffect(() => {
     if (!unitId) {
       setScopeError("Open this preview from the structure editor, then apply the template.");
       return;
     }
     let cancelled = false;
+    setCanEdit(false);
     void (async () => {
       try {
-        const res = await fetch("/api/structures?view=own");
+        const res = await fetch(`/api/structures/${encodeURIComponent(unitId)}`);
         const payload = (await res.json()) as {
           ok?: boolean;
-          unit?: { unitType?: string; isRoot?: boolean } | null;
+          unit?: { unitType?: string; isRoot?: boolean; parentId?: string | null } | null;
+          capability?: { canRead?: boolean; canEdit?: boolean } | null;
         };
         if (cancelled) return;
-        const nextFormat = structureFormat(payload.unit ?? {});
-        const nextScope: StructureScope = nextFormat === "usg" ? "usg" : "lsg";
         if (!res.ok || !payload.ok || !payload.unit) {
           setScopeError("We could not confirm which council this preview belongs to.");
           return;
         }
+        const nextFormat = structureFormat(payload.unit);
+        const nextScope: StructureScope = nextFormat === "usg" ? "usg" : "lsg";
+        const nextCanEdit = Boolean(payload.capability?.canEdit);
         setResolvedScope(nextScope);
         setResolvedFormat(nextFormat);
-        if (requestedScope && requestedScope !== nextScope) {
+        setCanEdit(nextCanEdit);
+        if (!nextCanEdit) {
+          setScopeError("You can preview this council, but you do not have edit access to apply a template.");
+        } else if (requestedScope && requestedScope !== nextScope) {
           setScopeError(
             `This sample is for ${requestedScope.toUpperCase()} only. You are editing a ${nextScope.toUpperCase()} structure.`,
           );
@@ -117,7 +130,7 @@ export default function StructureTemplatePreviewPage({
     ),
   );
   const canApply = Boolean(
-    unitId && resolvedScope && resolvedFormat && !scopeError && !wrongTemplate && sample.scope === resolvedScope,
+    unitId && canEdit && resolvedScope && resolvedFormat && !scopeError && !wrongTemplate && sample.scope === resolvedScope,
   );
   const doc = useMemo(() => cloneSampleDocument(sample), [sample]);
 

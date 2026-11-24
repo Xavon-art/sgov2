@@ -15,6 +15,12 @@ import { structureFormat, type StructureReadPayload, type StructureSummary } fro
  * reads the caller's own unit from `/api/structures?view=own` and hands the
  * saved document to the editor as its initial state, so "edit" actually edits.
  *
+ * A `unitId` query parameter overrides the own-unit lookup. That is how a
+ * template preview returns to the exact council it prepared, including when a
+ * USG owner is maintaining an LSG beneath the umbrella. The server still
+ * resolves the id inside the caller's organization and applies its own
+ * read/edit gate.
+ *
  * Both sides get the same builder: the USG edits its root chart here, and an
  * LSG edits its council chart through the same component.
  */
@@ -29,9 +35,15 @@ export function StructureEditorPanel({
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setMessage(null);
+    const requestedUnitId = new URLSearchParams(window.location.search).get("unitId");
     void (async () => {
       try {
-        const res = await fetch("/api/structures?view=own");
+        const url = requestedUnitId
+          ? `/api/structures/${encodeURIComponent(requestedUnitId)}`
+          : "/api/structures?view=own";
+        const res = await fetch(url);
         const payload = (await res.json()) as StructureReadPayload & { message?: string };
         if (cancelled) return;
         if (!res.ok || !payload.ok) {
