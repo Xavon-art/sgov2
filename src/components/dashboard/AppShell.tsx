@@ -8,7 +8,7 @@ import { TourHelpButton } from "@/components/tours/HelpButton";
 import { loadTourProgress, saveTourProgress } from "@/lib/tours/progress";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { useAccount } from "@/components/dashboard/dashboard-context";
-import type { NotificationItem } from "@/lib/notifications";
+import { formatNotificationTime, type NotificationItem } from "@/lib/notifications";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { Enter } from "@/components/fx/Presence";
 import {
@@ -736,7 +736,7 @@ function AppShellInner({
                                     <p className="text-[0.875rem] font-medium text-ink-deep">{n.title}</p>
                                   </div>
                                   {n.body ? <p className="mt-0.5 text-[0.75rem] text-body">{n.body}</p> : null}
-                                  <p className="mt-1 text-[0.625rem] text-muted">{new Date(n.createdAt).toLocaleString()}</p>
+                                  <p className="mt-1 text-[0.625rem] text-muted">{formatNotificationTime(n.createdAt)}</p>
                                 </button>
                                 <button
                                   type="button"

@@ -60,7 +60,7 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
     const token = await readSessionToken();
     const [workspace, notifications] = await Promise.all([
       callRpc<WorkspacePayload>("account_workspace", { p_session_token: token }),
-      loadNotifications(3),
+      loadNotifications(10),
     ]);
     data = workspace;
     snapshot = notifications;
@@ -135,7 +135,7 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
             accountName={account.displayName}
             roleLabel="Local council"
             initialUnreadCount={snapshot.unreadCount}
-            initialNotifications={snapshot.notifications}
+            initialNotifications={snapshot.notifications.slice(0, 3)}
           >
             {children}
           </AppShell>

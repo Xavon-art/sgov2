@@ -63,7 +63,7 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
     const token = await readSessionToken();
     const [workspace, notifications] = await Promise.all([
       callRpc<WorkspacePayload>("account_workspace", { p_session_token: token }),
-      loadNotifications(3),
+      loadNotifications(10),
     ]);
     data = workspace;
     snapshot = notifications;
@@ -131,7 +131,7 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
             accountName={account.displayName}
             roleLabel={role.isAdmin ? "University-wide owner" : "University-wide reviewer"}
             initialUnreadCount={snapshot.unreadCount}
-            initialNotifications={snapshot.notifications}
+            initialNotifications={snapshot.notifications.slice(0, 3)}
           >
             {children}
           </AppShell>

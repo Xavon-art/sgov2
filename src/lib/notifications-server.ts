@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { readSessionToken } from "@/lib/auth/session";
 import type { NotificationItem } from "@/lib/notifications";
@@ -19,7 +20,7 @@ const EMPTY: NotificationSnapshot = { notifications: [], unreadCount: 0 };
  * render puts the first paint and the data in the same response; the realtime
  * subscription only has to keep that snapshot fresh afterwards.
  */
-export async function loadNotifications(limit: number): Promise<NotificationSnapshot> {
+export const loadNotifications = cache(async (limit: number): Promise<NotificationSnapshot> => {
   try {
     const token = await readSessionToken();
     if (!token) return EMPTY;
@@ -37,4 +38,4 @@ export async function loadNotifications(limit: number): Promise<NotificationSnap
   } catch {
     return EMPTY;
   }
-}
+});

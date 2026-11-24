@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Seal } from "@/components/ui/Seal";
 import { Button } from "@/components/ui/Button";
-import type { NotificationItem } from "@/lib/notifications";
+import { formatNotificationTime, type NotificationItem } from "@/lib/notifications";
 import { useRealtimeSignals } from "@/lib/realtime";
 
 export function NotificationsClient({
@@ -135,7 +135,7 @@ export function NotificationsClient({
                   {!n.readAt ? <span aria-label="Unread" className="size-2 shrink-0 rounded-full bg-brass" /> : null}
                   <p className="text-[0.9375rem] font-semibold text-ink-deep">{n.title}</p>
                   <span className="ml-auto shrink-0 text-[0.625rem] text-muted">
-                    {new Date(n.createdAt).toLocaleString()}
+                    {formatNotificationTime(n.createdAt)}
                   </span>
                 </div>
                 {n.body ? <p className="mt-1 text-[0.8125rem] text-body">{n.body}</p> : null}

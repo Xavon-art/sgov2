@@ -10,6 +10,7 @@ export default async function NotificationsPage() {
   const account = await currentAccount();
   if (!account) redirect("/login");
 
+  // Same limit as the shell; React cache() dedupes this into one RPC per render.
   const snapshot = await loadNotifications(10);
 
   return (
