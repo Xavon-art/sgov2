@@ -685,7 +685,9 @@ function Inspector({
     // Keep the display name in step with the name parts; only an explicit
     // fullName edit wins.
     if ("fullName" in next) {
-      merged.fullName = next.fullName?.trim() || undefined;
+      // Keep the field exactly as typed. Trimming here removes the space the
+      // user just pressed before the next character arrives ("Juan A" -> "JuanA").
+      merged.fullName = next.fullName;
     } else if (next.firstName !== undefined || next.lastName !== undefined || next.middleName !== undefined || next.suffix !== undefined) {
       const composed = [merged.firstName, merged.middleName, merged.lastName, merged.suffix]
         .map((part) => (part ?? "").trim())
@@ -858,6 +860,7 @@ function Inspector({
                 <input
                   value={holder.fullName ?? ""}
                   onChange={(e) => patchHolder(index, { fullName: e.target.value })}
+                  onBlur={(e) => patchHolder(index, { fullName: e.target.value.trim() })}
                   placeholder="Display name"
                   className="min-w-0 flex-1 rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
                 />
