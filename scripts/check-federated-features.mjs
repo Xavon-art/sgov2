@@ -623,12 +623,12 @@ if (isMainEntry) {
   ]);
   assertIncludes("src/app/usg/manage/ManageClient.tsx", [
     "FeedbackWorkspace",
-    'id: "feedback"',
+    'feedback: "reviewer"',
     "tab === \"feedback\"",
   ]);
   assertIncludes("src/app/lsg/manage/page.tsx", [
     "FeedbackWorkspace",
-    'id: "feedback"',
+    'value === "feedback"',
     "tab === \"feedback\"",
   ]);
   assertIncludes("src/components/dashboard/usg-nav.ts", [
@@ -704,7 +704,7 @@ if (isMainEntry) {
   ]);
   assertIncludes("src/app/usg/manage/ManageClient.tsx", [
     "AccountsPanel",
-    'id: "accounts"',
+    'accounts: "owner"',
     'tab === "accounts"',
   ]);
   assertIncludes("src/components/dashboard/ProfileSection.tsx", ["OfficerProfileFields"]);

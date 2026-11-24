@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
 import { InvitesPanel } from "@/components/dashboard/InvitesPanel";
@@ -14,50 +13,47 @@ import { MonitoringPanel } from "@/components/dashboard/MonitoringPanel";
 import { FeedbackWorkspace } from "@/components/dashboard/FeedbackWorkspace";
 import { AccountsPanel } from "@/components/dashboard/AccountsPanel";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
-import {
-  IconArchive,
-  IconBudget,
-  IconBuilding,
-  IconEye,
-  IconLayers,
-  IconMail,
-  IconMonitoring,
-  IconUser,
-} from "@/components/ui/Icons";
-import { cn } from "@/lib/utils";
+import { IconLayers } from "@/components/ui/Icons";
 
 type Tab = "umbrella" | "invites" | "structure" | "profile" | "documents" | "search" | "budget" | "monitoring" | "feedback" | "accounts";
 
 type TabAccess = "owner" | "reviewer" | "self";
 
-const TABS: Array<{ id: Tab; label: string; access: TabAccess; icon: typeof IconBuilding }> = [
-  { id: "umbrella", label: "Umbrella", access: "owner", icon: IconBuilding },
-  { id: "invites", label: "Invites", access: "owner", icon: IconMail },
-  { id: "structure", label: "Government structure", access: "owner", icon: IconLayers },
-  { id: "profile", label: "Profile & customization", access: "self", icon: IconUser },
-  { id: "documents", label: "Documents", access: "reviewer", icon: IconArchive },
-  { id: "search", label: "Search", access: "reviewer", icon: IconEye },
-  { id: "budget", label: "Budget", access: "reviewer", icon: IconBudget },
-  { id: "monitoring", label: "Monitoring", access: "reviewer", icon: IconMonitoring },
-  { id: "feedback", label: "Feedback", access: "reviewer", icon: IconMail },
-  { id: "accounts", label: "Accounts", access: "owner", icon: IconUser },
-];
+const TAB_ACCESS: Record<Tab, TabAccess> = {
+  umbrella: "owner",
+  invites: "owner",
+  structure: "owner",
+  profile: "self",
+  documents: "reviewer",
+  search: "reviewer",
+  budget: "reviewer",
+  monitoring: "reviewer",
+  feedback: "reviewer",
+  accounts: "owner",
+};
+
+function isTab(value: string | undefined): value is Tab {
+  return value === "umbrella" || value === "invites" || value === "structure" || value === "profile" || value === "documents" || value === "search" || value === "budget" || value === "monitoring" || value === "feedback" || value === "accounts";
+}
+
+function allowsTab(tab: Tab, canManage: boolean, canReviewDocuments: boolean): boolean {
+  const access = TAB_ACCESS[tab];
+  return access === "self" || (access === "owner" ? canManage : canReviewDocuments);
+}
 
 export function ManageClient({ requestedTab }: { requestedTab?: string }) {
   const { account, role } = useDashboard();
-  const router = useRouter();
   const canManage = account.accountScope === "owner";
   const canReviewDocuments = role.side === "usg";
+  const centralized = role.isCentral || role.governanceModel === "unitary";
 
-  const visible = TABS.filter(
-    (t) =>
-      t.access === "self" ||
-      (t.access === "owner" ? canManage : canReviewDocuments),
-  );
-
-  const tab: Tab = visible.some((t) => t.id === requestedTab)
-    ? (requestedTab as Tab)
-    : (visible[0]?.id ?? "profile");
+  // The sidebar owns navigation. The query param only picks which panel renders,
+  // with a default matching the first child link shown for this role.
+  const defaultTab: Tab = canManage ? (centralized ? "structure" : "umbrella") : "profile";
+  const tab: Tab =
+    requestedTab && isTab(requestedTab) && allowsTab(requestedTab, canManage, canReviewDocuments)
+      ? requestedTab
+      : defaultTab;
 
   return (
     <section className="flex flex-col gap-6">
@@ -85,51 +81,6 @@ export function ManageClient({ requestedTab }: { requestedTab?: string }) {
               : "Your own account and the officer details attached to it."}
         </p>
       </header>
-
-      <div
-        data-tour="manage-tabs"
-        role="tablist"
-        aria-label="Manage sections"
-        className="flex flex-wrap gap-1 border-b border-line/80"
-      >
-        {visible.map((t) => {
-          const classes = cn(
-            "pressable -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
-            tab === t.id
-              ? "border-brass text-ink"
-              : "border-transparent text-muted hover:text-ink",
-          );
-
-          if (t.id === "monitoring") {
-            return (
-              <Link
-                key={t.id}
-                role="tab"
-                aria-selected={tab === t.id}
-                href="/usg/manage?tab=monitoring"
-                className={classes}
-              >
-                <t.icon className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-                {t.label}
-              </Link>
-            );
-          }
-
-          return (
-            <button
-              key={t.id}
-              role="tab"
-              type="button"
-              aria-selected={tab === t.id}
-              onClick={() => router.replace(`/usg/manage?tab=${t.id}`, { scroll: false })}
-              className={classes}
-            >
-              <t.icon className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
 
       {tab === "umbrella" && canManage ? <UmbrellaSection /> : null}
       {tab === "invites" && canManage ? (

@@ -156,6 +156,10 @@ function AppShellInner({
 }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  // Manual expand/collapse per section. When a key is absent the section follows
+  // the URL (its child is active), so deep links still open with their children
+  // visible. Once clicked, the user's choice wins until they click again.
+  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({});
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -287,6 +291,18 @@ function AppShellInner({
   // hardcoded link.
   const active = nav.find((n) => n.href === pathname) ?? nav[0];
 
+  /**
+   * A section title is an expander as well as a link. First click opens its
+   * children; clicking the same title again closes them. The drawer stays open
+   * while expanding so the child that just appeared can actually be tapped.
+   */
+  function toggleSection(item: NavItem, inSection: boolean) {
+    if (!item.children?.length) return false;
+    const wasOpen = sectionOpen[item.id] ?? inSection;
+    setSectionOpen((prev) => ({ ...prev, [item.id]: !wasOpen }));
+    return true;
+  }
+
   // Escape to dismiss, plus a scroll lock while it is up.
   //
   // Both belong to the drawer rather than to the animation, but neither is
@@ -364,6 +380,7 @@ function AppShellInner({
               pathname === item.href ||
               pathname.startsWith(`${item.href}/`) ||
               Boolean(item.children?.some((child) => childIsActive(child.href, pathname, currentTab)));
+            const expanded = item.children?.length ? (sectionOpen[item.id] ?? inSection) : false;
             return (
               <div key={item.id} className="flex flex-col">
                 <Link
@@ -371,6 +388,13 @@ function AppShellInner({
                   title={item.label}
                   aria-label={item.label}
                   aria-current={selected ? "page" : undefined}
+                  aria-expanded={item.children?.length ? expanded : undefined}
+                  onClick={(event) => {
+                    if (toggleSection(item, inSection)) {
+                      event.preventDefault();
+                      router.push(item.href);
+                    }
+                  }}
                   className={cn(
                     "group flex min-h-11 items-center rounded-xl py-2.5 text-[0.875rem] font-medium transition-colors duration-300",
                     collapsed ? "justify-center px-0" : "gap-3 px-3",
@@ -390,7 +414,7 @@ function AppShellInner({
                   />
                   {!collapsed ? <span className="min-w-0 flex-1 truncate">{item.label}</span> : null}
                 </Link>
-                {!collapsed && item.children && inSection ? (
+                {!collapsed && item.children && expanded ? (
                   <div className="ml-5 flex flex-col gap-0.5 border-l border-line/70 pl-2.5 pt-0.5">
                     {item.children.map((child) => {
                       const childSelected = childIsActive(child.href, pathname, currentTab);
@@ -484,12 +508,23 @@ function AppShellInner({
               pathname === item.href ||
               pathname.startsWith(`${item.href}/`) ||
               Boolean(item.children?.some((child) => childIsActive(child.href, pathname, currentTab)));
+            const expanded = item.children?.length ? (sectionOpen[item.id] ?? inSection) : false;
             return (
               <div key={item.id} className="flex flex-col">
                 <Link
                   href={item.href}
                   aria-current={selected ? "page" : undefined}
-                  onClick={() => setOpen(false)}
+                  aria-expanded={item.children?.length ? expanded : undefined}
+                  onClick={(event) => {
+                    if (toggleSection(item, inSection)) {
+                      event.preventDefault();
+                      router.push(item.href);
+                      // Keep the drawer open so the newly revealed children
+                      // are actually tappable.
+                      return;
+                    }
+                    setOpen(false);
+                  }}
                   className={cn(
                     // `group` was missing here. The icon below asks for
                     // group-hover:translate-x-0.5, and without the parent class
@@ -513,7 +548,7 @@ function AppShellInner({
                   />
                   {item.label}
                 </Link>
-                {item.children && inSection ? (
+                {item.children && expanded ? (
                   <div className="ml-7 flex flex-col gap-0.5 border-l border-line/70 pl-3 pb-1">
                     {item.children.map((child) => {
                       const childSelected = childIsActive(child.href, pathname, currentTab);

@@ -78,22 +78,22 @@ const FEDERATED_TABS = {
     { parent: "Events and Acts", href: "/usg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
   lsg: [
     { parent: "Request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
     { parent: "Events and Acts", href: "/lsg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
 };
 
@@ -432,11 +432,16 @@ async function federatedTabPass(page, role) {
               .getByRole("tab", { name: new RegExp(`^${tab.label}$`, "i") })
               .first()
               .getAttribute("aria-selected")
-          : await page
-              .locator(`[data-tour="${tab.anchor}"] button`)
-              .filter({ hasText: tab.label })
-              .first()
-              .evaluate((el) => el.className.includes("bg-ink"));
+          : tab.kind === "nav"
+            ? await page
+                .locator(`a[href="${tab.href}"]`)
+                .first()
+                .evaluate((el) => el.className.includes("bg-ink/[0.06]"))
+            : await page
+                .locator(`[data-tour="${tab.anchor}"] button`)
+                .filter({ hasText: tab.label })
+                .first()
+                .evaluate((el) => el.className.includes("bg-ink"));
       const selectedOk = tab.kind === "role" ? selected === "true" : selected === true;
       check(
         `${role} ${tab.label} tab shows breadcrumb and selection`,

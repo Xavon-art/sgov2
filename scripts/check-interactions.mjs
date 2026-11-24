@@ -241,18 +241,17 @@ check(
   "USG manage derives document access from the server-resolved workspace role",
   usgManage.includes('const { account, role } = useDashboard();') &&
     usgManage.includes('const canReviewDocuments = role.side === "usg";') &&
-    usgManage.includes('{ id: "documents", label: "Documents", access: "reviewer"') &&
-    usgManage.includes('{ id: "search", label: "Search", access: "reviewer"') &&
+    usgManage.includes('documents: "reviewer"') &&
+    usgManage.includes('search: "reviewer"') &&
     usgManage.includes('tab === "documents" && canReviewDocuments') &&
     usgManage.includes('tab === "search" && canReviewDocuments'),
 );
 check(
   "USG manage keeps umbrella, invites, and structure owner-only",
   ['umbrella', 'invites', 'structure'].every((id) =>
-    usgManage.includes(`{ id: "${id}", label:`),
+    usgManage.includes(`${id}: "owner"`),
   ) &&
-    usgManage.includes('access: "owner"') &&
-    usgManage.includes('t.access === "owner" ? canManage : canReviewDocuments'),
+    usgManage.includes('access === "owner" ? canManage : canReviewDocuments'),
 );
 
 const documentLibrary = src("src/components/dashboard/DocumentLibraryPanel.tsx");

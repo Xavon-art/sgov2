@@ -18,22 +18,22 @@ const FEDERATED_TABS = {
     { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
   lsg: [
     { parent: "Request", path: "/lsg/request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "request-tabs", kind: "button", crumb: "Request" },
     { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=calendar", tab: "calendar", label: "Calendar", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
     { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "events-toolbar", kind: "button", crumb: "Events and Acts" },
-    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
-    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "manage-tabs", kind: "role", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
 };
 
@@ -126,7 +126,12 @@ async function openFederatedTab(page, role, tab) {
   const scope = wide
     ? page
     : page.getByRole("dialog", { name: /workspace menu/i });
-  await scope.locator(`a[href="${tab.href}"]`).first().click();
+  const childLink = scope.locator(`a[href="${tab.href}"]`).first();
+  if (!(await childLink.count())) {
+    const parentLink = scope.getByRole("link", { name: new RegExp(`^${tab.parent}$`, "i") }).first();
+    if (await parentLink.count()) await parentLink.click();
+  }
+  await childLink.click();
   await page.waitForURL(
     (url) => url.pathname === tab.path && url.searchParams.get("tab") === tab.tab,
     { timeout: 30000 },
@@ -140,17 +145,24 @@ async function federatedTabsPass(page, role) {
       await openFederatedTab(page, role, tab);
       const crumb = page.locator('[data-tour="workspace-breadcrumbs"]').first();
       const crumbText = (await crumb.textContent()) ?? "";
+      const wide = (page.viewportSize()?.width ?? 1440) >= 1024;
+      const scope = wide ? page : page.getByRole("dialog", { name: /workspace menu/i });
       const selected =
         tab.kind === "role"
           ? await page
               .getByRole("tab", { name: new RegExp(`^${tab.label}$`, "i") })
               .first()
               .getAttribute("aria-selected")
-          : await page
-              .locator(`[data-tour="${tab.anchor}"] button`)
-              .filter({ hasText: tab.label })
-              .first()
-              .evaluate((el) => el.className.includes("bg-ink"));
+          : tab.kind === "nav"
+            ? await scope
+                .locator(`a[href="${tab.href}"]`)
+                .first()
+                .evaluate((el) => el.className.includes("bg-ink/[0.06]"))
+            : await page
+                .locator(`[data-tour="${tab.anchor}"] button`)
+                .filter({ hasText: tab.label })
+                .first()
+                .evaluate((el) => el.className.includes("bg-ink"));
       const selectedOk = tab.kind === "role" ? selected === "true" : selected === true;
       check(
         `${role} opens ${tab.label} through the ${tab.parent} navigation`,

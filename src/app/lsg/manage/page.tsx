@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useAccount } from "@/components/dashboard/dashboard-context";
+import { useSearchParams } from "next/navigation";
+import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
@@ -11,8 +11,7 @@ import { DocumentSearchPanel } from "@/components/dashboard/DocumentSearchPanel"
 import { BudgetPanel } from "@/components/dashboard/BudgetPanel";
 import { FeedbackWorkspace } from "@/components/dashboard/FeedbackWorkspace";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
-import { IconArchive, IconBudget, IconBuilding, IconEye, IconLayers, IconMail, IconUser } from "@/components/ui/Icons";
-import { cn } from "@/lib/utils";
+import { IconLayers } from "@/components/ui/Icons";
 
 /**
  * Manage, from the LSG side.
@@ -42,14 +41,13 @@ function isTab(value: string | null): value is Tab {
 }
 
 export default function LsgManagePage() {
-  const account = useAccount();
-  const router = useRouter();
+  const { account, role } = useDashboard();
   const searchParams = useSearchParams();
 
-  // URL is the source of truth so a sidebar link switches the panel on the
-  // first click, not only after a full reload.
+  // The sidebar owns navigation. The query param only picks which panel renders.
+  const centralized = role.isCentral || role.governanceModel === "unitary";
   const requested = searchParams.get("tab");
-  const tab: Tab = isTab(requested) ? requested : "usg";
+  const tab: Tab = isTab(requested) ? requested : centralized ? "structure" : "usg";
 
   const unitName = account.campusName || account.universityName || "your unit";
 
@@ -69,38 +67,6 @@ export default function LsgManagePage() {
           Your own account, and the government structure of your council.
         </p>
       </header>
-
-      <div
-        data-tour="manage-tabs"
-        role="tablist"
-        aria-label="Manage sections"
-        className="flex flex-wrap gap-1 border-b border-line/80"
-      >
-        {([
-          { id: "usg" as const, label: "Unit details", icon: IconBuilding },
-          { id: "profile" as const, label: "Profile", icon: IconUser },
-          { id: "structure" as const, label: "Government structure", icon: IconLayers },
-          { id: "documents" as const, label: "Documents", icon: IconArchive },
-          { id: "search" as const, label: "Search", icon: IconEye },
-          { id: "budget" as const, label: "Budget", icon: IconBudget },
-          { id: "feedback" as const, label: "Feedback", icon: IconMail },
-        ]).map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            type="button"
-            aria-selected={tab === t.id}
-            onClick={() => router.replace(`/lsg/manage?tab=${t.id}`, { scroll: false })}
-            className={cn(
-              "pressable -mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2.5 text-[0.875rem] font-medium transition-colors",
-              tab === t.id ? "border-brass text-ink" : "border-transparent text-muted hover:text-ink",
-            )}
-          >
-            <t.icon className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-            {t.label}
-          </button>
-        ))}
-      </div>
 
       {tab === "usg" ? (
         <div data-tour="manage-usg">

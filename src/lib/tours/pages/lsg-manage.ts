@@ -8,16 +8,16 @@ export const lsgManageTour: PageTour = {
   roles: ["lsg"],
   steps: [
     {
-      target: "manage-tabs",
-      title: "Manage tabs",
-      body: "Use these tabs to switch between council details, your profile, and structure.",
-      placement: "bottom",
+      target: "workspace-nav",
+      title: "Manage in the sidebar",
+      body: "Click Manage in the sidebar to expand its sections. Click it again to collapse them.",
+      placement: "right",
     },
     {
-      target: "manage-tabs",
-      title: "Federated tabs",
-      body: "Documents, Search, Budget, and Feedback now live beside the old council tabs.",
-      placement: "bottom",
+      target: "workspace-nav",
+      title: "Everything under Manage",
+      body: "Documents, Search, Budget, and Feedback are sidebar links here — no duplicate tabs on the page.",
+      placement: "right",
     },
     {
       target: "manage-usg",
