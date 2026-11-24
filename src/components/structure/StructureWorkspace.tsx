@@ -1509,9 +1509,11 @@ export function StructureWorkspace({
         edit(normalizeDocument(pending.document));
         setStructureId(stored?.structureId ?? open?.id ?? null);
         setTemplateKey(pending.templateKey);
-        setTermLabel(stored?.termLabel ?? open?.termLabel ?? "");
-        setStartsOn(stored?.startsOn ?? open?.startsOn ?? "");
-        setEndsOn(stored?.endsOn ?? open?.endsOn ?? "");
+        // A reviewer may open a unit that has only a published chart. Carry that
+        // term forward so an applied sample can be saved as the next revision.
+        setTermLabel(stored?.termLabel ?? open?.termLabel ?? res.approved?.termLabel ?? "");
+        setStartsOn(stored?.startsOn ?? open?.startsOn ?? res.approved?.startsOn ?? "");
+        setEndsOn(stored?.endsOn ?? open?.endsOn ?? res.approved?.endsOn ?? "");
         setNote(stored?.note ?? open?.note ?? "");
         setUpdatedAt(stored?.serverUpdatedAt ?? open?.updatedAt ?? null);
         setAutosave("off");
