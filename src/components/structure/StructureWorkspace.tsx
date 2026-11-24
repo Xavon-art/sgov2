@@ -41,6 +41,7 @@ import {
   type StructureLayout,
   type StructurePosition,
   type StructureRenewal,
+  type StructureScope,
   type StructureSummary,
   type StructureTemplate,
 } from "@/lib/structure";
@@ -309,6 +310,7 @@ function readStructureDraft(unitId: string): StoredStructureDraft | null {
 
 type PendingTemplate = {
   templateKey: string;
+  scope: StructureScope;
   document: StructureDocument;
   appliedAt: number;
 };
@@ -317,18 +319,20 @@ function pendingTemplateKey(unitId: string): string {
   return `smartgov:pending-template:${unitId}`;
 }
 
-function readPendingTemplate(unitId: string): PendingTemplate | null {
+function readPendingTemplate(unitId: string, expectedScope: StructureScope): PendingTemplate | null {
   try {
     const raw = localStorage.getItem(pendingTemplateKey(unitId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PendingTemplate>;
     if (
       typeof parsed.templateKey !== "string" ||
+      (parsed.scope !== "usg" && parsed.scope !== "lsg") ||
       !parsed.document ||
       !Array.isArray(parsed.document.committees)
     ) {
       return null;
     }
+    if (parsed.scope !== expectedScope) return null;
     return parsed as PendingTemplate;
   } catch {
     return null;
@@ -772,6 +776,7 @@ function sampleSeat(
 }
 
 function sampleTemplate(
+  scope: StructureScope,
   key: string,
   name: string,
   description: string,
@@ -790,6 +795,7 @@ function sampleTemplate(
     description,
     category: "NEUST sample",
     isBuiltin: false,
+    scope,
     document,
     committees: committees.length,
     seats: committees.reduce((sum, committee) => sum + committee.positions.length, 0),
@@ -804,9 +810,10 @@ function sampleTemplate(
  */
 export const NEUST_SAMPLES: StructureTemplate[] = [
   sampleTemplate(
+    "usg",
     "neust-usg-sample",
     "NEUST University Student Government",
-    "A USG sample with sample officers, college representatives and standing committees.",
+    "A university-level USG sample with executive officers and standing committees only.",
     [
       {
         key: "neust-usg-board",
@@ -858,64 +865,28 @@ export const NEUST_SAMPLES: StructureTemplate[] = [
         ],
       },
       {
-        key: "neust-usg-colleges",
-        name: "College Councils",
-        positions: [
-          sampleSeat("neust-college-engineering", "College of Engineering", 2, 0, {
-            first: "Alex H.",
-            last: "Rivera",
-            course: "BS Mechanical Engineering",
-            yearLevel: "3rd Year",
-          }, "neust-usg-vp-internal"),
-          sampleSeat("neust-college-business", "College of Business Administration", 2, 1, {
-            first: "Bianca I.",
-            last: "Cruz",
-            course: "BS Marketing",
-            yearLevel: "3rd Year",
-          }, "neust-usg-vp-internal"),
-          sampleSeat("neust-college-education", "College of Education", 2, 2, {
-            first: "Camille J.",
-            last: "Flores",
-            course: "BSEd English",
-            yearLevel: "4th Year",
-          }, "neust-usg-vp-internal"),
-          sampleSeat("neust-college-arts", "College of Arts and Sciences", 2, 3, {
-            first: "Dennis K.",
-            last: "Ramos",
-            course: "BS Biology",
-            yearLevel: "3rd Year",
-          }, "neust-usg-vp-internal"),
-          sampleSeat("neust-college-technology", "College of Technology", 2, 4, {
-            first: "Erica L.",
-            last: "Silva",
-            course: "BS Industrial Technology",
-            yearLevel: "2nd Year",
-          }, "neust-usg-vp-internal"),
-        ],
-      },
-      {
         key: "neust-usg-committees",
         name: "Standing Committees",
         positions: [
-          sampleSeat("neust-committee-academic", "Academic Affairs Chair", 2, 5, {
+          sampleSeat("neust-committee-academic", "Academic Affairs Chair", 2, 0, {
             first: "Kevin M.",
             last: "Tan",
             course: "BS Mathematics",
             yearLevel: "3rd Year",
           }, "neust-usg-vp-external"),
-          sampleSeat("neust-committee-welfare", "Student Welfare Chair", 2, 6, {
+          sampleSeat("neust-committee-welfare", "Student Welfare Chair", 2, 1, {
             first: "Lorraine N.",
             last: "Ocampo",
             course: "BS Psychology",
             yearLevel: "3rd Year",
           }, "neust-usg-vp-external"),
-          sampleSeat("neust-committee-finance", "Finance and Audit Chair", 2, 7, {
+          sampleSeat("neust-committee-finance", "Finance and Audit Chair", 2, 2, {
             first: "Miguel O.",
             last: "Bautista",
             course: "BS Economics",
             yearLevel: "4th Year",
           }, "neust-usg-vp-external"),
-          sampleSeat("neust-committee-comms", "Communications Chair", 2, 8, {
+          sampleSeat("neust-committee-comms", "Communications Chair", 2, 3, {
             first: "Nina P.",
             last: "Villanueva",
             course: "BA Broadcasting",
@@ -926,9 +897,10 @@ export const NEUST_SAMPLES: StructureTemplate[] = [
     ],
   ),
   sampleTemplate(
+    "lsg",
     "neust-lsg-sample",
     "NEUST Local Student Government",
-    "A college-level LSG sample with officers, committees and year-level representatives.",
+    "A college-level LSG sample with council officers, committees and year-level representatives only.",
     [
       {
         key: "neust-lsg-board",
@@ -1047,6 +1019,7 @@ export function cloneSampleDocument(sample: StructureTemplate): StructureDocumen
 function TemplateGallery({
   canSaveTemplates,
   unitId,
+  scope,
   returnTo,
   onApply,
   onSaveCurrent,
@@ -1054,6 +1027,7 @@ function TemplateGallery({
 }: {
   canSaveTemplates: boolean;
   unitId: string;
+  scope: StructureScope;
   returnTo: string;
   onApply: (template: StructureTemplate) => void;
   onSaveCurrent: () => void;
@@ -1071,6 +1045,9 @@ function TemplateGallery({
     }
     setTemplates(res.templates ?? []);
   }
+
+  const visibleSamples = NEUST_SAMPLES.filter((sample) => sample.scope === scope);
+  const scopeLabel = scope === "usg" ? "USG" : "LSG";
 
   return (
     <Panel>
@@ -1096,21 +1073,23 @@ function TemplateGallery({
 
       <div data-tour="structure-samples" className="mt-4 border-t border-line pt-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Label>NEUST sample charts</Label>
+          <Label>NEUST {scopeLabel} sample charts</Label>
           <span className="rounded-full border border-[#8a6d31]/35 bg-[#8a6d31]/[0.08] px-2.5 py-1 text-[0.625rem] font-semibold tracking-[0.08em] text-[#6b5121] uppercase">
-            Sample names only
+            {scopeLabel} positions only
           </span>
         </div>
         <p className="text-[0.8125rem] leading-relaxed text-muted">
-          Open the full structure to preview it, add officer photos, or apply it to your live draft.
-          Names and NEUST emails are placeholders — replace them before saving or submitting.
+          Only {scopeLabel} charts appear here. Open the full structure to preview it, add officer
+          photos, or apply it to your live draft. Names and NEUST emails are placeholders — replace
+          them before saving or submitting.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {NEUST_SAMPLES.map((sample) => {
+          {visibleSamples.map((sample) => {
             const params = new URLSearchParams({
               template: sample.key,
               unitId,
+              scope: sample.scope ?? scope,
               returnTo,
             });
             return (
@@ -1263,10 +1242,12 @@ export function ApprovedViewer({
 export function StructureWorkspace({
   unitId,
   unitName,
+  scope,
   capability,
 }: {
   unitId: string;
   unitName: string;
+  scope: StructureScope;
   capability: StructureCapability;
 }) {
   const pathname = usePathname();
@@ -1330,7 +1311,7 @@ export function StructureWorkspace({
       setHistory(res.history ?? []);
       const open = res.draft ?? null;
       const stored = readStructureDraft(unitId);
-      const pending = readPendingTemplate(unitId);
+      const pending = readPendingTemplate(unitId, scope);
       if (pending) {
         // A preview page handed us an applied document. Consume it once, then
         // let the normal editing path take over: edit() queues photo uploads and
@@ -1394,7 +1375,7 @@ export function StructureWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [unitId]);
+  }, [unitId, scope]);
 
   // Realtime carries only "a structure changed". Reload through the normal API,
   // and never overwrite edits the officer is still making in this tab.
@@ -1828,6 +1809,7 @@ export function StructureWorkspace({
         <TemplateGallery
           canSaveTemplates={capability.isReviewer}
           unitId={unitId}
+          scope={scope}
           returnTo={returnTo}
           busy={busy}
           onApply={(t) => {

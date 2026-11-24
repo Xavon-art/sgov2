@@ -198,6 +198,9 @@ export type StructureReadPayload = RpcResult & {
   renewal?: StructureRenewal;
 };
 
+/** Which council a NEUST sample belongs to. Saved DB templates stay unscoped. */
+export type StructureScope = "usg" | "lsg";
+
 export type StructureTemplate = {
   id: string;
   key: string;
@@ -205,6 +208,8 @@ export type StructureTemplate = {
   description: string | null;
   category: string;
   isBuiltin: boolean;
+  /** Present on NEUST samples only; used to keep USG and LSG samples apart. */
+  scope?: StructureScope;
   /**
    * The skeleton itself, holder-free. It is safe to hand back in the list
    * precisely because a template cannot contain a holder: `import_structure_template`

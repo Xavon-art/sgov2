@@ -163,6 +163,7 @@ export default async function StructurePage() {
           <StructureWorkspace
             unitId={own.id}
             unitName={own.name}
+            scope={isOwner ? "usg" : "lsg"}
             capability={structure.capability}
           />
         </div>

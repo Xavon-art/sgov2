@@ -82,6 +82,7 @@ export function StructureEditorPanel({
       <StructureWorkspace
         unitId={data.unit.id}
         unitName={data.unit.name}
+        scope={data.unit.isRoot || data.unit.unitType === "usg" ? "usg" : "lsg"}
         capability={data.capability}
       />
 

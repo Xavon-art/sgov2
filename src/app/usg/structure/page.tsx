@@ -103,6 +103,7 @@ export default async function UsgStructurePage() {
             <StructureWorkspace
               unitId={ownUnit.id}
               unitName={ownUnit.name}
+              scope="usg"
               capability={structure.capability}
             />
           </div>

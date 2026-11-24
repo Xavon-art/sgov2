@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import { Button } from "@/components/ui/Button";
@@ -9,15 +9,22 @@ import {
   NEUST_SAMPLES,
   cloneSampleDocument,
 } from "@/components/structure/StructureWorkspace";
+import type { StructureScope } from "@/lib/structure";
 
 type PreviewSearch = Promise<{
   template?: string | string[];
   unitId?: string | string[];
+  scope?: string | string[];
   returnTo?: string | string[];
 }>;
 
 function one(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
+}
+
+function scopeOf(value: string | string[] | undefined): StructureScope | null {
+  const candidate = one(value);
+  return candidate === "usg" || candidate === "lsg" ? candidate : null;
 }
 
 function safeReturn(value: string | string[] | undefined): string {
@@ -35,27 +42,94 @@ export default function StructureTemplatePreviewPage({
   const params = use(searchParams);
   const router = useRouter();
   const templateKey = one(params.template);
-  const sample = NEUST_SAMPLES.find((entry) => entry.key === templateKey) ?? NEUST_SAMPLES[0];
+  const requestedScope = scopeOf(params.scope);
   const unitId = one(params.unitId);
   const returnTo = safeReturn(params.returnTo);
-  const doc = useMemo(() => cloneSampleDocument(sample), [sample]);
+  const [resolvedScope, setResolvedScope] = useState<StructureScope | null>(null);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // The URL comes from the gallery, but it is still user-controlled. Ask the
+  // server which council this session actually edits before allowing an apply.
+  useEffect(() => {
+    if (!unitId) {
+      setScopeError("Open this preview from the structure editor, then apply the template.");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/structures?view=own");
+        const payload = (await res.json()) as {
+          ok?: boolean;
+          unit?: { unitType?: string; isRoot?: boolean } | null;
+        };
+        if (cancelled) return;
+        const unitType = payload.unit?.unitType ?? "";
+        const next: StructureScope =
+          unitType === "usg" || payload.unit?.isRoot ? "usg" : "lsg";
+        if (!res.ok || !payload.ok || !payload.unit) {
+          setScopeError("We could not confirm which council this preview belongs to.");
+          return;
+        }
+        setResolvedScope(next);
+        if (requestedScope && requestedScope !== next) {
+          setScopeError(
+            `This sample is for ${requestedScope.toUpperCase()} only. You are editing a ${next.toUpperCase()} structure.`,
+          );
+        }
+      } catch {
+        if (!cancelled) setScopeError("We could not reach the server. Try the preview again.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [unitId, requestedScope]);
+
+  const sample = useMemo(() => {
+    const scope = resolvedScope ?? requestedScope;
+    const candidates = scope
+      ? NEUST_SAMPLES.filter((entry) => entry.scope === scope)
+      : NEUST_SAMPLES;
+    return candidates.find((entry) => entry.key === templateKey) ?? candidates[0] ?? NEUST_SAMPLES[0];
+  }, [templateKey, requestedScope, resolvedScope]);
+
+  const wrongTemplate = Boolean(
+    templateKey && resolvedScope && !NEUST_SAMPLES.some(
+      (entry) => entry.key === templateKey && entry.scope === resolvedScope,
+    ),
+  );
+  const canApply = Boolean(unitId && resolvedScope && !scopeError && !wrongTemplate && sample.scope === resolvedScope);
+  const doc = useMemo(() => cloneSampleDocument(sample), [sample]);
 
   function applyTemplate() {
     if (!unitId) {
       setError("Open this preview from the structure editor, then apply the template.");
       return;
     }
+    if (!canApply || !resolvedScope) {
+      setError(scopeError ?? "This sample does not belong to the structure you are editing.");
+      return;
+    }
     try {
       localStorage.setItem(
         `smartgov:pending-template:${unitId}`,
-        JSON.stringify({ templateKey: sample.key, document: doc, appliedAt: Date.now() }),
+        JSON.stringify({
+          templateKey: sample.key,
+          scope: resolvedScope,
+          document: doc,
+          appliedAt: Date.now(),
+        }),
       );
       router.push(returnTo);
     } catch {
       setError("This browser could not save the applied template. Try again.");
     }
   }
+
+  const visibleError = error ?? scopeError ?? (wrongTemplate ? "This sample is for the other council. Open the sample from your own structure editor." : null);
+  const scopeLabel = sample.scope === "lsg" ? "LSG" : "USG";
 
   return (
     <SessionGuard>
@@ -65,24 +139,25 @@ export default function StructureTemplatePreviewPage({
             <p className="eyebrow">Full structure preview</p>
             <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">{sample.name}</h1>
             <p className="mt-3 text-[0.9375rem] leading-relaxed text-body">
-              Preview-only view. Use the template to open it in the full structure editor, where you
-              can edit seats, add branches, upload photos, and save it as your government structure.
-              Names and NEUST emails are samples — replace them before saving or submitting.
+              {scopeLabel} positions only. Preview-only view. Use the template to open it in the full
+              structure editor, where you can edit seats, add branches, upload photos, and save it as
+              your government structure. Names and NEUST emails are samples — replace them before
+              saving or submitting.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="paper" onClick={() => router.push(returnTo)}>
               Back to editor
             </Button>
-            <Button type="button" onClick={applyTemplate} disabled={!unitId}>
+            <Button type="button" onClick={applyTemplate} disabled={!canApply}>
               Use this template
             </Button>
           </div>
         </div>
 
-        {error ? (
+        {visibleError ? (
           <p className="mt-5 rounded-xl border border-[#a33a2e]/35 bg-[#a33a2e]/[0.07] px-4 py-3 text-[0.875rem] text-[#8c3126]">
-            {error}
+            {visibleError}
           </p>
         ) : null}
 
@@ -90,7 +165,7 @@ export default function StructureTemplatePreviewPage({
           <ChartViewer
             doc={doc}
             title={sample.name}
-            subtitle="Sample preview — editable only after you use this template"
+            subtitle={`${scopeLabel} sample preview — editable only after you use this template`}
             filename={`${sample.key}-preview`}
             maxHeight={780}
           />
@@ -100,7 +175,7 @@ export default function StructureTemplatePreviewPage({
           <Button type="button" variant="paper" onClick={() => router.push(returnTo)}>
             Back to editor
           </Button>
-          <Button type="button" onClick={applyTemplate} disabled={!unitId}>
+          <Button type="button" onClick={applyTemplate} disabled={!canApply}>
             Use this template
           </Button>
         </div>
