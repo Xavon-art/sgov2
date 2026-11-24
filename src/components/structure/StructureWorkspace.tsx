@@ -313,6 +313,9 @@ function readStructureDraft(unitId: string): StoredStructureDraft | null {
 type PendingTemplate = {
   templateKey: string;
   scope: StructureScope;
+  /** Kept for the handoff audit trail; the editor re-reads the target unit anyway. */
+  format?: StructureFormat;
+  category?: string;
   document: StructureDocument;
   appliedAt: number;
 };
@@ -1183,6 +1186,49 @@ export function cloneSampleDocument(sample: StructureTemplate): StructureDocumen
   return JSON.parse(JSON.stringify(sample.document)) as StructureDocument;
 }
 
+/**
+ * A deliberate blank option. It is not stored in the database: the document is
+ * made here, in the browser, from `emptyDocument()`, so it carries no officer
+ * from any other council. The scope and format come from the unit being edited,
+ * never from the gallery card, so a college cannot accidentally receive the
+ * USG or plain-LSG label.
+ */
+export const CUSTOM_TEMPLATE_KEYS: Record<StructureScope, string> = {
+  usg: "custom-usg",
+  lsg: "custom-lsg",
+};
+
+export function customTemplate(scope: StructureScope, format: StructureFormat): StructureTemplate {
+  return {
+    id: CUSTOM_TEMPLATE_KEYS[scope],
+    key: CUSTOM_TEMPLATE_KEYS[scope],
+    name: "Custom / Start from scratch",
+    description: "A blank chart with no officers. Name the council and add your own seats.",
+    category: "Custom",
+    isBuiltin: false,
+    scope,
+    format,
+    document: emptyDocument(),
+    committees: 0,
+    seats: 0,
+  };
+}
+
+/** Used by the preview page, where the URL is untrusted and the unit is authoritative. */
+export function findStructureTemplate(
+  key: string | null,
+  scope: StructureScope | null,
+  format: StructureFormat | null,
+): StructureTemplate | null {
+  if (!key) return null;
+  if (key === CUSTOM_TEMPLATE_KEYS.usg || key === CUSTOM_TEMPLATE_KEYS.lsg) {
+    if (!scope || key !== CUSTOM_TEMPLATE_KEYS[scope]) return null;
+    return customTemplate(scope, format ?? (scope === "usg" ? "usg" : "lsg"));
+  }
+  const candidates = scope ? NEUST_SAMPLES.filter((sample) => sample.scope === scope) : NEUST_SAMPLES;
+  return candidates.find((sample) => sample.key === key) ?? null;
+}
+
 // ------------------------------------------------------------------- gallery
 
 function TemplateGallery({
@@ -1227,6 +1273,14 @@ function TemplateGallery({
   });
   const scopeLabel = scope === "usg" ? "USG" : "LSG";
   const formatLabel = STRUCTURE_FORMAT_LABELS[format];
+  const custom = customTemplate(scope, format);
+  const customParams = new URLSearchParams({
+    template: custom.key,
+    unitId,
+    scope: custom.scope ?? scope,
+    format: custom.format ?? format,
+    returnTo,
+  });
 
   return (
     <Panel>
@@ -1266,6 +1320,28 @@ function TemplateGallery({
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <article
+            data-template={custom.key}
+            className="rounded-xl border border-line-strong bg-canvas/60 p-4"
+          >
+            <p className="text-[0.9375rem] font-medium text-ink-deep">{custom.name}</p>
+            <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">{custom.description}</p>
+            <p className="mt-2 text-[0.6875rem] tracking-[0.08em] text-muted uppercase">
+              {formatLabel} &middot; blank chart &middot; no holders
+            </p>
+            <p className="mt-1 text-[0.6875rem] font-semibold tracking-[0.08em] text-brass-deep uppercase">
+              No sample names or emails
+            </p>
+            <div className="mt-3">
+              <ButtonLink
+                href={`/structure/preview?${customParams.toString()}`}
+                variant="paper"
+                size="sm"
+              >
+                Preview full structure
+              </ButtonLink>
+            </div>
+          </article>
           {visibleSamples.map((sample) => {
             const params = new URLSearchParams({
               template: sample.key,
@@ -1518,7 +1594,13 @@ export function StructureWorkspace({
         setUpdatedAt(stored?.serverUpdatedAt ?? open?.updatedAt ?? null);
         setAutosave("off");
         setSelected(null);
-        setStatus("NEUST sample applied. Replace the sample names and emails before saving.");
+        const isCustom =
+          pending.category === "Custom" || pending.templateKey.startsWith("custom-");
+        setStatus(
+          isCustom
+            ? "Blank structure started. Name the council and its seats before saving."
+            : "NEUST sample applied. Replace the sample names and emails before saving.",
+        );
         setReadyUnitId(unitId);
         return;
       }

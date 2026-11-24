@@ -8,6 +8,7 @@ import { ChartViewer } from "@/components/structure/ChartViewer";
 import {
   NEUST_SAMPLES,
   cloneSampleDocument,
+  findStructureTemplate,
 } from "@/components/structure/StructureWorkspace";
 import {
   STRUCTURE_FORMAT_LABELS,
@@ -118,16 +119,19 @@ export default function StructureTemplatePreviewPage({
 
   const sample = useMemo(() => {
     const scope = resolvedScope ?? requestedScope;
+    const format = resolvedFormat ?? requestedFormat;
+    const found = findStructureTemplate(templateKey, scope, format);
+    if (found) return found;
     const candidates = scope
       ? NEUST_SAMPLES.filter((entry) => entry.scope === scope)
       : NEUST_SAMPLES;
-    return candidates.find((entry) => entry.key === templateKey) ?? candidates[0] ?? NEUST_SAMPLES[0];
-  }, [templateKey, requestedScope, resolvedScope]);
+    return candidates[0] ?? NEUST_SAMPLES[0];
+  }, [templateKey, requestedScope, resolvedScope, requestedFormat, resolvedFormat]);
 
   const wrongTemplate = Boolean(
-    templateKey && resolvedScope && !NEUST_SAMPLES.some(
-      (entry) => entry.key === templateKey && entry.scope === resolvedScope,
-    ),
+    templateKey &&
+      resolvedScope &&
+      !findStructureTemplate(templateKey, resolvedScope, resolvedFormat),
   );
   const canApply = Boolean(
     unitId && canEdit && resolvedScope && resolvedFormat && !scopeError && !wrongTemplate && sample.scope === resolvedScope,
@@ -150,6 +154,7 @@ export default function StructureTemplatePreviewPage({
           templateKey: sample.key,
           scope: resolvedScope,
           format: resolvedFormat,
+          category: sample.category,
           document: doc,
           appliedAt: Date.now(),
         }),
@@ -160,9 +165,17 @@ export default function StructureTemplatePreviewPage({
     }
   }
 
-  const visibleError = error ?? scopeError ?? (wrongTemplate ? "This sample is for the other council. Open the sample from your own structure editor." : null);
+  const isCustom = sample.category === "Custom";
+  const visibleError =
+    error ??
+    scopeError ??
+    (wrongTemplate
+      ? isCustom
+        ? "That blank chart belongs to the other council. Open it from your own structure editor."
+        : "This sample is for the other council. Open the sample from your own structure editor."
+      : null);
   const scopeLabel = sample.scope === "lsg" ? "LSG" : "USG";
-  const formatLabel = STRUCTURE_FORMAT_LABELS[sample.format ?? resolvedFormat ?? "lsg"];
+  const formatLabel = STRUCTURE_FORMAT_LABELS[sample.format ?? resolvedFormat ?? requestedFormat ?? "lsg"];
 
   return (
     <SessionGuard>
@@ -172,10 +185,20 @@ export default function StructureTemplatePreviewPage({
             <p className="eyebrow">Full structure preview</p>
             <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">{sample.name}</h1>
             <p className="mt-3 text-[0.9375rem] leading-relaxed text-body">
-              {scopeLabel} positions only &middot; {formatLabel} format. Preview-only view. Use the
-              template to open it in the full structure editor, where you can edit seats, add
-              branches, upload photos, and save it as this unit&rsquo;s own government structure.
-              Names and NEUST emails are samples — replace them before saving or submitting.
+              {isCustom ? (
+                <>
+                  A blank {scopeLabel} chart in {formatLabel} format, with no officers preset. Use it
+                  to open the full structure editor, where you can name the council, add seats and
+                  branches, upload photos, and save it as this unit&rsquo;s own structure.
+                </>
+              ) : (
+                <>
+                  {scopeLabel} positions only &middot; {formatLabel} format. Preview-only view. Use the
+                  template to open it in the full structure editor, where you can edit seats, add
+                  branches, upload photos, and save it as this unit&rsquo;s own government structure.
+                  Names and NEUST emails are samples — replace them before saving or submitting.
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -198,7 +221,7 @@ export default function StructureTemplatePreviewPage({
           <ChartViewer
             doc={doc}
             title={sample.name}
-            subtitle={`${scopeLabel} · ${formatLabel} sample preview — editable only after you use this template`}
+            subtitle={`${scopeLabel} · ${formatLabel} ${isCustom ? "blank" : "sample"} preview — editable only after you use this template`}
             filename={`${sample.key}-preview`}
             maxHeight={780}
           />
