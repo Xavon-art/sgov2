@@ -38,7 +38,7 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
       href: "/lsg/manage",
       icon: "layers",
       children: [
-        ...(centralized ? [] : [{ label: "Unit details", href: "/lsg/manage?tab=usg" }]),
+        ...(centralized ? [] : [{ label: "Unit details", href: "/lsg/manage?tab=unit" }]),
         { label: "Government structure", href: "/lsg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
         { label: "Documents", href: "/lsg/manage?tab=documents" },

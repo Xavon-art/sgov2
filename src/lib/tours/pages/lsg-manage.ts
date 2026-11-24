@@ -20,7 +20,7 @@ export const lsgManageTour: PageTour = {
       placement: "right",
     },
     {
-      target: "manage-usg",
+      target: "manage-unit",
       title: "Unit details",
       body: "This section shows the office your council belongs to and where your unit sits under it.",
       placement: "bottom",

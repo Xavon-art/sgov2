@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
 import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
@@ -26,11 +27,11 @@ import { IconLayers } from "@/components/ui/Icons";
  * there is no id to name here.
  */
 
-type Tab = "usg" | "profile" | "structure" | "documents" | "search" | "budget" | "feedback";
+type Tab = "unit" | "profile" | "structure" | "documents" | "search" | "budget" | "feedback";
 
 function isTab(value: string | null): value is Tab {
   return (
-    value === "usg" ||
+    value === "unit" ||
     value === "profile" ||
     value === "structure" ||
     value === "documents" ||
@@ -42,12 +43,18 @@ function isTab(value: string | null): value is Tab {
 
 export default function LsgManagePage() {
   const { account, role } = useDashboard();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   // The sidebar owns navigation. The query param only picks which panel renders.
   const centralized = role.isCentral || role.governanceModel === "unitary";
   const requested = searchParams.get("tab");
-  const tab: Tab = isTab(requested) ? requested : centralized ? "structure" : "usg";
+  const tab: Tab = isTab(requested) ? requested : centralized ? "structure" : "unit";
+
+  // Old links used the USG-facing tab name; rewrite them so the LSG URL stays clean.
+  useEffect(() => {
+    if (requested === "usg") router.replace("/lsg/manage?tab=unit", { scroll: false });
+  }, [requested, router]);
 
   const unitName = account.campusName || account.universityName || "your unit";
 
@@ -68,8 +75,8 @@ export default function LsgManagePage() {
         </p>
       </header>
 
-      {tab === "usg" ? (
-        <div data-tour="manage-usg">
+      {tab === "unit" ? (
+        <div data-tour="manage-unit">
           <MyUsgPanel />
         </div>
       ) : null}

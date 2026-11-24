@@ -15,7 +15,7 @@ type Org = {
 };
 
 /**
- * "My USG" -- the read-only card an LSG sees for its parent.
+ * The read-only parent-government card an LSG sees.
  *
  * The unit cannot edit anything here; the point is to know who it answers to,
  * recognise the mark, and have one obvious way to open a conversation. The
@@ -45,13 +45,13 @@ export function MyUsgPanel() {
     };
   }, []);
 
-  if (loading) return <p className="text-[0.875rem] text-muted">Loading your USG…</p>;
+  if (loading) return <p className="text-[0.875rem] text-muted">Loading your parent government…</p>;
 
   const name = org?.name ?? account.universityName ?? "University Student Government";
 
   return (
     <section className="card-lift rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-      <p className="eyebrow">My USG</p>
+      <p className="eyebrow">Parent government</p>
       <div className="mt-4 flex flex-wrap items-center gap-4">
         {org?.logoData ? (
           // The logo is stored as a data URL by the customisation panel.
@@ -72,8 +72,8 @@ export function MyUsgPanel() {
       </div>
 
       <p className="mt-4 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
-        Your unit sits under this University Student Government. It sets university-wide direction,
-        reviews your submissions, and decides on your event claims. You can message it directly.
+        Your unit sits under this student government. It sets university-wide direction, reviews
+        your submissions, and decides on your event claims. You can message it directly.
       </p>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -81,7 +81,7 @@ export function MyUsgPanel() {
           href="/lsg/messages"
           className="pressable inline-flex min-h-10 items-center rounded-full bg-ink px-4 text-[0.875rem] font-medium text-white hover:bg-ink-deep"
         >
-          Message the USG
+          Message the parent government
         </Link>
         <Link
           href="/lsg/manage?tab=profile"
