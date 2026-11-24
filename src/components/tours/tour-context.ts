@@ -10,10 +10,6 @@ export type TourApi = {
   next: () => void;
   back: () => void;
   stop: (saveDismissal?: boolean) => void;
-  isPromptOpen: boolean;
-  promptTour: PageTour | null;
-  acceptPrompt: () => void;
-  dismissPrompt: (remember: boolean) => void;
 };
 
 export const TourContext = createContext<TourApi | null>(null);
