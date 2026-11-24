@@ -22,6 +22,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 type RpcSignature = {
   names: string[] | null;
   arity: number;
+  setReturning: boolean;
 };
 
 const globalForRpc = globalThis as unknown as {
@@ -60,6 +61,23 @@ function signatures(): Map<string, RpcSignature[]> {
   return globalForRpc.__smartgovRpcSignatures;
 }
 
+function inputNames(
+  names: string[] | null,
+  modes: unknown,
+  arity: number,
+): string[] | null {
+  if (!names?.length) return null;
+  const modeList = typeof modes === "string"
+    ? modes.replace(/^\{|\}$/g, "").split(",")
+    : Array.isArray(modes)
+      ? modes.map(String)
+      : null;
+  const selected = modeList?.length === names.length
+    ? names.filter((_, index) => ["i", "b", "v"].includes(modeList[index]))
+    : names.slice(0, arity);
+  return selected.length === arity ? selected : null;
+}
+
 async function signatureFor(name: string, arity: number): Promise<RpcSignature | null> {
   const cache = signatures();
   const cached = cache.get(name);
@@ -67,18 +85,27 @@ async function signatureFor(name: string, arity: number): Promise<RpcSignature |
   const { rows } = await pool().query<{
     proname: string;
     proargnames: string[] | null;
+    proargmodes: unknown;
     pronargs: number;
+    proretset: boolean;
   }>(
-    `select p.proname, p.proargnames, p.pronargs
+    `select p.proname, p.proargnames, p.proargmodes, p.pronargs, p.proretset
        from pg_proc p
        join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = 'public'
-        and p.proname = $1
-        and p.prokind = 'f'
-      order by p.pronargs, p.oid`,
+       where n.nspname = 'public'
+         and p.proname = $1
+         and p.prokind = 'f'
+       order by p.pronargs, p.oid`,
     [name],
   );
-  const found = rows.map((row) => ({ names: row.proargnames, arity: Number(row.pronargs) }));
+  const found = rows.map((row) => {
+    const size = Number(row.pronargs);
+    return {
+      names: inputNames(row.proargnames, row.proargmodes, size),
+      arity: size,
+      setReturning: Boolean(row.proretset),
+    };
+  });
   cache.set(name, found);
   return found.find((item) => item.arity === arity) ?? null;
 }
@@ -95,10 +122,11 @@ async function callDirect<T>(fn: string, args: Record<string, unknown>): Promise
     throw new Error(`RPC "${fn}" is missing an argument.`);
   }
   const placeholders = params.map((_, index) => `$${index + 1}`).join(", ");
-  const { rows } = await pool().query<{ result: T }>(
-    `select public.${quoteIdentifier(fn)}(${placeholders}) as result`,
-    params,
-  );
+  const call = `public.${quoteIdentifier(fn)}(${placeholders})`;
+  const sql = signature?.setReturning
+    ? `select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) as result from ${call} as t`
+    : `select ${call} as result`;
+  const { rows } = await pool().query<{ result: T }>(sql, params);
   return rows[0]?.result as T;
 }
 
