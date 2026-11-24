@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   checkDocument,
   emptyCommittee,
@@ -301,6 +302,42 @@ function readStructureDraft(unitId: string): StoredStructureDraft | null {
     return parsed;
   } catch {
     return null;
+  }
+}
+
+type PendingTemplate = {
+  templateKey: string;
+  document: StructureDocument;
+  appliedAt: number;
+};
+
+function pendingTemplateKey(unitId: string): string {
+  return `smartgov:pending-template:${unitId}`;
+}
+
+function readPendingTemplate(unitId: string): PendingTemplate | null {
+  try {
+    const raw = localStorage.getItem(pendingTemplateKey(unitId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingTemplate>;
+    if (
+      typeof parsed.templateKey !== "string" ||
+      !parsed.document ||
+      !Array.isArray(parsed.document.committees)
+    ) {
+      return null;
+    }
+    return parsed as PendingTemplate;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingTemplate(unitId: string): void {
+  try {
+    localStorage.removeItem(pendingTemplateKey(unitId));
+  } catch {
+    return;
   }
 }
 
@@ -763,7 +800,7 @@ function sampleTemplate(
  * A NEUST sample is a local, labelled preview that becomes an ordinary editable
  * document when someone clicks "Use this template".
  */
-const NEUST_SAMPLES: StructureTemplate[] = [
+export const NEUST_SAMPLES: StructureTemplate[] = [
   sampleTemplate(
     "neust-usg-sample",
     "NEUST University Student Government",
@@ -998,21 +1035,29 @@ const NEUST_SAMPLES: StructureTemplate[] = [
   ),
 ];
 
+/** The preview page edits its own copy; the shipped sample stays pristine. */
+export function cloneSampleDocument(sample: StructureTemplate): StructureDocument {
+  return JSON.parse(JSON.stringify(sample.document)) as StructureDocument;
+}
+
 // ------------------------------------------------------------------- gallery
 
 function TemplateGallery({
   canSaveTemplates,
+  unitId,
+  returnTo,
   onApply,
   onSaveCurrent,
   busy,
 }: {
   canSaveTemplates: boolean;
+  unitId: string;
+  returnTo: string;
   onApply: (template: StructureTemplate) => void;
   onSaveCurrent: () => void;
   busy: boolean;
 }) {
   const [templates, setTemplates] = useState<StructureTemplate[] | null>(null);
-  const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function open() {
@@ -1055,13 +1100,17 @@ function TemplateGallery({
           </span>
         </div>
         <p className="text-[0.8125rem] leading-relaxed text-muted">
-          Preview the sample before applying it. Names and NEUST emails are placeholders — replace
-          them with your real officers before saving or submitting.
+          Open the full structure to preview it, add officer photos, or apply it to your live draft.
+          Names and NEUST emails are placeholders — replace them before saving or submitting.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           {NEUST_SAMPLES.map((sample) => {
-            const previewing = previewKey === sample.key;
+            const params = new URLSearchParams({
+              template: sample.key,
+              unitId,
+              returnTo,
+            });
             return (
               <article key={sample.key} className="rounded-xl border border-line bg-canvas/40 p-4">
                 <p className="text-[0.9375rem] font-medium text-ink-deep">{sample.name}</p>
@@ -1069,30 +1118,15 @@ function TemplateGallery({
                 <p className="mt-2 text-[0.6875rem] tracking-[0.08em] text-muted uppercase">
                   {sample.committees} branches &middot; {sample.seats} seats &middot; editable after use
                 </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
+                <div className="mt-3">
+                  <ButtonLink
+                    href={`/structure/preview?${params.toString()}`}
+                    variant="paper"
                     size="sm"
-                    onClick={() => setPreviewKey(previewing ? null : sample.key)}
                   >
-                    {previewing ? "Hide preview" : "Preview"}
-                  </Button>
-                  <Button type="button" variant="paper" size="sm" disabled={busy} onClick={() => onApply(sample)}>
-                    Use this template
-                  </Button>
+                    Preview full structure
+                  </ButtonLink>
                 </div>
-                {previewing ? (
-                  <div className="mt-4 rounded-xl border border-line bg-paper/70 p-3">
-                    <ChartViewer
-                      doc={sample.document}
-                      title={sample.name}
-                      subtitle="Sample preview — replace names before saving"
-                      filename={`${sample.key}-preview`}
-                      maxHeight={420}
-                    />
-                  </div>
-                ) : null}
               </article>
             );
           })}
@@ -1233,6 +1267,8 @@ export function StructureWorkspace({
   unitName: string;
   capability: StructureCapability;
 }) {
+  const pathname = usePathname();
+  const returnTo = pathname.includes("manage") ? `${pathname}?tab=structure` : pathname;
   const [doc, setDoc] = useState<StructureDocument>(emptyDocument);
   const [structureId, setStructureId] = useState<string | null>(null);
   const [templateKey, setTemplateKey] = useState<string | null>(null);
@@ -1285,6 +1321,26 @@ export function StructureWorkspace({
       setHistory(res.history ?? []);
       const open = res.draft ?? null;
       const stored = readStructureDraft(unitId);
+      const pending = readPendingTemplate(unitId);
+      if (pending) {
+        // A preview page handed us an applied document. Consume it once, then
+        // let the normal editing path take over: edit() queues photo uploads and
+        // the draft effect writes the local draft under this unit.
+        clearPendingTemplate(unitId);
+        edit(normalizeDocument(pending.document));
+        setStructureId(stored?.structureId ?? open?.id ?? null);
+        setTemplateKey(pending.templateKey);
+        setTermLabel(stored?.termLabel ?? open?.termLabel ?? "");
+        setStartsOn(stored?.startsOn ?? open?.startsOn ?? "");
+        setEndsOn(stored?.endsOn ?? open?.endsOn ?? "");
+        setNote(stored?.note ?? open?.note ?? "");
+        setUpdatedAt(stored?.serverUpdatedAt ?? open?.updatedAt ?? null);
+        setAutosave("off");
+        setSelected(null);
+        setStatus("NEUST sample applied. Replace the sample names and emails before saving.");
+        setReadyUnitId(unitId);
+        return;
+      }
       const serverTime = open?.updatedAt ? Date.parse(open.updatedAt) : 0;
       const restore =
         stored !== null &&
@@ -1733,6 +1789,8 @@ export function StructureWorkspace({
       <Reveal>
         <TemplateGallery
           canSaveTemplates={capability.isReviewer}
+          unitId={unitId}
+          returnTo={returnTo}
           busy={busy}
           onApply={(t) => {
             // The template's own keys are kept: they are stable slugs, and two

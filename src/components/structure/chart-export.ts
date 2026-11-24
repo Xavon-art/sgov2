@@ -11,7 +11,7 @@
  */
 
 import type { StructureLayout } from "@/lib/structure";
-import type { ChartGeometry } from "@/components/structure/chart";
+import { holderPhotoUrl, type ChartGeometry } from "@/components/structure/chart";
 
 const COLORS: Record<
   StructureLayout["theme"],
@@ -53,9 +53,8 @@ function clip(value: string, max: number): string {
 }
 
 function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+  const first = name.trim().split(/\s+/).find(Boolean);
+  return first ? first[0].toUpperCase() : "?";
 }
 
 export function chartToSvg({
@@ -86,7 +85,7 @@ export function chartToSvg({
 
   const defs = geometry.nodes
     .map((n) => {
-      const url = n.photoId ? photos[n.photoId] : null;
+      const url = holderPhotoUrl(n.primary?.photo) ?? (n.photoId ? photos[n.photoId] : null);
       return url ? `<clipPath id="clip-${esc(n.key)}"><circle cx="${leader / 2}" cy="${leader / 2}" r="${leader / 2}"/></clipPath>` : "";
     })
     .join("");
@@ -128,7 +127,7 @@ export function chartToSvg({
   const nodes = geometry.nodes
     .map((n) => {
       const y = n.y + header;
-      const url = n.photoId ? photos[n.photoId] : null;
+      const url = holderPhotoUrl(n.primary?.photo) ?? (n.photoId ? photos[n.photoId] : null);
       const name = clip(n.name || (n.primary ? "Unnamed" : "Vacant"), compact ? 18 : 22);
       const role = clip(n.title, compact ? 24 : 30);
       const avatar = layout.showPhotos

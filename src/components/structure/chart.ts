@@ -89,6 +89,16 @@ function rosterIdOf(holder: StructureHolder | null | undefined): string | null {
   return (holder as PhotoHolder | null | undefined)?.rosterId ?? null;
 }
 
+/** A locally uploaded photo is stored as bare base64; stored ones are data URLs. */
+export function holderPhotoUrl(photo?: string | null): string | null {
+  if (!photo) return null;
+  if (photo.startsWith("data:")) return photo;
+  if (photo.startsWith("/9j/")) return `data:image/jpeg;base64,${photo}`;
+  if (photo.startsWith("iVBOR")) return `data:image/png;base64,${photo}`;
+  if (photo.startsWith("UklGR")) return `data:image/webp;base64,${photo}`;
+  return `data:image/jpeg;base64,${photo}`;
+}
+
 function collect(doc: StructureDocument): ChartNode[] {
   const nodes: ChartNode[] = [];
   for (const committee of doc.committees) {

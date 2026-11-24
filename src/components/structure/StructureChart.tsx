@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import clsx from "clsx";
 import type { StructureLayout } from "@/lib/structure";
 import { fetchMemberPhoto } from "@/lib/structure";
-import type { ChartGeometry, ChartNode } from "@/components/structure/chart";
+import { holderPhotoUrl, type ChartGeometry, type ChartNode } from "@/components/structure/chart";
 
 export type ThemeTokens = {
   bg: string;
@@ -170,9 +170,8 @@ export function useChartPhotos(nodes: ChartNode[], enabled: boolean) {
 }
 
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+  const first = name.trim().split(/\s+/).find(Boolean);
+  return first ? first[0].toUpperCase() : "?";
 }
 
 export function edgePath(
@@ -411,8 +410,9 @@ export function ChartCanvas({
     <div className={clsx("relative overflow-hidden rounded-2xl", className)} style={chartFrameStyle(geometry, layout)}>
       <ChartEdges geometry={geometry} layout={layout} />
       <ChartBands geometry={geometry} layout={layout} />
-      {geometry.nodes.map((node) => {
-        const photo = node.photoId ? photos[node.photoId] : null;
+        {geometry.nodes.map((node) => {
+          const photo =
+            holderPhotoUrl(node.primary?.photo) ?? (node.photoId ? photos[node.photoId] : null);
         return (
           <ChartNodeCard
             key={node.key}
