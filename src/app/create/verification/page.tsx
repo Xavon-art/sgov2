@@ -51,6 +51,7 @@ export default function VerificationPage() {
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mailFailed, setMailFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN);
 
@@ -95,6 +96,7 @@ export default function VerificationPage() {
           email: registered.email,
           organizationName: registered.organizationName,
         });
+        setMailFailed(registered.emailFailed === true);
         setPhase("awaiting-email");
       })
       .catch((err: unknown) => {
@@ -119,14 +121,18 @@ export default function VerificationPage() {
       if (!res.ok || !data.ok) {
         setNotice(null);
         setError(data.message ?? "We could not send a new email.");
+        if (data.code === "email_failed") setMailFailed(true);
         return;
       }
 
+      // Only a genuinely sent email clears the failure state. A denied resend
+      // (cooldown/duplicate) must keep the direct activation rescue visible.
       if (data.code === "resend_denied") {
         setNotice(data.message ?? "A fresh activation email is already on its way — check your inbox.");
         return;
       }
 
+      setMailFailed(false);
       setNotice(`We just emailed a fresh activation link to ${data.email ?? "your email"}.`);
       setCooldown(RESEND_COOLDOWN);
     } catch {
@@ -138,6 +144,12 @@ export default function VerificationPage() {
   }
 
   const submitting = phase === "submitting";
+  // The registration response already carries this token to this browser. It is
+  // the same secret the email would contain, so it can rescue a failed delivery
+  // without weakening the link or asking anyone to reveal it in chat.
+  const activationHref = ownerVerify?.verifyToken
+    ? `/activate?token=${encodeURIComponent(ownerVerify.verifyToken)}`
+    : null;
 
   return (
     <div data-tour="verification-status" className="contents">
@@ -171,7 +183,9 @@ export default function VerificationPage() {
             ? "Nothing was activated. You can go back and try again."
             : phase === "no-registration"
               ? "Your registration exists, but this browser does not hold it. If the email is still in your inbox, click its button — it works from any browser."
-              : `We emailed an activation link to ${ownerVerify ? maskEmail(ownerVerify.email) : "your email"}. Click “Activate my USG account” and you'll land on your dashboard.`
+                : mailFailed
+                  ? `Your registration was saved, but the activation email could not be delivered to ${ownerVerify ? maskEmail(ownerVerify.email) : "your email"}. Use the activation button below or fix the mail settings and try again.`
+                  : `We emailed an activation link to ${ownerVerify ? maskEmail(ownerVerify.email) : "your email"}. Click “Activate my USG account” and you'll land on your dashboard.`
       }
     >
       {submitting ? (
@@ -212,12 +226,27 @@ export default function VerificationPage() {
         </div>
       ) : (
         <div className="mx-auto flex w-full max-w-md flex-col gap-6">
-          <div data-tour="verification-email-card" className="flex items-center gap-3 rounded-2xl border border-line bg-paper/70 px-5 py-4">
-            <span className="grid size-10 shrink-0 place-items-center rounded-full border border-brass/40 bg-brass-soft/25 text-brass-deep">
+          <div
+            data-tour="verification-email-card"
+            className={
+              mailFailed
+                ? "flex items-center gap-3 rounded-2xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-5 py-4"
+                : "flex items-center gap-3 rounded-2xl border border-line bg-paper/70 px-5 py-4"
+            }
+          >
+            <span
+              className={
+                mailFailed
+                  ? "grid size-10 shrink-0 place-items-center rounded-full border border-[#d9a99c] bg-[#a5442c]/[0.08] text-[#a5442c]"
+                  : "grid size-10 shrink-0 place-items-center rounded-full border border-brass/40 bg-brass-soft/25 text-brass-deep"
+              }
+            >
               <IconMail className="h-4.5 w-4.5" />
             </span>
             <div className="min-w-0">
-              <p className="text-[0.9375rem] font-medium text-ink">Activation email sent</p>
+              <p className="text-[0.9375rem] font-medium text-ink">
+                {mailFailed ? "Activation email not delivered" : "Activation email sent"}
+              </p>
               <p className="truncate text-[0.75rem] text-muted">
                 {ownerVerify?.organizationName || "Your student government"} ·{" "}
                 {ownerVerify ? maskEmail(ownerVerify.email) : "your email"}
@@ -225,11 +254,38 @@ export default function VerificationPage() {
             </div>
           </div>
 
-          <p className="rounded-xl border border-brass/35 bg-brass-soft/20 px-4 py-3.5 text-[0.8125rem] leading-relaxed text-ink-soft">
-            Open the email and tap{" "}
-            <span className="font-semibold text-ink">“Activate my USG account”</span> —
-            it opens your dashboard right away. If you cannot see it, check spam.
-          </p>
+          {mailFailed && activationHref ? (
+            <div role="alert" className="flex flex-col gap-3 rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-4 py-3.5 text-[0.8125rem] leading-relaxed text-[#8e3b26]">
+              <p className="font-medium">
+                The email did not send. Your account is saved but still locked.
+              </p>
+              <p>{error ?? "Mail delivery was rejected by the server."}</p>
+              <a
+                href={activationHref}
+                className="inline-flex w-full items-center justify-center rounded-xl bg-[#a5442c] px-4 py-2.5 text-center font-semibold text-white"
+              >
+                Activate my USG account now
+              </a>
+              <p>
+                This is the same one-time link the email would have carried. After
+                mail is fixed, “Send the email again” delivers the normal email too.
+              </p>
+            </div>
+          ) : null}
+
+          {mailFailed ? (
+            <p className="rounded-xl border border-[#dcc3b9] bg-[#faf1ec] px-4 py-3.5 text-[0.8125rem] leading-relaxed text-[#8e3b26]">
+              Use the red activation button above to enter your dashboard now. Once
+              mail is working, “Send the email again” will also deliver the normal
+              email to your inbox.
+            </p>
+          ) : (
+            <p className="rounded-xl border border-brass/35 bg-brass-soft/20 px-4 py-3.5 text-[0.8125rem] leading-relaxed text-ink-soft">
+              Open the email and tap{" "}
+              <span className="font-semibold text-ink">“Activate my USG account”</span> —
+              it opens your dashboard right away. If you cannot see it, check spam.
+            </p>
+          )}
 
           {error ? (
             <p

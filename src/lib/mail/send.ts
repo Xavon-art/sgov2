@@ -129,29 +129,46 @@ export async function drainPendingEmails(
  * Sends one branded message. Resolves only after Gmail accepts it, so callers
  * can treat a rejection as "not sent" and keep the record in a retryable state.
  */
+async function saveToOutbox(mail: BrandedMail, note?: string): Promise<void> {
+  const { callRpc } = await import("@/lib/auth/rpc");
+  await callRpc("create_outbox_entry", {
+    p_to: mail.to,
+    p_subject: note ? `${mail.subject} [${note}]` : mail.subject,
+    p_html: mail.html,
+    p_text: mail.text,
+  });
+}
+
 export async function sendBranded(mail: BrandedMail): Promise<void> {
   if (!isMailConfigured()) {
     // Dev fallback: store the email in the outbox table so it is still
     // visible and verifiable without SMTP configured.
-    const { callRpc } = await import("@/lib/auth/rpc");
-    await callRpc("create_outbox_entry", {
-      p_to: mail.to,
-      p_subject: mail.subject,
-      p_html: mail.html,
-      p_text: mail.text,
-    });
+    await saveToOutbox(mail);
     return;
   }
-  await getTransporter().sendMail({
-    from: {
-      name: process.env.MAIL_FROM_NAME ?? process.env.SMTP_FROM_NAME ?? "SmartGov",
-      address:
-        process.env.SMTP_FROM_EMAIL ?? (mailUser() as string),
-    },
-    to: mail.to,
-    subject: mail.subject,
-    html: mail.html,
-    text: mail.text,
-    attachments: [await markAttachment()],
-  });
+  try {
+    await getTransporter().sendMail({
+      from: {
+        name: process.env.MAIL_FROM_NAME ?? process.env.SMTP_FROM_NAME ?? "SmartGov",
+        address:
+          process.env.SMTP_FROM_EMAIL ?? (mailUser() as string),
+      },
+      to: mail.to,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+      attachments: [await markAttachment()],
+    });
+  } catch (error) {
+    // A rejected SMTP login means nothing left the server, so a copy in the
+    // outbox is safe and gives an operator a way to finish the flow. A real
+    // delivery failure after partial send would be a different tradeoff, but
+    // nodemailer's sendMail only resolves after the server accepts the message.
+    try {
+      await saveToOutbox(mail, "email delivery failed");
+    } catch (outboxError) {
+      console.error("[mail] could not save failed message to outbox", outboxError);
+    }
+    throw error;
+  }
 }

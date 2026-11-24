@@ -126,6 +126,9 @@ export type RegisterAccountResult =
       verifyToken: string;
       email: string;
       organizationName: string;
+      /** The registration exists but the activation email was not delivered. */
+      emailFailed?: boolean;
+      message?: string;
     }
   | { ok: false; reason: string };
 
@@ -183,5 +186,7 @@ export async function registerAccount(
     verifyToken: data.verifyToken,
     email: typeof data.email === "string" ? data.email : "",
     organizationName: typeof data.organizationName === "string" ? data.organizationName : "",
+    emailFailed: data.code === "email_failed",
+    message: typeof data.message === "string" ? data.message : "",
   };
 }

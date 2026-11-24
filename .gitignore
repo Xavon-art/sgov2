@@ -53,6 +53,14 @@ supabase/.temp
 *.tsbuildinfo
 next-env.d.ts
 
-
+# Vercel / local env
 .vercel
 .env*
+
+# Local debug scripts and credential-bearing notes (never publish)
+/capture*.js
+/probe_owner.js
+/scripts/check-data.mjs
+/scripts/verify-empty.mjs
+/paperworks/
+
