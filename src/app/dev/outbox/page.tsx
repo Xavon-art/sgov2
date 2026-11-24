@@ -14,10 +14,12 @@ type Entry = {
 
 export default function DevOutboxPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(process.env.NODE_ENV !== "production");
   const [selected, setSelected] = useState<Entry | null>(null);
 
   useEffect(() => {
+    // The API is intentionally unavailable in production; avoid a noisy 404.
+    if (process.env.NODE_ENV === "production") return;
     let cancelled = false;
     void (async () => {
       try {
