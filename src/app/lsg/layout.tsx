@@ -12,6 +12,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { loadNotifications, type NotificationSnapshot } from "@/lib/notifications-server";
 import { resolveWorkspaceRole, type WorkspaceRole } from "@/lib/auth/workspace";
 
 export const dynamic = "force-dynamic";
@@ -54,11 +55,15 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
   if (central || role.side !== "lsg") redirect("/usg");
 
   let data: WorkspacePayload | null = null;
+  let snapshot: NotificationSnapshot = { notifications: [], unreadCount: 0 };
   try {
     const token = await readSessionToken();
-    data = await callRpc<WorkspacePayload>("account_workspace", {
-      p_session_token: token,
-    });
+    const [workspace, notifications] = await Promise.all([
+      callRpc<WorkspacePayload>("account_workspace", { p_session_token: token }),
+      loadNotifications(3),
+    ]);
+    data = workspace;
+    snapshot = notifications;
   } catch {
     data = null;
   }
@@ -129,6 +134,8 @@ export default async function LsgLayout({ children }: { children: React.ReactNod
             badge={badge}
             accountName={account.displayName}
             roleLabel="Local council"
+            initialUnreadCount={snapshot.unreadCount}
+            initialNotifications={snapshot.notifications}
           >
             {children}
           </AppShell>

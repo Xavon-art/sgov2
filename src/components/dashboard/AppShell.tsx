@@ -8,6 +8,7 @@ import { TourHelpButton } from "@/components/tours/HelpButton";
 import { loadTourProgress, saveTourProgress } from "@/lib/tours/progress";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { useAccount } from "@/components/dashboard/dashboard-context";
+import type { NotificationItem } from "@/lib/notifications";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { Enter } from "@/components/fx/Presence";
 import {
@@ -147,6 +148,8 @@ function AppShellInner({
   badge,
   accountName = "Workspace account",
   roleLabel = "Workspace member",
+  initialUnreadCount = 0,
+  initialNotifications = [],
   children,
 }: {
   nav: NavItem[];
@@ -154,6 +157,8 @@ function AppShellInner({
   badge?: string;
   accountName?: string;
   roleLabel?: string;
+  initialUnreadCount?: number;
+  initialNotifications?: NotificationItem[];
   children: React.ReactNode;
 }) {
   const account = useAccount();
@@ -213,9 +218,9 @@ function AppShellInner({
     void persistCollapsed(next);
   }
 
-  const [unread, setUnread] = useState(0);
+  const [unread, setUnread] = useState(initialUnreadCount);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifs, setNotifs] = useState<{ id: string; title: string; body: string | null; link: string | null; readAt: string | null; createdAt: string }[]>([]);
+  const [notifs, setNotifs] = useState<NotificationItem[]>(initialNotifications);
   const [notifError, setNotifError] = useState<string | null>(null);
 
   const loadUnread = useCallback(async () => {
@@ -246,7 +251,8 @@ function AppShellInner({
   });
 
   useEffect(() => {
-    void loadUnread();
+    // The first count and preview list are server-rendered; polling only keeps
+    // them fresh for tabs that stay open.
     const id = setInterval(() => void loadUnread(), 30000);
     return () => clearInterval(id);
   }, [loadUnread]);

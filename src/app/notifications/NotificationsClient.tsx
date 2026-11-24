@@ -1,32 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Seal } from "@/components/ui/Seal";
 import { Button } from "@/components/ui/Button";
+import type { NotificationItem } from "@/lib/notifications";
 import { useRealtimeSignals } from "@/lib/realtime";
-
-type Notification = {
-  id: string;
-  kind: string;
-  title: string;
-  body: string | null;
-  link: string | null;
-  readAt: string | null;
-  createdAt: string;
-};
 
 export function NotificationsClient({
   accountId,
   accountName,
+  initialNotifications,
+  initialUnreadCount,
 }: {
   accountId: string;
   accountName: string;
+  initialNotifications: NotificationItem[];
+  initialUnreadCount: number;
 }) {
   const router = useRouter();
-  const [notifs, setNotifs] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [notifs, setNotifs] = useState<NotificationItem[]>(initialNotifications);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+  // Data arrives in the server render, so there is no first-paint fetch to wait for.
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -35,6 +32,7 @@ export function NotificationsClient({
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error("load");
       setNotifs(data.notifications ?? []);
+      setUnreadCount(data.unreadCount ?? 0);
       setError(null);
     } catch {
       setError("We could not reach the server. Check your connection.");
@@ -45,12 +43,10 @@ export function NotificationsClient({
 
   useRealtimeSignals(accountId, ["notification"], () => void load());
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
   async function markRead(id: string, link?: string | null) {
+    const target = notifs.find((n) => n.id === id);
     setNotifs((prev) => prev.filter((n) => n.id !== id));
+    if (target && !target.readAt) setUnreadCount((count) => Math.max(0, count - 1));
     try {
       await fetch(`/api/notifications/${id}/read`, { method: "POST" });
     } catch {
@@ -77,6 +73,7 @@ export function NotificationsClient({
   async function markAll() {
     const ids = notifs.filter((n) => !n.readAt).map((n) => n.id);
     setNotifs((prev) => prev.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+    setUnreadCount(0);
     try {
       await fetch("/api/notifications/read-all", { method: "POST" });
     } catch {
@@ -91,7 +88,9 @@ export function NotificationsClient({
         <Seal size={36} />
         <div>
           <h1 className="text-xl font-semibold text-ink-deep">Notifications</h1>
-          <p className="text-[0.8125rem] text-muted">{accountName}</p>
+          <p className="text-[0.8125rem] text-muted">
+            {accountName} · {unreadCount} unread
+          </p>
         </div>
         <Button variant="ghost" size="sm" className="ml-auto" onClick={() => router.push("/dashboard")}>
           Back

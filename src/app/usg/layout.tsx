@@ -12,6 +12,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Seal } from "@/components/ui/Seal";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
+import { loadNotifications, type NotificationSnapshot } from "@/lib/notifications-server";
 import { resolveWorkspaceRole, type WorkspaceRole } from "@/lib/auth/workspace";
 
 // The layout resolves the session and live counters on every navigation, so it
@@ -57,11 +58,15 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
   if (unitBound && !central) redirect("/lsg");
 
   let data: WorkspacePayload | null = null;
+  let snapshot: NotificationSnapshot = { notifications: [], unreadCount: 0 };
   try {
     const token = await readSessionToken();
-    data = await callRpc<WorkspacePayload>("account_workspace", {
-      p_session_token: token,
-    });
+    const [workspace, notifications] = await Promise.all([
+      callRpc<WorkspacePayload>("account_workspace", { p_session_token: token }),
+      loadNotifications(3),
+    ]);
+    data = workspace;
+    snapshot = notifications;
   } catch {
     data = null;
   }
@@ -125,6 +130,8 @@ export default async function UsgLayout({ children }: { children: React.ReactNod
             badge={badge}
             accountName={account.displayName}
             roleLabel={role.isAdmin ? "University-wide owner" : "University-wide reviewer"}
+            initialUnreadCount={snapshot.unreadCount}
+            initialNotifications={snapshot.notifications}
           >
             {children}
           </AppShell>
