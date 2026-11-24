@@ -41,7 +41,7 @@ import {
   nextKey,
   normalizeDocument,
 } from "@/components/structure/document";
-import { computeChart, type ChartNode } from "@/components/structure/chart";
+import { holderPhotoUrl, computeChart, type ChartNode } from "@/components/structure/chart";
 import {
   ChartBands,
   ChartEdges,
@@ -493,7 +493,7 @@ export function StructureChartEditor({
                   key={node.key}
                   node={node}
                   layout={layout}
-                  photo={node.photoId ? photos[node.photoId] : null}
+                  photo={holderPhotoUrl(node.primary?.photo) ?? (node.photoId ? photos[node.photoId] : null)}
                   selected={selectedKey === node.key}
                   onSelect={onSelect}
                 />
@@ -508,7 +508,7 @@ export function StructureChartEditor({
                       <ChartNodeCard
                         node={node}
                         layout={layout}
-                        photo={node.photoId ? photos[node.photoId] : null}
+                        photo={holderPhotoUrl(node.primary?.photo) ?? (node.photoId ? photos[node.photoId] : null)}
                         cardStyle={{ position: "relative", left: 0, top: 0 }}
                       />
                     </div>
