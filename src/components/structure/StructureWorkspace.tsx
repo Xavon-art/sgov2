@@ -48,6 +48,8 @@ import {
   type StructureTemplate,
 } from "@/lib/structure";
 
+const DEFAULT_TERM_LABEL = "Current term";
+
 /**
  * The officer's side of the feature: one structure under construction, edited as
  * a whole local document.
@@ -1526,6 +1528,7 @@ export function StructureWorkspace({
   const [history, setHistory] = useState<StructureSummary[]>([]);
   const [renewal, setRenewal] = useState<StructureRenewal | null>(null);
   const [termLabel, setTermLabel] = useState("");
+  const effectiveTermLabel = termLabel.trim() || DEFAULT_TERM_LABEL;
   const [startsOn, setStartsOn] = useState("");
   const [endsOn, setEndsOn] = useState("");
   const [note, setNote] = useState("");
@@ -1808,7 +1811,7 @@ export function StructureWorkspace({
       status: nextStatus,
       revision: res.revision ?? previous?.revision ?? 1,
       templateKey: templateKey ?? previous?.templateKey ?? null,
-      termLabel: termLabel.trim() || previous?.termLabel || "",
+      termLabel: effectiveTermLabel,
       startsOn: startsOn || previous?.startsOn || "",
       endsOn: endsOn || previous?.endsOn || "",
       document: doc,
@@ -1829,13 +1832,14 @@ export function StructureWorkspace({
   }
 
   /**
-   * Autosave. It only runs once the draft is publishable-shaped (term set and
+   * Autosave. It only runs once the draft is publishable-shaped (dates set and
    * the document passes the same checks the database will run), so a half-typed
-   * seat never produces a validation error the author did not ask for.
+   * seat never produces a validation error the author did not ask for. The term
+   * label is optional; a blank label is saved as "Current term".
    */
   useEffect(() => {
     if (!dirty || conflict || !capability.canEdit) return;
-    if (!termLabel.trim() || !startsOn || !endsOn) return;
+    if (!startsOn || !endsOn) return;
     if (checkDocument(doc)) return;
 
     const timer = window.setTimeout(() => {
@@ -1847,7 +1851,7 @@ export function StructureWorkspace({
           const res = await saveDraft({
             unitId,
             templateKey: templateKey ?? undefined,
-            termLabel: termLabel.trim(),
+            termLabel: effectiveTermLabel,
             startsOn,
             endsOn,
             document: doc,
@@ -1879,7 +1883,7 @@ export function StructureWorkspace({
     // `updatedAt` is intentionally not a dependency: a save that lands updates it,
     // and re-running on that change would schedule an identical save.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, dirty, conflict, termLabel, startsOn, endsOn, note, templateKey, unitId, capability.canEdit]);
+  }, [doc, dirty, conflict, effectiveTermLabel, startsOn, endsOn, note, templateKey, unitId, capability.canEdit]);
 
   // Ctrl/Cmd+Z and Ctrl/Cmd+Y, except while typing in a field.
   useEffect(() => {
@@ -1929,10 +1933,6 @@ export function StructureWorkspace({
       setProblem(found ? found.message : null);
       if (found) return null;
 
-      if (!termLabel.trim()) {
-        setProblem("Give the term a label, such as A.Y. 2026-2027.");
-        return null;
-      }
       if (!startsOn || !endsOn) {
         setProblem("A term needs both a start and an end date.");
         return null;
@@ -1942,7 +1942,7 @@ export function StructureWorkspace({
       const res = await saveDraft({
         unitId,
         templateKey: templateKey ?? undefined,
-        termLabel: termLabel.trim(),
+        termLabel: effectiveTermLabel,
         startsOn,
         endsOn,
         document: doc,
@@ -1963,6 +1963,7 @@ export function StructureWorkspace({
 
       if (res.structureId) setStructureId(res.structureId);
       if (res.updatedAt) setUpdatedAt(res.updatedAt);
+      setTermLabel(effectiveTermLabel);
       rememberSavedDraft(res);
       setConflict(null);
       setAutosave("saved");
