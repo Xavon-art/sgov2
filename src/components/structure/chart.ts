@@ -182,6 +182,38 @@ function positionEdges(nodes: ChartNode[], tierList: number[]): ChartEdge[] {
   return edges;
 }
 
+/** Apply hand-placed drag coordinates and grow the canvas to contain them. */
+function finalizeChart(
+  doc: StructureDocument,
+  nodes: ChartNode[],
+  edges: ChartEdge[],
+  bands: ChartBand[],
+  width: number,
+  height: number,
+  template: StructureLayout["template"],
+  nodeSize: { w: number; h: number },
+): ChartGeometry {
+  const authored = new Map(
+    doc.committees.flatMap((c) => c.positions.map((p) => [p.key, p] as const)),
+  );
+  for (const node of nodes) {
+    const position = authored.get(node.key);
+    if (position && Number.isFinite(position.x)) node.x = Math.max(PAD, Math.round(position.x!));
+    if (position && Number.isFinite(position.y)) node.y = Math.max(PAD, Math.round(position.y!));
+    node.w = nodeSize.w;
+    node.h = nodeSize.h;
+  }
+  return {
+    width: Math.round(Math.max(width, ...nodes.map((n) => n.x + n.w + PAD))),
+    height: Math.round(Math.max(height, ...nodes.map((n) => n.y + n.h + PAD))),
+    nodes,
+    edges,
+    bands,
+    template,
+    nodeSize,
+  };
+}
+
 export function computeChart(
   doc: StructureDocument,
   layout: StructureLayout,
@@ -242,15 +274,9 @@ export function computeChart(
       const parent = nodes.find((p) => p.key === parentKey);
       if (parent && parent.x === n.x) edges.push({ from: parent.key, to: n.key });
     }
-    return {
-      width: Math.max(PAD * 2, x - GAP_X),
-      height: maxBottom + PAD,
-      nodes,
-      edges,
-      bands,
-      template,
-      nodeSize: node,
-    };
+    return finalizeChart(
+      doc, nodes, edges, bands, Math.max(PAD * 2, x - GAP_X), maxBottom + PAD, template, node,
+    );
   }
 
   if (template === "matrix") {
@@ -277,15 +303,10 @@ export function computeChart(
       n.h = node.h;
     }
     edges.push(...positionEdges(nodes, tierList));
-    return {
-      width: Math.max(PAD * 2, x - GAP_X),
-      height: top + tierList.length * (node.h + gapY) - gapY + PAD,
-      nodes,
-      edges,
-      bands,
-      template,
-      nodeSize: node,
-    };
+    return finalizeChart(
+      doc, nodes, edges, bands, Math.max(PAD * 2, x - GAP_X),
+      top + tierList.length * (node.h + gapY) - gapY + PAD, template, node,
+    );
   }
 
   if (template === "radial") {
@@ -316,7 +337,7 @@ export function computeChart(
       n.y += offsetY;
     }
     edges.push(...positionEdges(nodes, tierList));
-    return { width: size, height: size, nodes, edges, bands, template, nodeSize: node };
+    return finalizeChart(doc, nodes, edges, bands, size, size, template, node);
   }
 
   // hierarchy, pyramid, compact: rows of tiers.
@@ -365,7 +386,7 @@ export function computeChart(
     : PAD * 2 +
       Math.max(...rowNodes.map((r) => r.length * node.h + Math.max(0, r.length - 1) * GAP_X), node.h);
 
-  return { width, height, nodes, edges, bands, template, nodeSize: node };
+  return finalizeChart(doc, nodes, edges, bands, width, height, template, node);
 }
 
 export function holderPhotoKey(holder: StructureHolder | null | undefined): string | null {

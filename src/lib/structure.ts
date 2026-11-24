@@ -60,6 +60,9 @@ export type StructurePosition = {
   tier?: number;
   /** Left-to-right position within a tier. */
   order?: number;
+  /** Hand-placed canvas position set by dragging a seat. */
+  x?: number;
+  y?: number;
   /** The seat this one reports to, by `key`. */
   parentKey?: string | null;
   /** Optional cluster label (committee, team, block). */

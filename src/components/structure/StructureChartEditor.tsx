@@ -200,42 +200,37 @@ export function StructureChartEditor({
   function onDragEnd(event: DragEndEvent) {
     setActive(null);
     const id = String(event.active.id);
-    const overId = event.over ? String(event.over.id) : null;
-    if (!id.startsWith("pos:") || !overId) return;
+    if (!id.startsWith("pos:")) return;
     const key = id.slice(4);
+    const node = geometry.nodes.find((n) => n.key === key);
+    if (!node) return;
 
-    if (overId.startsWith("tier:")) {
+    // A Packet Tracer-style canvas keeps the seat where it was dropped. The
+    // tier/parent still follows the drop target so the reporting line stays
+    // meaningful, but `x`/`y` are the authored position from now on.
+    const x = Math.max(0, Math.round(node.x + event.delta.x));
+    const y = Math.max(0, Math.round(node.y + event.delta.y));
+    const overId = event.over ? String(event.over.id) : null;
+    let extras: Partial<StructurePosition> = {};
+
+    if (overId?.startsWith("tier:")) {
       const tier = Number(overId.slice(5));
-      onChange(
-        reindexTiers(
-          patchPosition(doc, key, (position) => ({
-            ...position,
-            tier,
-            order: tierNextOrder(doc, tier),
-            parentKey: null,
-          })),
-        ),
-      );
-      return;
+      extras = { tier, order: tierNextOrder(doc, tier), parentKey: null };
+    } else if (overId?.startsWith("node:")) {
+      const targetKey = overId.slice(5);
+      const target = targetKey === key ? null : findPosition(doc, targetKey);
+      if (target) {
+        const tier = Math.min(12, (target.position.tier ?? 0) + 1);
+        extras = { tier, order: tierNextOrder(doc, tier), parentKey: targetKey };
+      }
     }
 
-    if (overId.startsWith("node:")) {
-      const targetKey = overId.slice(5);
-      if (targetKey === key) return;
-      const target = findPosition(doc, targetKey);
-      if (!target) return;
-      const tier = Math.min(12, (target.position.tier ?? 0) + 1);
-      onChange(
-        reindexTiers(
-          patchPosition(doc, key, (position) => ({
-            ...position,
-            tier,
-            order: tierNextOrder(doc, tier),
-            parentKey: targetKey,
-          })),
-        ),
-      );
-    }
+    if (!event.delta.x && !event.delta.y && !Object.keys(extras).length) return;
+    onChange(
+      reindexTiers(
+        patchPosition(doc, key, (position) => ({ ...position, x, y, ...extras })),
+      ),
+    );
   }
 
   function addSeat(committeeKey?: string) {
