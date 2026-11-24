@@ -63,13 +63,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("smartgov:tour-progress-reset", reset);
   }, []);
 
-  useEffect(() => {
-    if (loadedPath !== pathname || activeRef.current) return;
-    const tour = matchTour(pathname);
-    if (!tour || alreadySeen(progressRef.current, tour)) return;
-    const timer = window.setTimeout(() => setPrompt({ tour, pathname }), tour.autoStart ? 450 : 850);
-    return () => window.clearTimeout(timer);
-  }, [pathname, loadedPath]);
+  // Tours stay available through the floating help button, but the unsolicited
+  // "1-minute guide" popup is intentionally disabled: it kept reappearing and
+  // interrupting people. Nothing auto-opens a prompt anymore; `prompt` remains
+  // in the API only for backwards compatibility with callers that use it.
 
   const isPromptOpen = prompt?.pathname === pathname;
   const promptTour = isPromptOpen && prompt ? prompt.tour : null;
@@ -82,7 +79,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const start = useCallback(
     (tour?: PageTour | null) => {
       const selected = tour ?? promptTour ?? matchTour(pathname);
-      if (!selected || selected.steps.length === 0 || alreadySeen(progressRef.current, selected)) return;
+      // Manual starts must keep working even after a tour was completed or
+      // dismissed before — the tutorial is opt-in, never forced and never
+      // permanently locked away.
+      if (!selected || selected.steps.length === 0) return;
       activeRef.current = selected;
       stepRef.current = 0;
       setActiveTour(selected);
