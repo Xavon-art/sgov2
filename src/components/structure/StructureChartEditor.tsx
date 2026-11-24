@@ -35,6 +35,7 @@ import {
   type StructurePosition,
 } from "@/lib/structure";
 import {
+  emptyCommittee,
   emptyPosition,
   findPosition,
   nextKey,
@@ -173,6 +174,7 @@ export function StructureChartEditor({
   const photos = useChartPhotos(geometry.nodes, layout.showPhotos);
   const [active, setActive] = useState<string | null>(null);
   const [wizard, setWizard] = useState(false);
+  const [branchName, setBranchName] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -244,6 +246,20 @@ export function StructureChartEditor({
       ),
     );
     onSelect(position.key);
+  }
+
+  function addBranch() {
+    const name = branchName?.trim();
+    if (!name) return;
+    const seat = { ...emptyPosition(1, 0), title: "Branch head" };
+    const created: StructureCommittee = {
+      ...emptyCommittee(),
+      name,
+      positions: [seat],
+    };
+    onChange(withDoc(doc, [...doc.committees, created]));
+    onSelect(seat.key);
+    setBranchName(null);
   }
 
   function addChild(parentKey: string) {
@@ -363,7 +379,10 @@ export function StructureChartEditor({
             <Button type="button" variant="ghost" size="sm" onClick={onRedo} disabled={!canRedo || busy}>
               Redo
             </Button>
-            <Button type="button" variant="paper" size="sm" onClick={() => setWizard(true)} disabled={busy}>
+            <Button type="button" variant="paper" size="sm" onClick={() => setBranchName("")} disabled={busy}>
+              Add branch
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setWizard(true)} disabled={busy}>
               Add officer
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={() => addSeat(selected?.committee.key)} disabled={busy}>
@@ -371,6 +390,31 @@ export function StructureChartEditor({
             </Button>
           </div>
         </div>
+
+        {branchName !== null ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-canvas/40 px-3 py-2">
+            <label className="flex min-w-52 flex-1 items-center gap-2 text-[0.75rem] text-ink-soft">
+              <span className="font-medium">Branch name</span>
+              <input
+                autoFocus
+                value={branchName}
+                onChange={(e) => setBranchName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addBranch();
+                  if (e.key === "Escape") setBranchName(null);
+                }}
+                placeholder="e.g. College of Engineering"
+                className="h-9 w-full rounded-lg border border-line bg-paper px-2.5 text-[0.8125rem] text-ink-deep outline-none focus:border-line-strong"
+              />
+            </label>
+            <Button type="button" size="sm" onClick={addBranch} disabled={busy || !branchName.trim()}>
+              Add
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setBranchName(null)}>
+              Cancel
+            </Button>
+          </div>
+        ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-line pt-3">
           <label className="flex items-center gap-2 text-[0.75rem] text-ink-soft">
@@ -961,7 +1005,7 @@ function OfficerWizard({
     if (!email.includes("@")) return setProblem("A valid email is required.");
     if (!firstName.trim() || !lastName.trim()) return setProblem("First and last name are required.");
     if (committeeChoice === "__new" && !newCommittee.trim()) {
-      return setProblem("Name the new committee.");
+      return setProblem("Name the new branch.");
     }
 
     const holder: StructureHolder = {
@@ -1022,7 +1066,7 @@ function OfficerWizard({
 
           <div className="grid gap-2 sm:grid-cols-2">
             <label className="block">
-              <span className="text-[0.6875rem] font-medium text-ink-soft">Committee</span>
+              <span className="text-[0.6875rem] font-medium text-ink-soft">Branch / committee</span>
               <select
                 value={committeeChoice}
                 onChange={(e) => setCommitteeChoice(e.target.value)}
@@ -1033,7 +1077,7 @@ function OfficerWizard({
                     {c.name}
                   </option>
                 ))}
-                <option value="__new">New committee…</option>
+                <option value="__new">New branch…</option>
               </select>
             </label>
             <label className="block">
@@ -1053,7 +1097,7 @@ function OfficerWizard({
             <input
               value={newCommittee}
               onChange={(e) => setNewCommittee(e.target.value)}
-              placeholder="New committee name"
+              placeholder="New branch name"
               className="rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
             />
           ) : null}

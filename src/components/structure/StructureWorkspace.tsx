@@ -18,6 +18,7 @@ import { invalidateStructurePhotoCache } from "@/components/structure/StructureC
 import { ChartViewer } from "@/components/structure/ChartViewer";
 import { StructureStatusTracker } from "@/components/structure/StructureStatusTracker";
 import {
+  DEFAULT_LAYOUT,
   MAX_PHOTO_BYTES,
   fetchHolderPhoto,
   fetchMemberPhoto,
@@ -688,6 +689,315 @@ function CommitteeEditor({
   );
 }
 
+// ---------------------------------------------------------------- NEUST samples
+
+type SampleOfficer = {
+  first: string;
+  last: string;
+  course?: string;
+  yearLevel?: string;
+};
+
+function sampleSeat(
+  key: string,
+  title: string,
+  tier: number,
+  order: number,
+  officer: SampleOfficer,
+  parentKey: string | null = null,
+): StructurePosition {
+  const emailBase = `${officer.first}.${officer.last}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z]+/g, ".")
+    .replace(/^\.|\.$/g, "");
+  const holder: StructureHolder = {
+    email: `${emailBase}@neust.edu.ph`,
+    firstName: officer.first,
+    lastName: officer.last,
+    fullName: `${officer.first} ${officer.last}`,
+    course: officer.course,
+    yearLevel: officer.yearLevel,
+  };
+  return {
+    key,
+    title,
+    tier,
+    order,
+    parentKey,
+    maxHolders: 1,
+    holder,
+    holders: [holder],
+  };
+}
+
+function sampleTemplate(
+  key: string,
+  name: string,
+  description: string,
+  committees: StructureCommittee[],
+): StructureTemplate {
+  const document: StructureDocument = {
+    schemaVersion: 2,
+    // A smaller node keeps the whole NEUST chart readable inside a preview.
+    layout: { ...DEFAULT_LAYOUT, nodeSize: "sm", tierSpacing: 0.85 },
+    committees,
+  };
+  return {
+    id: key,
+    key,
+    name,
+    description,
+    category: "NEUST sample",
+    isBuiltin: false,
+    document,
+    committees: committees.length,
+    seats: committees.reduce((sum, committee) => sum + committee.positions.length, 0),
+  };
+}
+
+/**
+ * These samples are deliberately not database templates. Saved templates are
+ * holder-free by design: one council's officers must never ship to another.
+ * A NEUST sample is a local, labelled preview that becomes an ordinary editable
+ * document when someone clicks "Use this template".
+ */
+const NEUST_SAMPLES: StructureTemplate[] = [
+  sampleTemplate(
+    "neust-usg-sample",
+    "NEUST University Student Government",
+    "A USG sample with sample officers, college representatives and standing committees.",
+    [
+      {
+        key: "neust-usg-board",
+        isUnit: true,
+        name: "University Student Government",
+        positions: [
+          sampleSeat("neust-usg-president", "USG President", 0, 0, {
+            first: "Juan A.",
+            last: "Dela Cruz",
+            course: "BS Civil Engineering",
+            yearLevel: "4th Year",
+          }),
+          sampleSeat("neust-usg-vp-internal", "Vice President for Internal Affairs", 1, 0, {
+            first: "Maria B.",
+            last: "Santos",
+            course: "BS Accountancy",
+            yearLevel: "4th Year",
+          }, "neust-usg-president"),
+          sampleSeat("neust-usg-vp-external", "Vice President for External Affairs", 1, 1, {
+            first: "Andrea C.",
+            last: "Reyes",
+            course: "BA Communication",
+            yearLevel: "3rd Year",
+          }, "neust-usg-president"),
+          sampleSeat("neust-usg-secretary", "Secretary General", 1, 2, {
+            first: "Micah D.",
+            last: "Lopez",
+            course: "BS Information Technology",
+            yearLevel: "3rd Year",
+          }, "neust-usg-president"),
+          sampleSeat("neust-usg-treasurer", "Treasurer", 1, 3, {
+            first: "Francis E.",
+            last: "Garcia",
+            course: "BS Business Administration",
+            yearLevel: "4th Year",
+          }, "neust-usg-president"),
+          sampleSeat("neust-usg-auditor", "Auditor", 1, 4, {
+            first: "Rica F.",
+            last: "Mendoza",
+            course: "BS Accounting Technology",
+            yearLevel: "3rd Year",
+          }, "neust-usg-president"),
+          sampleSeat("neust-usg-pio", "Public Information Officer", 1, 5, {
+            first: "Paolo G.",
+            last: "Torres",
+            course: "BS Journalism",
+            yearLevel: "3rd Year",
+          }, "neust-usg-president"),
+        ],
+      },
+      {
+        key: "neust-usg-colleges",
+        name: "College Councils",
+        positions: [
+          sampleSeat("neust-college-engineering", "College of Engineering", 2, 0, {
+            first: "Alex H.",
+            last: "Rivera",
+            course: "BS Mechanical Engineering",
+            yearLevel: "3rd Year",
+          }, "neust-usg-vp-internal"),
+          sampleSeat("neust-college-business", "College of Business Administration", 2, 1, {
+            first: "Bianca I.",
+            last: "Cruz",
+            course: "BS Marketing",
+            yearLevel: "3rd Year",
+          }, "neust-usg-vp-internal"),
+          sampleSeat("neust-college-education", "College of Education", 2, 2, {
+            first: "Camille J.",
+            last: "Flores",
+            course: "BSEd English",
+            yearLevel: "4th Year",
+          }, "neust-usg-vp-internal"),
+          sampleSeat("neust-college-arts", "College of Arts and Sciences", 2, 3, {
+            first: "Dennis K.",
+            last: "Ramos",
+            course: "BS Biology",
+            yearLevel: "3rd Year",
+          }, "neust-usg-vp-internal"),
+          sampleSeat("neust-college-technology", "College of Technology", 2, 4, {
+            first: "Erica L.",
+            last: "Silva",
+            course: "BS Industrial Technology",
+            yearLevel: "2nd Year",
+          }, "neust-usg-vp-internal"),
+        ],
+      },
+      {
+        key: "neust-usg-committees",
+        name: "Standing Committees",
+        positions: [
+          sampleSeat("neust-committee-academic", "Academic Affairs Chair", 2, 5, {
+            first: "Kevin M.",
+            last: "Tan",
+            course: "BS Mathematics",
+            yearLevel: "3rd Year",
+          }, "neust-usg-vp-external"),
+          sampleSeat("neust-committee-welfare", "Student Welfare Chair", 2, 6, {
+            first: "Lorraine N.",
+            last: "Ocampo",
+            course: "BS Psychology",
+            yearLevel: "3rd Year",
+          }, "neust-usg-vp-external"),
+          sampleSeat("neust-committee-finance", "Finance and Audit Chair", 2, 7, {
+            first: "Miguel O.",
+            last: "Bautista",
+            course: "BS Economics",
+            yearLevel: "4th Year",
+          }, "neust-usg-vp-external"),
+          sampleSeat("neust-committee-comms", "Communications Chair", 2, 8, {
+            first: "Nina P.",
+            last: "Villanueva",
+            course: "BA Broadcasting",
+            yearLevel: "2nd Year",
+          }, "neust-usg-vp-external"),
+        ],
+      },
+    ],
+  ),
+  sampleTemplate(
+    "neust-lsg-sample",
+    "NEUST Local Student Government",
+    "A college-level LSG sample with officers, committees and year-level representatives.",
+    [
+      {
+        key: "neust-lsg-board",
+        isUnit: true,
+        name: "College Student Council",
+        positions: [
+          sampleSeat("neust-lsg-president", "Student Council President", 0, 0, {
+            first: "Gabriel A.",
+            last: "Reyes",
+            course: "BS Electrical Engineering",
+            yearLevel: "4th Year",
+          }),
+          sampleSeat("neust-lsg-vp", "Vice President", 1, 0, {
+            first: "Princess B.",
+            last: "Ocampo",
+            course: "BS Nursing",
+            yearLevel: "3rd Year",
+          }, "neust-lsg-president"),
+          sampleSeat("neust-lsg-secretary", "Secretary", 1, 1, {
+            first: "Joshua C.",
+            last: "Mendoza",
+            course: "BS Computer Science",
+            yearLevel: "3rd Year",
+          }, "neust-lsg-president"),
+          sampleSeat("neust-lsg-treasurer", "Treasurer", 1, 2, {
+            first: "Alyssa D.",
+            last: "Garcia",
+            course: "BS Accountancy",
+            yearLevel: "2nd Year",
+          }, "neust-lsg-president"),
+          sampleSeat("neust-lsg-auditor", "Auditor", 1, 3, {
+            first: "Marcus E.",
+            last: "Flores",
+            course: "BS Civil Engineering",
+            yearLevel: "3rd Year",
+          }, "neust-lsg-president"),
+          sampleSeat("neust-lsg-pio", "Public Information Officer", 1, 4, {
+            first: "Stephanie F.",
+            last: "Lopez",
+            course: "BA Communication",
+            yearLevel: "2nd Year",
+          }, "neust-lsg-president"),
+        ],
+      },
+      {
+        key: "neust-lsg-committees",
+        name: "Committees",
+        positions: [
+          sampleSeat("neust-lsg-academic", "Academic Affairs Chair", 2, 0, {
+            first: "Rowena G.",
+            last: "Cruz",
+            course: "BSEd Mathematics",
+            yearLevel: "4th Year",
+          }, "neust-lsg-vp"),
+          sampleSeat("neust-lsg-events", "Events Chair", 2, 1, {
+            first: "Nathan H.",
+            last: "Santos",
+            course: "BS Tourism",
+            yearLevel: "3rd Year",
+          }, "neust-lsg-vp"),
+          sampleSeat("neust-lsg-welfare", "Student Welfare Chair", 2, 2, {
+            first: "Jasmine I.",
+            last: "Ramos",
+            course: "BS Social Work",
+            yearLevel: "3rd Year",
+          }, "neust-lsg-vp"),
+          sampleSeat("neust-lsg-finance", "Finance Chair", 2, 3, {
+            first: "Kevin J.",
+            last: "Torres",
+            course: "BS Business Administration",
+            yearLevel: "2nd Year",
+          }, "neust-lsg-vp"),
+        ],
+      },
+      {
+        key: "neust-lsg-reps",
+        name: "Year-Level Representatives",
+        positions: [
+          sampleSeat("neust-lsg-year-1", "First Year Representative", 2, 4, {
+            first: "Bea K.",
+            last: "Villanueva",
+            course: "BS Architecture",
+            yearLevel: "1st Year",
+          }, "neust-lsg-vp"),
+          sampleSeat("neust-lsg-year-2", "Second Year Representative", 2, 5, {
+            first: "Cyril L.",
+            last: "Dela Cruz",
+            course: "BS Information Technology",
+            yearLevel: "2nd Year",
+          }, "neust-lsg-vp"),
+          sampleSeat("neust-lsg-year-3", "Third Year Representative", 2, 6, {
+            first: "Dana M.",
+            last: "Bautista",
+            course: "BS Biology",
+            yearLevel: "3rd Year",
+          }, "neust-lsg-vp"),
+          sampleSeat("neust-lsg-year-4", "Fourth Year Representative", 2, 7, {
+            first: "Ethan N.",
+            last: "Ocampo",
+            course: "BS Mechanical Engineering",
+            yearLevel: "4th Year",
+          }, "neust-lsg-vp"),
+        ],
+      },
+    ],
+  ),
+];
+
 // ------------------------------------------------------------------- gallery
 
 function TemplateGallery({
@@ -702,6 +1012,7 @@ function TemplateGallery({
   busy: boolean;
 }) {
   const [templates, setTemplates] = useState<StructureTemplate[] | null>(null);
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function open() {
@@ -720,7 +1031,8 @@ function TemplateGallery({
         <div>
           <Label>Templates</Label>
           <p className="text-[0.875rem] text-muted">
-            Start from a skeleton. A template can never carry a person&apos;s name.
+            Preview a NEUST sample, or start from a holder-free skeleton. Samples become editable
+            seats when applied; saved templates never carry a person&apos;s name.
           </p>
         </div>
         <div className="flex gap-2">
@@ -732,6 +1044,58 @@ function TemplateGallery({
               Save current as template
             </Button>
           ) : null}
+        </div>
+      </div>
+
+      <div data-tour="structure-samples" className="mt-4 border-t border-line pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Label>NEUST sample charts</Label>
+          <span className="rounded-full border border-[#8a6d31]/35 bg-[#8a6d31]/[0.08] px-2.5 py-1 text-[0.625rem] font-semibold tracking-[0.08em] text-[#6b5121] uppercase">
+            Sample names only
+          </span>
+        </div>
+        <p className="text-[0.8125rem] leading-relaxed text-muted">
+          Preview the sample before applying it. Names and NEUST emails are placeholders — replace
+          them with your real officers before saving or submitting.
+        </p>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {NEUST_SAMPLES.map((sample) => {
+            const previewing = previewKey === sample.key;
+            return (
+              <article key={sample.key} className="rounded-xl border border-line bg-canvas/40 p-4">
+                <p className="text-[0.9375rem] font-medium text-ink-deep">{sample.name}</p>
+                <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">{sample.description}</p>
+                <p className="mt-2 text-[0.6875rem] tracking-[0.08em] text-muted uppercase">
+                  {sample.committees} branches &middot; {sample.seats} seats &middot; editable after use
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setPreviewKey(previewing ? null : sample.key)}
+                  >
+                    {previewing ? "Hide preview" : "Preview"}
+                  </Button>
+                  <Button type="button" variant="paper" size="sm" disabled={busy} onClick={() => onApply(sample)}>
+                    Use this template
+                  </Button>
+                </div>
+                {previewing ? (
+                  <div className="mt-4 rounded-xl border border-line bg-paper/70 p-3">
+                    <ChartViewer
+                      doc={sample.document}
+                      title={sample.name}
+                      subtitle="Sample preview — replace names before saving"
+                      filename={`${sample.key}-preview`}
+                      maxHeight={420}
+                    />
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </div>
 
@@ -753,7 +1117,7 @@ function TemplateGallery({
               </p>
               <div className="mt-3">
                 <Button type="button" variant="paper" size="sm" disabled={busy} onClick={() => onApply(t)}>
-                  Use this
+                  Use this template
                 </Button>
               </div>
             </li>
@@ -1377,6 +1741,11 @@ export function StructureWorkspace({
             setTemplateKey(t.key);
             edit(t.document);
             setProblem(null);
+            setStatus(
+              t.category === "NEUST sample"
+                ? "NEUST sample applied. Replace the sample names and emails before saving."
+                : null,
+            );
           }}
           onSaveCurrent={async () => {
             try {
