@@ -80,9 +80,21 @@ Verification
   server-rendered routes.
 
 Gate 2 status
-- STOP: no commit, no push, no deploy, and no database command were performed.
-- Supabase backup is still unresolved: supabase db dump --linked --file
+- Frontend reset committed and pushed as 24640d0; Vercel auto-deploy triggered.
+- Supabase backup is now resolved and verified:
+  C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126.sql (1,479,519 bytes)
+  C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126_data.sql (99,797 bytes)
+  C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126_full.sql (1,578,645 bytes)
+- The .env.local BOM issue was bypassed using a linked temp workdir; PostgreSQL 18 pg_dump was used.
+- Verification passed: tsc, lint, check:navigation, check:reveal, and build.
+- STOP before Gate 3: database reset still requires explicit Gate 2 approval.
+
+Gate 3 status
+- Approved and completed as SCOPE 2.
+- Applied migration: supabase/migrations/20260101999999_reset_operational_data_scope_2.sql
+- All 70 operational tables are empty; smartgov.applied_migrations preserved (122 rows).
+- Migration recorded in supabase_migrations.schema_migrations.
+- Backups verified before reset:
   C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126.sql
-  failed with "Cannot find project ref. Have you run supabase link?" and
-  supabase status --output json failed to parse .env.local. No dump file exists.
-- Do not proceed to Gate 3 (database reset) until a verified backup exists.
+  C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126_data.sql
+  C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126_full.sql
