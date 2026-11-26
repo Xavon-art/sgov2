@@ -1,0 +1,88 @@
+PHASE B REPORT — Dashboard shell reset
+Branch: chore/dashboard-reset
+Base/tag: backup-before-dashboard-reset-20261126 (44d356f)
+
+Scope applied
+- USG and LSG workspaces are now empty shells with a single Overview item.
+- Auth/login, root + workspace layouts, WorkspaceGuard/session guard, AppShell,
+  DashboardProvider, signature theme tokens, landing page, org setup, invite and
+  activation flows, notifications bell, and shared UI primitives were kept.
+- Settings/profile dashboard surfaces were removed.
+- Public feedback/survey surfaces and APIs were removed or redirected so no link
+  points at a deleted route.
+- Tours were removed from the root layout and all tour APIs/components/libs were deleted.
+- Adversarial review findings were addressed: orphaned AI/compliance/review code
+  was deleted, and removed public links now land on the landing page instead of
+  dead-ending at login.
+
+Removed files (339 deleted)
+- scripts: every script except apply-migration.mjs, check-reveal.mjs, and
+  check-navigation.mjs.
+- src/app/api: every API tree except auth, cron/tick, dev/outbox, invites,
+  locations, notifications, and organization. This includes budgets, tasks,
+  requests, proposals, programs, requirements, compliance, resolutions, surveys,
+  feedback, events, feed, documents, files, uploads, catalog-files,
+  accomplishment-reports, accomplishment-files, conversations, umbrella,
+  officers, org-accounts, org-profile, permissions, overview, org-chart,
+  structures, profile, reviewer, tours, units, verifications, my-unit, and
+  dashboard/layout.
+- src/app/usg: manage, messages, request, events, forms, settings, survey,
+  surveys, personal-requests, resolutions, officers, and structure pages plus
+  ManageClient.tsx. layout.tsx, loading.tsx, and page.tsx were kept.
+- src/app/lsg: manage, messages, request, events, forms, settings, survey,
+  surveys, personal-requests, and resolutions pages. layout.tsx, loading.tsx,
+  and page.tsx were kept.
+- Deleted page trees: src/app/central, src/app/feedback, src/app/forms,
+  src/app/my-council, src/app/org-chart, src/app/structure, and src/app/survey.
+- src/components/dashboard: all feature panels/workspaces/editors, request and
+  budget helpers, survey editors, feedback panels, governance panels, profile
+  panels, SettingsSection, WorkspaceGuard, NotAvailable, and workspace-shared.
+  Kept: AppShell.tsx, dashboard-context.tsx, SessionGuard.tsx, SignOutButton.tsx,
+  usg-nav.ts, lsg-nav.ts, and RebuiltPlaceholder.tsx.
+- Deleted component trees: src/components/ai, src/components/forms,
+  src/components/org-chart, src/components/structure, src/components/tours,
+  src/components/landing/PublishedFeedbackForms.tsx, and
+  src/components/ui/ReviewTimeline.tsx.
+- Deleted libs: accomplishment-reports, ai, budget-api, budgets, chart,
+  compliance, document-search, documents, feed, feedback, feedback-forms,
+  feedback-server, large-objects, monitoring, resolutions, structure,
+  structure-server, tasks, upload-client, and the complete src/lib/tours tree.
+- Deleted src/types/mammoth-browser.d.ts and src/types/orgchart.d.ts.
+
+Modified files (11)
+- next.config.ts — removed old feature redirects; removed USG/LSG routes redirect
+  to their workspace home, and removed public survey/feedback/form routes redirect
+  to the landing page.
+- package.json — pruned check scripts to build, lint, check:reveal, and
+  check:navigation.
+- src/app/page.tsx — removed PublishedFeedbackForms from the landing page.
+- src/app/layout.tsx — removed TourProvider.
+- src/app/usg/page.tsx — renders RebuiltPlaceholder title "USG Overview".
+- src/app/lsg/page.tsx — renders RebuiltPlaceholder title "LSG Overview".
+- src/components/dashboard/usg-nav.ts — one Overview item only.
+- src/components/dashboard/lsg-nav.ts — one Overview item only.
+- src/components/dashboard/AppShell.tsx — removed TourHelpButton and tour
+  progress persistence; notifications bell kept.
+- src/app/dashboard/page.tsx and src/app/dashboard/[...path]/page.tsx — legacy
+  routes now redirect straight to /usg or /lsg.
+
+New file (1)
+- src/components/dashboard/RebuiltPlaceholder.tsx — shared empty-shell message.
+
+Verification
+- npx tsc --noEmit: PASS (no output).
+- npm run lint: PASS with 2 pre-existing @next/next/no-img-element warnings in
+  src/components/dashboard/AppShell.tsx (0 errors).
+- npm run check:navigation: PASS — 19 page routes, 22 API routes, 111 source
+  files; all internal links and redirects resolve.
+- npm run check:reveal: PASS — 12/12 checks.
+- npm run build: PASS — 35 static pages generated; /usg and /lsg remain dynamic
+  server-rendered routes.
+
+Gate 2 status
+- STOP: no commit, no push, no deploy, and no database command were performed.
+- Supabase backup is still unresolved: supabase db dump --linked --file
+  C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126.sql
+  failed with "Cannot find project ref. Have you run supabase link?" and
+  supabase status --output json failed to parse .env.local. No dump file exists.
+- Do not proceed to Gate 3 (database reset) until a verified backup exists.

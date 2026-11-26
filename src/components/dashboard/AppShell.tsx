@@ -4,8 +4,6 @@ import { Suspense, useCallback, useEffect, useState, type CSSProperties } from "
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Seal, Wordmark } from "@/components/ui/Seal";
-import { TourHelpButton } from "@/components/tours/HelpButton";
-import { loadTourProgress, saveTourProgress } from "@/lib/tours/progress";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { useAccount, useDashboard } from "@/components/dashboard/dashboard-context";
 import { formatNotificationTime, type NotificationItem } from "@/lib/notifications";
@@ -183,40 +181,8 @@ function AppShellInner({
       ? `/${pathSegments[workspaceIndex]}${pathSegments.length > workspaceIndex + 2 ? `/${pathSegments.slice(workspaceIndex + 1, -1).join("/")}` : ""}`
       : "/dashboard";
 
-  useEffect(() => {
-    let alive = true;
-    void Promise.resolve(loadTourProgress())
-      .then((progress) => {
-        if (alive && progress?.sidebarCollapsed) setCollapsed(true);
-      })
-      .catch(() => {
-        if (alive) setCollapsed(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  async function persistCollapsed(next: boolean) {
-    let saved = false;
-    try {
-      saved = (await saveTourProgress({ sidebarCollapsed: next })) === true;
-    } catch {
-      saved = false;
-    }
-    if (saved) return;
-    try {
-      const progress = await loadTourProgress();
-      await saveTourProgress({ ...progress, sidebarCollapsed: next });
-    } catch {
-      return;
-    }
-  }
-
   function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
-    void persistCollapsed(next);
+    setCollapsed((value) => !value);
   }
 
   const [unread, setUnread] = useState(initialUnreadCount);
@@ -675,9 +641,6 @@ function AppShellInner({
             </div>
 
             <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-2.5">
-              <span data-tour-help-slot data-tour="workspace-help" className="inline-flex size-9 shrink-0 items-center justify-center">
-                <TourHelpButton compact slot />
-              </span>
               <div className="relative">
                 <button
                   type="button"

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
-import { TourProvider } from "@/components/tours/TourProvider";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -82,9 +81,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col">
-        <TourProvider>{children}</TourProvider>
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

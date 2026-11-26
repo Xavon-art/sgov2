@@ -30,44 +30,50 @@ const nextConfig: NextConfig = {
   // strips the fingerprint from /dashboard and the API routes.
   poweredByHeader: false,
   async redirects() {
+    const home = (side: "usg" | "lsg") => `/${side}` as const;
+    const redirect = (source: string, side: "usg" | "lsg") => ({
+      source,
+      destination: home(side),
+      permanent: false,
+    });
     return [
-      { source: "/usg/survey", destination: "/usg/forms?type=survey", permanent: false },
-      { source: "/lsg/survey", destination: "/lsg/forms?type=survey", permanent: false },
-      { source: "/usg/surveys", destination: "/usg/forms?type=survey", permanent: false },
-      { source: "/lsg/surveys", destination: "/lsg/forms?type=survey", permanent: false },
-      {
-        source: "/usg/surveys/:id",
-        destination: "/usg/forms?type=survey&id=:id",
-        permanent: false,
-      },
-      {
-        source: "/lsg/surveys/:id",
-        destination: "/lsg/forms?type=survey&id=:id",
-        permanent: false,
-      },
-      { source: "/survey/:id", destination: "/forms/survey/:id", permanent: false },
-      { source: "/feedback/f/:token", destination: "/forms/feedback/:token", permanent: false },
-      {
-        source: "/usg/officers",
-        destination: "/usg/manage?tab=people&view=officers",
-        permanent: false,
-      },
-      {
-        source: "/usg/accounts",
-        destination: "/usg/manage?tab=people&view=permissions",
-        permanent: false,
-      },
-      {
-        source: "/usg/invites",
-        destination: "/usg/manage?tab=people&view=invites",
-        permanent: false,
-      },
-      {
-        source: "/usg/umbrella",
-        destination: "/usg/manage?tab=people&view=units",
-        permanent: false,
-      },
+      redirect("/usg/manage", "usg"),
+      redirect("/usg/messages", "usg"),
+      redirect("/usg/request", "usg"),
+      redirect("/usg/events", "usg"),
+      redirect("/usg/forms", "usg"),
+      redirect("/usg/settings", "usg"),
+      redirect("/usg/survey", "usg"),
+      redirect("/usg/surveys", "usg"),
+      redirect("/usg/surveys/:id", "usg"),
+      redirect("/usg/personal-requests", "usg"),
+      redirect("/usg/resolutions", "usg"),
+      redirect("/usg/officers", "usg"),
+      redirect("/usg/accounts", "usg"),
+      redirect("/usg/invites", "usg"),
+      redirect("/usg/umbrella", "usg"),
+      redirect("/usg/structure", "usg"),
+      redirect("/lsg/manage", "lsg"),
+      redirect("/lsg/messages", "lsg"),
+      redirect("/lsg/request", "lsg"),
+      redirect("/lsg/events", "lsg"),
+      redirect("/lsg/forms", "lsg"),
+      redirect("/lsg/settings", "lsg"),
+      redirect("/lsg/survey", "lsg"),
+      redirect("/lsg/surveys", "lsg"),
+      redirect("/lsg/surveys/:id", "lsg"),
+      redirect("/lsg/personal-requests", "lsg"),
+      redirect("/lsg/resolutions", "lsg"),
+      { source: "/survey/:id", destination: "/", permanent: false },
+      { source: "/feedback/f/:token", destination: "/", permanent: false },
+      { source: "/forms/:type/:key", destination: "/", permanent: false },
+      redirect("/org-chart", "usg"),
+      redirect("/my-council", "usg"),
+      redirect("/my-council/structure", "usg"),
+      redirect("/structure/editor", "usg"),
+      redirect("/structure/preview", "usg"),
     ];
+
   },
   async headers() {
     return [
