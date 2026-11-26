@@ -20,7 +20,13 @@ export const runtime = "nodejs";
  * that has already been staged through /api/uploads, so this route only ever
  * receives a storage path. That keeps a 10 MB body out of a JSON handler.
  */
-type AnswerPayload = RpcResult & { verdict?: string; unitId?: string; status?: string };
+type AnswerPayload = RpcResult & {
+  verdict?: string;
+  itemStatus?: string;
+  unitName?: string;
+  unitId?: string;
+  status?: string;
+};
 
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
@@ -122,7 +128,12 @@ export async function PATCH(req: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, verdict: res.verdict });
+    return NextResponse.json({
+      ok: true,
+      verdict: res.verdict,
+      itemStatus: res.itemStatus,
+      unitName: res.unitName,
+    });
   } catch (error) {
     console.error("[answer:review]", error);
     return NextResponse.json(

@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Reveal } from "@/components/fx/Reveal";
 import { ActionError, selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
 import { IconArrowLeft, IconPencil } from "@/components/ui/Icons";
 import { uploadFile } from "@/lib/upload-client";
 import {
-  STATUS_CLASS,
-  STATUS_LABEL,
   formatDate,
   type ResolutionDetail,
   type ResolutionRow,
@@ -32,14 +31,6 @@ async function mutate(url: string, init: RequestInit): Promise<Record<string, un
 
 function actionMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
-}
-
-function StatusBadge({ status }: { status: ResolutionRow["status"] }) {
-  return (
-    <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_CLASS[status]}`}>
-      {STATUS_LABEL[status]}
-    </span>
-  );
 }
 
 export function ResolutionPanel({ isUsg }: { isUsg: boolean }) {
@@ -273,7 +264,7 @@ function ReviewActions({
   const [busy, setBusy] = useState(false);
 
   const review = useCallback(
-    async (decision: "under_review" | "approved" | "returned" | "published") => {
+    async (decision: "under_review" | "approved" | "returned" | "rejected") => {
       if (busy) return;
       setBusy(true);
       onError(null);
@@ -301,7 +292,7 @@ function ReviewActions({
         value={remark}
         onChange={(e) => setRemark(e.target.value)}
         rows={2}
-        placeholder="Remark (required when returning)"
+        placeholder="Remark (required when returning or rejecting)"
         className={`${selectClass} w-full`}
       />
       <div className="mt-2 flex flex-wrap gap-2">
@@ -314,8 +305,8 @@ function ReviewActions({
         <Button size="sm" disabled={busy || !remark.trim()} onClick={() => void review("returned")}>
           Return
         </Button>
-        <Button size="sm" disabled={busy} onClick={() => void review("published")}>
-          Publish
+        <Button size="sm" disabled={busy || !remark.trim()} onClick={() => void review("rejected")}>
+          Reject
         </Button>
       </div>
     </div>

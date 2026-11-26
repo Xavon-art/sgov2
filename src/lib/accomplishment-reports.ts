@@ -1,4 +1,15 @@
-export type AccomplishmentReportStatus = "submitted" | "acknowledged" | "returned";
+/**
+ * Accomplishment report statuses use the unified status model
+ * (see {@link src/lib/status}); older rows that still carry a legacy value are
+ * mapped on read through {@link normalizeStatus}. The labels and classes below
+ * are re-exported from the unified module so the whole product renders the same
+ * status the same way.
+ */
+
+import { STATUS_LABEL as ACCOMPLISHMENT_STATUS_LABEL, STATUS_CLASS as ACCOMPLISHMENT_STATUS_CLASS } from "@/lib/status";
+import type { Status } from "@/lib/status";
+
+export type AccomplishmentReportStatus = Status;
 
 export type AccomplishmentFile = {
   id: string;
@@ -19,7 +30,7 @@ export type AccomplishmentReportRow = {
 };
 
 export type AccomplishmentReviewEntry = {
-  decision: AccomplishmentReportStatus;
+  decision: Status;
   remark: string | null;
   reviewerName: string | null;
   createdAt: string;
@@ -37,28 +48,10 @@ export type AccomplishmentReportDetail = AccomplishmentReportRow & {
   files?: AccomplishmentFile[];
 };
 
-export type AccomplishmentDecision = Extract<
-  AccomplishmentReportStatus,
-  "acknowledged" | "returned"
->;
+export type AccomplishmentDecision = Extract<Status, "approved" | "returned">;
 
-export const ACCOMPLISHMENT_STATUS_LABEL: Record<
-  AccomplishmentReportStatus,
-  string
-> = {
-  submitted: "Submitted",
-  acknowledged: "Acknowledged",
-  returned: "Returned",
-};
-
-export const ACCOMPLISHMENT_STATUS_CLASS: Record<
-  AccomplishmentReportStatus,
-  string
-> = {
-  submitted: "border-brass/40 bg-brass-soft/30 text-brass-deep",
-  acknowledged: "border-ink/20 bg-ink/[0.06] text-ink",
-  returned: "border-[#d9a99c] bg-[#a5442c]/[0.08] text-[#a5442c]",
-};
+export { ACCOMPLISHMENT_STATUS_LABEL, ACCOMPLISHMENT_STATUS_CLASS };
+export type { Status };
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

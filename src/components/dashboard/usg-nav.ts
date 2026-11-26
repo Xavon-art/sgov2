@@ -6,18 +6,17 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  * centre and every LSG sits under it.
  *
  *   Overview     what needs a decision, and a way into everything else
- *   Manage       the umbrella: your LSGs, invitations, and your own profile
+ *   Manage       people and units, government structure, and your own profile
  *   Inbox        messages with the student governments, always one click away
  *   Request      the core of the system -- tasks pushed down to LSGs, and the
  *                personal requests they send back up
  *   Events       the calendar of events and acts
- *   Survey       forms, built by either side
+ *   Forms        surveys and feedback, built by either side
  *   Settings     your account and how the dashboard behaves
  *
  * The sections are named after the work, not the table behind it. "Manage" holds
- * three floors under one roof rather than three top-level entries, because an
- * owner thinks of the umbrella, the invitations and their own profile as one
- * administrative job.
+ * one roof for people, structure, documents, and profile rather than separate
+ * top-level entries, because an owner thinks of them as one administrative job.
  *
  * Icons are keys, resolved in `AppShell`; a component cannot cross the server to
  * client boundary here.
@@ -34,33 +33,17 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
   // allows to read pending rows and approve them.
   const canReviewDocuments = role.side === "usg";
   const manageChildren = [
-    { label: "Your Umbrella", href: "/usg/manage?tab=umbrella" },
-    { label: "Invites", href: "/usg/manage?tab=invites" },
+    { label: "People & Units", href: "/usg/manage?tab=people&view=units" },
     { label: "Government structure", href: "/usg/manage?tab=structure" },
     { label: "Profile and Customization", href: "/usg/manage?tab=profile" },
     { label: "Documents", href: "/usg/manage?tab=documents" },
-    { label: "Search", href: "/usg/manage?tab=search" },
     { label: "Budget", href: "/usg/manage?tab=budget" },
   ].filter(
     (_, index) =>
-      (!centralized || (index !== 0 && index !== 1)) &&
-      (canManage || index === 3 ||
-      (canReviewDocuments && (index === 4 || index === 5)) ||
-      (canReviewDocuments && index === 6)),
+      (!centralized || index !== 0) &&
+      (canManage || index === 2 ||
+      (canReviewDocuments && (index === 1 || index === 3 || index === 4))),
   );
-  if (!centralized && canReviewDocuments) {
-    manageChildren.push({ label: "Monitoring", href: "/usg/manage?tab=monitoring" });
-  }
-  if (canReviewDocuments) {
-    manageChildren.push({ label: "Feedback", href: "/usg/manage?tab=feedback" });
-  }
-  // `/org-chart` is a full-page view of the published chart. It is linked from
-  // Manage, and the session guard no longer signs a reload out.
-  if (!centralized && canManage) {
-    manageChildren.push({ label: "Published chart", href: "/org-chart" });
-    manageChildren.push({ label: "Accounts", href: "/usg/manage?tab=accounts" });
-  }
-
   return [
     {
       id: "overview",
@@ -75,9 +58,9 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
       hint: centralized
         ? "Structure, documents, and your profile"
         : canManage
-          ? "Your umbrella, invitations, and profile"
+          ? "People, structure, and your profile"
           : canReviewDocuments
-            ? "Documents, search, and your profile"
+            ? "Documents and your profile"
             : "Your profile",
       href: "/usg/manage",
       icon: "layers",
@@ -97,9 +80,9 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
       href: "/usg/request",
       icon: "submission",
       children: [
-        { label: "Tasks", href: "/usg/request" },
+        { label: "Tasks", href: "/usg/request?tab=tasks" },
         { label: "Requirements", href: "/usg/request?tab=requirements" },
-        { label: "Personal Requests", href: "/usg/personal-requests" },
+        { label: "Personal Requests", href: "/usg/request?tab=personal" },
         { label: "Resolutions", href: "/usg/request?tab=resolutions" },
       ],
     },
@@ -117,9 +100,9 @@ export function buildUsgNav(input: WorkspaceRole): NavItem[] {
     },
     {
       id: "survey",
-      label: "Survey",
-      hint: "Build forms, read the results",
-      href: "/usg/surveys",
+      label: "Forms",
+      hint: "Build surveys and feedback, read the results",
+      href: "/usg/forms",
       icon: "monitoring",
     },
     {

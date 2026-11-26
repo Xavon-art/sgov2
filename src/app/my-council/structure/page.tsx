@@ -8,7 +8,7 @@ import { SignOutButton } from "@/components/dashboard/SignOutButton";
 import { SessionGuard } from "@/components/dashboard/SessionGuard";
 import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
 import { currentAccount, readSessionToken } from "@/lib/auth/session";
-import { fetchUnitChartResult, isUnitScopeChart } from "@/lib/chart";
+import { fetchUnitChartResult, isUnitScopeChart, resolveOwnStructureUnit } from "@/lib/chart";
 import { structureFormat } from "@/lib/structure";
 import { fetchStructureForSession } from "@/lib/structure-server";
 
@@ -116,11 +116,7 @@ export default async function StructurePage() {
   // A chart in unit scope has the council as its root, or as the single unit
   // beneath the USG root. Both resolve to one council, and that council is the
   // subject of the page. An owner edits the root unit (their USG) itself.
-  const root = chart.root;
-  const belowRoot = root ? chart.units.filter((u) => u.id !== root.id) : chart.units;
-  const own = isOwner
-    ? root ?? belowRoot[0]
-    : belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? root;
+  const own = resolveOwnStructureUnit(chart, isOwner);
 
   if (!own) {
     return (
@@ -148,28 +144,5 @@ export default async function StructurePage() {
     );
   }
 
-  return (
-    <SessionGuard>
-      <Shell title={own.name}>
-        <Reveal className="flex flex-col items-center text-center">
-          <p className="eyebrow">Structure</p>
-          <h1 className="mt-2 text-[1.875rem] leading-tight sm:text-[2.25rem]">{own.name}</h1>
-          <p className="mt-3 max-w-2xl text-[0.9375rem] leading-relaxed text-body">
-            Build your council and its committees, name the officers who hold each seat, and
-            send the whole thing to your USG for approval.
-          </p>
-        </Reveal>
-
-        <div data-tour="council-structure-workspace" className="mt-10">
-          <StructureWorkspace
-            unitId={own.id}
-            unitName={own.name}
-            scope={isOwner ? "usg" : "lsg"}
-            format={structureFormat({ isRoot: isOwner, unitType: own.unitType })}
-            capability={structure.capability}
-          />
-        </div>
-      </Shell>
-    </SessionGuard>
-  );
+  redirect(`/structure/editor?unitId=${encodeURIComponent(own.id)}&returnTo=/my-council`);
 }

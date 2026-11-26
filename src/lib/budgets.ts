@@ -6,11 +6,17 @@
  * without help. Formatting once, here, keeps the LSG form and the USG review
  * column from disagreeing about what the same request costs.
  *
- * The statuses are the four the SQL accepts. There is no `draft` and no
- * `published`: a budget is submitted whole or not at all, and it stops at
- * approved or rejected.
+ * Budget statuses use the unified status model
+ * (see {@link src/lib/status}); older rows that still carry a legacy value are
+ * mapped on read through {@link normalizeStatus}. The labels and classes below
+ * are re-exported from the unified module so the whole product renders the same
+ * status the same way.
  */
-export type BudgetStatus = "submitted" | "returned" | "approved" | "rejected";
+
+import { STATUS_LABEL as BUDGET_LABEL, STATUS_CLASS as BUDGET_CLASS } from "@/lib/status";
+import type { Status } from "@/lib/status";
+
+export type BudgetStatus = Status;
 
 export type BudgetItem = {
   id: string;
@@ -85,22 +91,11 @@ export type BudgetDashboard = {
 /** What the LSG types before anything is sent. Subtotals are never sent. */
 export type DraftItem = { label: string; quantity: string; unitCost: string };
 
-export const STATUS_LABEL: Record<BudgetStatus, string> = {
-  submitted: "Awaiting review",
-  returned: "Returned for revision",
-  approved: "Approved",
-  rejected: "Not approved",
-};
+export { BUDGET_LABEL, BUDGET_CLASS };
+export type { Status };
 
-export const STATUS_CLASS: Record<BudgetStatus, string> = {
-  submitted: "border-line bg-canvas text-muted",
-  returned: "border-brass/40 bg-brass-soft/30 text-brass-deep",
-  approved: "border-ink/20 bg-ink/[0.06] text-ink",
-  rejected: "border-[#d9a99c] bg-[#a5442c]/[0.08] text-[#a5442c]",
-};
-
-/** Only USG may approve, return or reject; only USG may see the summary. */
-export type BudgetDecision = "approved" | "returned" | "rejected";
+export const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function formatMoney(value: number | string | null | undefined): string {
   const n = Number(value ?? 0);

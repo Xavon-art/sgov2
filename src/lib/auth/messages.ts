@@ -84,6 +84,13 @@ const RPC_MESSAGES: Record<string, string> = {
     "This request has already been decided. An approved or rejected request is final.",
   invalid_amount:
     "The approved amount has to be between zero and the amount that was requested.",
+  allocation_exceeded:
+    "That total is above the unit's remaining allocation. Reduce it or ask USG to adjust the allocation.",
+  spending_exceeded: "That would put spending above the approved total.",
+  period_closed: "That budget period is closed, so it cannot take new requests.",
+  invalid_status: "Only an approved budget can record spending.",
+  invalid_kind: "Choose a valid budget file category.",
+  invalid_file: "That file has not finished uploading for this budget. Upload it again.",
   remark_required:
     "Write a short note so the officer knows what to change.",
   past_deadline:
@@ -110,6 +117,12 @@ const RPC_MESSAGES: Record<string, string> = {
     "There is already an open revision of this structure. Finish that one first.",
   no_approved_structure:
     "There is no approved structure to renew yet.",
+  conflict:
+    "This structure was changed somewhere else. Reload their version, or keep yours and save again.",
+  invalid_parent:
+    "That seat reports to a position that is missing, or its reporting line loops. Choose another parent.",
+  too_many_holders:
+    "That seat has more holders than it allows. Raise the limit or remove a holder.",
 
   // ---- federated dashboard remodel (03100-03104)
   display_name_invalid: "Use a name of 2 to 80 characters.",
@@ -137,11 +150,17 @@ const RPC_MESSAGES: Record<string, string> = {
   task_closed: "This task is closed, so it no longer takes answers or messages.",
   already_closed: "This task has already been closed.",
   already_done: "The office has already marked this unit done.",
+  already_submitted: "This task is already waiting for USG review.",
+  missing_requirements: "Answer every required item before submitting for review.",
+  not_under_review: "This task is not waiting for review, so it cannot be withdrawn.",
+  under_review: "This item is already waiting for review.",
+  review_started: "USG has already opened this submission, so it can no longer be withdrawn.",
   invalid_body: "Write the resolution clauses in at least 10 characters.",
   invalid_resolution_no: "Enter a resolution number of 80 characters or fewer.",
   invalid_date_passed: "Choose the date the resolution was passed.",
   invalid_summary: "Write a short summary of 10 to 1000 characters.",
   invalid_budget: "Enter a proposed budget of zero or more.",
+  extension_pending: "That unit already has a pending extension request for this task.",
   invalid_subject: "Give the request a subject of 4 to 160 characters.",
   invalid_feedback_subject: "Give the feedback a subject of 3 to 160 characters.",
   invalid_message: "Write feedback of at least 10 characters.",

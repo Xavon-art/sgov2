@@ -9,7 +9,7 @@ import { reviewAccomplishmentReport } from "@/lib/accomplishment-reports-server"
 
 export const runtime = "nodejs";
 
-const DECISIONS = new Set<AccomplishmentDecision>(["acknowledged", "returned"]);
+const DECISIONS = new Set<AccomplishmentDecision>(["approved", "returned"]);
 
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
@@ -46,9 +46,9 @@ export async function POST(
   }
 
   const decision = typeof body.decision === "string" ? body.decision : "";
-  if (!DECISIONS.has(decision as AccomplishmentDecision)) {
+  if (!DECISIONS.has(decision as unknown as AccomplishmentDecision)) {
     return NextResponse.json(
-      { ok: false, message: "Choose acknowledge or return." },
+      { ok: false, message: "Choose approve or return." },
       { status: 400 },
     );
   }

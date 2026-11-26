@@ -13,6 +13,7 @@ import {
   buildPersonalRequestStoragePath,
   buildResolutionStoragePath,
   buildAccomplishmentStoragePath,
+  buildBudgetStoragePath,
   sanitizeFileName,
 } from "@/lib/documents";
 
@@ -138,7 +139,9 @@ async function handleJson(req: Request, token: string) {
             ? "resolution"
             : body.target === "accomplishment"
               ? "accomplishment"
-              : "item";
+              : body.target === "budget"
+                ? "budget"
+                : "item";
 
     if (!fileName || sizeBytes === null) return fail("invalid_request");
     if (sizeBytes < 1) return fail("invalid_request");
@@ -349,6 +352,56 @@ async function handleJson(req: Request, token: string) {
       // until then this is just a reserved path, not an attachment.
       const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
         "claim_accomplishment_upload",
+        {
+          p_session_token: token,
+          p_storage_path: storagePath,
+          p_original_name: fileName,
+          p_mime_type: typeof body.mimeType === "string" ? body.mimeType : "",
+          p_size_bytes: sizeBytes,
+        },
+      );
+
+      if (!result.ok) return fail(result.reason ?? "retry");
+      return okWith({ storagePath: result.storagePath ?? storagePath, writtenBytes: result.writtenBytes ?? 0 });
+    }
+
+    if (target === "budget") {
+      const budgetKind =
+        body.budgetKind === "justification" || body.budgetKind === "receipt" || body.budgetKind === "usg_expense"
+          ? body.budgetKind
+          : "";
+      if (!budgetKind) return fail("invalid_kind");
+
+      let scopeId = typeof body.unitId === "string" ? body.unitId : "";
+      if (budgetKind === "usg_expense") {
+        scopeId = account.organizationId;
+      } else if (!UUID_RE.test(scopeId)) {
+        try {
+          const res = await callRpc<RpcResult & { unitId?: string; unit?: { id?: string }; id?: string }>(
+            "my_unit",
+            { p_session_token: token },
+          );
+          scopeId =
+            (typeof res.unitId === "string" && res.unitId) ||
+            (typeof res.unit?.id === "string" && res.unit.id) ||
+            (typeof res.id === "string" && res.id) ||
+            "";
+        } catch {
+          scopeId = "";
+        }
+      }
+      if (!UUID_RE.test(scopeId)) return fail("no_unit");
+
+      const storagePath = buildBudgetStoragePath({
+        organizationId: account.organizationId,
+        kind: budgetKind,
+        scopeId,
+        nonce,
+        fileName,
+      });
+
+      const result = await callRpc<RpcResult & { storagePath?: string; writtenBytes?: number }>(
+        "claim_budget_upload",
         {
           p_session_token: token,
           p_storage_path: storagePath,

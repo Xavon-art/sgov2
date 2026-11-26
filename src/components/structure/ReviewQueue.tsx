@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Reveal } from "@/components/fx/Reveal";
 import {
   fetchQueue,
@@ -26,27 +27,6 @@ import {
  */
 
 type Busy = { kind: "idle" } | { kind: "working"; id: string } | { kind: "error"; message: string };
-
-const STATUS_TONE: Record<string, string> = {
-  draft: "border-line bg-paper/60 text-ink-soft",
-  submitted: "border-brass/45 bg-brass-soft/30 text-ink",
-  returned: "border-[#a3702a]/35 bg-[#a3702a]/[0.08] text-[#8a5f22]",
-  approved: "border-[#2f6d4f]/35 bg-[#2f6d4f]/[0.08] text-[#255639]",
-  rejected: "border-[#a33a2e]/35 bg-[#a33a2e]/[0.07] text-[#8c3126]",
-  superseded: "border-line bg-paper/60 text-muted",
-};
-
-function StatusPill({ status }: { status: string }) {
-  return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-[0.625rem] font-semibold tracking-[0.12em] uppercase ${
-        STATUS_TONE[status] ?? STATUS_TONE.superseded
-      }`}
-    >
-      {status}
-    </span>
-  );
-}
 
 function DocumentPreview({ document }: { document: StructureDocument }) {
   return (
@@ -186,7 +166,7 @@ function Entry({
             {structure.authorKind === "usg" ? " \u00b7 filed by the USG" : ""}
           </p>
         </div>
-        <StatusPill status={structure.status} />
+        <StatusBadge status={structure.status} />
       </div>
 
       {structure.note ? (
@@ -222,7 +202,7 @@ function Entry({
         <RosterPanel payload={roster} members={holders.map((h) => h.email)} />
       ) : null}
 
-      {canReview && structure.status === "submitted" ? (
+      {canReview && structure.status === "under_review" ? (
         <DecisionForm
           structure={structure}
           busy={busy}

@@ -26,7 +26,7 @@ export const councilStructureTour: PageTour = {
       placement: "top",
     },
     {
-      target: "council-structure-workspace",
+      target: "council-structure-shell",
       title: "Structure workspace",
       body: "This area displays the current structure of your council.",
       placement: "bottom",

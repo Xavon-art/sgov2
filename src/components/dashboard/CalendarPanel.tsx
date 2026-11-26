@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconPencil } from "@/components/ui/Icons";
 import type { CalendarEvent } from "@/lib/feed";
+import { normalizeStatus, statusLabel } from "@/lib/status";
+
+function honorLabel(value: string | null | undefined): string {
+  if (value === "honored") return "Honoured";
+  if (value === "not_honored") return "Not honoured";
+  return "Pending";
+}
 
 type CalendarDays = Record<string, CalendarEvent[]>;
 
@@ -159,8 +166,8 @@ export function CalendarPanel({
                     </div>
                     <div className="mt-1 text-xs text-muted">
                       Source: {e.source ?? "event"}
-                      {e.status ? ` • Status: ${e.status}` : ""}
-                      {e.honorStatus ? ` • Honour: ${e.honorStatus}` : ""}
+                      {e.status ? ` • Status: ${statusLabel(normalizeStatus(e.status))}` : ""}
+                      {e.honorStatus ? ` • Honour: ${honorLabel(e.honorStatus)}` : ""}
                       {e.unitName ? ` • ${e.unitName}` : ""}
                     </div>
                   </li>
@@ -185,8 +192,8 @@ export function CalendarPanel({
                     </div>
                     <div className="mt-1 text-xs text-muted">
                       Source: {e.source ?? "event"}
-                      {e.status ? ` • Status: ${e.status}` : ""}
-                      {e.honorStatus ? ` • Honour: ${e.honorStatus}` : ""}
+                      {e.status ? ` • Status: ${statusLabel(normalizeStatus(e.status))}` : ""}
+                      {e.honorStatus ? ` • Honour: ${honorLabel(e.honorStatus)}` : ""}
                     </div>
                   </li>
                 ))}

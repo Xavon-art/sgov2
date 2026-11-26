@@ -24,12 +24,15 @@
     "test:authority": "node scripts/check-authority.mjs",
     "test:structure": "node scripts/check-structure.mjs",
     "test:e2e": "node scripts/check-e2e.mjs",
+    "test:phase10:e2e": "node scripts/check-phase10-e2e.mjs",
     "audit:connections": "node scripts/audit-connections.mjs",
     "fixtures:compliance": "node scripts/gen-fixtures.mjs",
     "check:compliance": "tsx scripts/check-compliance.ts",
+    "check:budget-isolation": "tsx scripts/check-budget-isolation.ts",
     "probe:structure": "node scripts/probe-structure.mjs",
     "probe:structure:http": "node scripts/probe-structure-http.mjs",
-    "probe:structure:browser": "node scripts/probe-structure-browser.mjs"
+    "probe:structure:browser": "node scripts/probe-structure-browser.mjs",
+    "probe:structure:editor-ui": "node scripts/probe-structure-editor-ui.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -43,6 +46,7 @@
     "motion": "^13.4.4",
     "next": "16.3.6",
     "nodemailer": "^10.0.11",
+    "orgchart": "^7.0.0",
     "pdfjs-dist": "^6.4.299",
     "pg": "^8.16.3",
     "react": "19.2.8",

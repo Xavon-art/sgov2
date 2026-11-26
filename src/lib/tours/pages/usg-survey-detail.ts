@@ -3,7 +3,7 @@ import type { PageTour } from "../types";
 export const usgSurveyDetailTour: PageTour = {
   id: "usg-survey-detail",
   version: "1",
-  route: "/usg/surveys/*",
+  route: "/forms/*/*",
   label: "Survey details",
   roles: ["usg"],
   steps: [

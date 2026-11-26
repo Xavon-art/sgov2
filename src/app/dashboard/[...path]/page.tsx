@@ -19,9 +19,9 @@ import { resolveWorkspaceRole } from "@/lib/auth/workspace";
  * the "Contact USG" line lives.
  */
 const USG_SECTIONS: Record<string, string> = {
-  units: "/usg/manage",
-  invitations: "/usg/manage",
-  access: "/usg/manage",
+  units: "/usg/manage?tab=people&view=units",
+  invitations: "/usg/manage?tab=people&view=invites",
+  access: "/usg/manage?tab=people&view=permissions",
   account: "/usg/settings",
   structure: "/usg/structure",
   // The old federated modules. Their records are kept, but the rebuilt IA has

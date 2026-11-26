@@ -3,6 +3,7 @@ import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
 import { UUID_RE } from "@/lib/feedback";
 import {
+  canonicalFormsPublicPath,
   feedbackHttpStatus,
   regenerateFeedbackLink,
 } from "@/lib/feedback-forms";
@@ -36,7 +37,7 @@ export async function POST(_request: Request, context: RouteContext) {
         { status: feedbackHttpStatus(res.reason) },
       );
     }
-    return NextResponse.json({ ok: true, publicPath: res.publicPath });
+    return NextResponse.json({ ok: true, publicPath: canonicalFormsPublicPath(res.publicPath) });
   } catch (error) {
     console.error("[feedback-forms:link]", error);
     return NextResponse.json(

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 type ReviewResult = RpcResult & { id?: string; status?: string };
 
-const DECISIONS = new Set(["under_review", "approved", "returned", "published"]);
+const DECISIONS = new Set(["under_review", "approved", "rejected", "returned"]);
 
 function statusForReason(reason?: string): number {
   if (reason === "unauthenticated") return 401;
@@ -52,7 +52,7 @@ export async function POST(
   const decision = typeof body.decision === "string" ? body.decision : "";
   if (!DECISIONS.has(decision)) {
     return NextResponse.json(
-      { ok: false, message: "Choose under review, approve, return or publish." },
+      { ok: false, message: "Choose under review, approve, reject or return." },
       { status: 400 },
     );
   }

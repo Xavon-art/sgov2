@@ -10,7 +10,7 @@ import type { WorkspaceRole } from "@/lib/auth/workspace";
  *   Inbox      messages with the student government
  *   Request    the tasks USG sent down, and the requests you send up
  *   Events     your calendar, and whether USG honoured each entry
- *   Survey     respond, and build your own
+ *   Forms      respond, and build your own
  *   Settings   your account and how the dashboard behaves
  *
  * The two navs are separate modules on purpose: this file names no `/usg`
@@ -38,13 +38,10 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
       href: "/lsg/manage",
       icon: "layers",
       children: [
-        ...(centralized ? [] : [{ label: "Unit details", href: "/lsg/manage?tab=unit" }]),
         { label: "Government structure", href: "/lsg/manage?tab=structure" },
         { label: "Profile and Customization", href: "/lsg/manage?tab=profile" },
         { label: "Documents", href: "/lsg/manage?tab=documents" },
-        { label: "Search", href: "/lsg/manage?tab=search" },
         { label: "Budget", href: "/lsg/manage?tab=budget" },
-        { label: "Feedback", href: "/lsg/manage?tab=feedback" },
       ],
     },
     {
@@ -61,9 +58,9 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
       href: "/lsg/request",
       icon: "submission",
       children: [
-        { label: "Tasks", href: "/lsg/request" },
+        { label: "Tasks", href: "/lsg/request?tab=tasks" },
         { label: "Requirements", href: "/lsg/request?tab=requirements" },
-        { label: "My Personal Requests", href: "/lsg/personal-requests" },
+        { label: "My Personal Requests", href: "/lsg/request?tab=personal" },
         ...(centralized ? [] : [{ label: "Resolutions", href: "/lsg/request?tab=resolutions" }]),
       ],
     },
@@ -81,9 +78,9 @@ export function buildLsgNav(input: WorkspaceRole): NavItem[] {
     },
     {
       id: "survey",
-      label: "Survey",
+      label: "Forms",
       hint: "Answer, and build your own",
-      href: "/lsg/surveys",
+      href: "/lsg/forms",
       icon: "monitoring",
     },
     {

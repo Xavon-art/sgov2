@@ -1,28 +1,27 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
-import { UmbrellaSection } from "@/components/dashboard/UmbrellaSection";
-import { InvitesPanel } from "@/components/dashboard/InvitesPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
 import { DocumentLibraryPanel } from "@/components/dashboard/DocumentLibraryPanel";
-import { DocumentSearchPanel } from "@/components/dashboard/DocumentSearchPanel";
-import { BudgetPanel } from "@/components/dashboard/BudgetPanel";
-import { MonitoringPanel } from "@/components/dashboard/MonitoringPanel";
+import { UsgBudgetPanel } from "@/components/dashboard/UsgBudgetPanel";
 import { FeedbackWorkspace } from "@/components/dashboard/FeedbackWorkspace";
-import { AccountsPanel } from "@/components/dashboard/AccountsPanel";
+import { PeoplePanel } from "@/components/dashboard/PeoplePanel";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
 import { IconLayers } from "@/components/ui/Icons";
 
-type Tab = "umbrella" | "invites" | "structure" | "profile" | "documents" | "search" | "budget" | "monitoring" | "feedback" | "accounts";
+type Tab = "umbrella" | "invites" | "people" | "structure" | "profile" | "documents" | "search" | "budget" | "monitoring" | "feedback" | "accounts";
 
 type TabAccess = "owner" | "reviewer" | "self";
 
 const TAB_ACCESS: Record<Tab, TabAccess> = {
   umbrella: "owner",
   invites: "owner",
-  structure: "owner",
+  people: "owner",
+  structure: "reviewer",
   profile: "self",
   documents: "reviewer",
   search: "reviewer",
@@ -33,7 +32,7 @@ const TAB_ACCESS: Record<Tab, TabAccess> = {
 };
 
 function isTab(value: string | undefined): value is Tab {
-  return value === "umbrella" || value === "invites" || value === "structure" || value === "profile" || value === "documents" || value === "search" || value === "budget" || value === "monitoring" || value === "feedback" || value === "accounts";
+  return value === "umbrella" || value === "invites" || value === "people" || value === "structure" || value === "profile" || value === "documents" || value === "search" || value === "budget" || value === "monitoring" || value === "feedback" || value === "accounts";
 }
 
 function allowsTab(tab: Tab, canManage: boolean, canReviewDocuments: boolean): boolean {
@@ -41,19 +40,63 @@ function allowsTab(tab: Tab, canManage: boolean, canReviewDocuments: boolean): b
   return access === "self" || (access === "owner" ? canManage : canReviewDocuments);
 }
 
-export function ManageClient({ requestedTab }: { requestedTab?: string }) {
+export function ManageClient({
+  requestedTab,
+  initialQuery = "",
+  initialView = "",
+}: {
+  requestedTab?: string;
+  initialQuery?: string;
+  initialView?: string;
+}) {
   const { account, role } = useDashboard();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const canManage = account.accountScope === "owner";
   const canReviewDocuments = role.side === "usg";
   const centralized = role.isCentral || role.governanceModel === "unitary";
 
   // The sidebar owns navigation. The query param only picks which panel renders,
   // with a default matching the first child link shown for this role.
-  const defaultTab: Tab = canManage ? (centralized ? "structure" : "umbrella") : "profile";
-  const tab: Tab =
-    requestedTab && isTab(requestedTab) && allowsTab(requestedTab, canManage, canReviewDocuments)
+  const defaultTab: Tab = canManage ? (centralized ? "structure" : "people") : "profile";
+  const legacyView = canManage && !centralized
+    ? requestedTab === "umbrella"
+      ? "units"
+      : requestedTab === "invites"
+        ? "invites"
+        : requestedTab === "accounts"
+          ? "permissions"
+          : requestedTab === "officers"
+            ? "officers"
+            : null
+    : null;
+  const selectedTab: Tab = legacyView
+    ? "people"
+    : requestedTab &&
+        isTab(requestedTab) &&
+        allowsTab(requestedTab, canManage, canReviewDocuments) &&
+        !(centralized && requestedTab === "people")
       ? requestedTab
       : defaultTab;
+  const tab: Tab = selectedTab === "search" ? "documents" : selectedTab;
+  const view = legacyView ?? initialView;
+
+  useEffect(() => {
+    if (legacyView) {
+      router.replace(`/usg/manage?tab=people&view=${legacyView}`, { scroll: false });
+      return;
+    }
+    if (requestedTab === "monitoring") {
+      router.replace("/usg", { scroll: false });
+      return;
+    }
+    if (requestedTab !== "search") return;
+    const query = searchParams.get("q");
+    router.replace(
+      query ? `/usg/manage?tab=documents&q=${encodeURIComponent(query)}` : "/usg/manage?tab=documents",
+      { scroll: false },
+    );
+  }, [legacyView, requestedTab, router, searchParams]);
 
   return (
     <section className="flex flex-col gap-6">
@@ -82,26 +125,14 @@ export function ManageClient({ requestedTab }: { requestedTab?: string }) {
         </p>
       </header>
 
-      {tab === "umbrella" && canManage ? <UmbrellaSection /> : null}
-      {tab === "invites" && canManage ? (
-        <div id="invitations" className="scroll-mt-24">
-          <p className="mb-5 text-[0.9375rem] leading-relaxed text-body">
-            Invite a campus, department, or college by email. They receive a code, set a password,
-            and appear under your umbrella.
-          </p>
-          <InvitesPanel />
-        </div>
-      ) : null}
+      {tab === "people" && canManage && !centralized ? <PeoplePanel view={view} /> : null}
       {tab === "profile" ? <ProfileSection allowCustomisation={canManage} /> : null}
 
-      {tab === "documents" && canReviewDocuments ? <DocumentLibraryPanel /> : null}
-      {tab === "search" && canReviewDocuments ? <DocumentSearchPanel /> : null}
-      {tab === "budget" && canReviewDocuments ? <BudgetPanel /> : null}
-      {tab === "monitoring" && canReviewDocuments ? <MonitoringPanel /> : null}
+      {tab === "documents" && canReviewDocuments ? <DocumentLibraryPanel initialQuery={initialQuery} /> : null}
+      {tab === "budget" && canReviewDocuments ? <UsgBudgetPanel /> : null}
       {tab === "feedback" && canReviewDocuments ? <FeedbackWorkspace side="usg" /> : null}
-      {tab === "accounts" && canManage ? <AccountsPanel /> : null}
 
-      {tab === "structure" && canManage ? (
+      {tab === "structure" && (canManage || canReviewDocuments) ? (
         <div className="rounded-2xl border border-line bg-paper/70 p-4 sm:p-5">
           <p className="eyebrow">Government structure</p>
           <h2 className="mt-1 text-[1.25rem] leading-tight">Your officers and committees</h2>
@@ -110,14 +141,24 @@ export function ManageClient({ requestedTab }: { requestedTab?: string }) {
             committees — directly below. Review the structures your units have
             submitted via the queue.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href="/usg/structure"
-              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
-            >
-              Open the structure queue
-            </Link>
-          </div>
+          {canManage ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href="/structure/editor?returnTo=/usg/manage?tab=structure"
+                className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+              >
+                Open the structure queue
+              </Link>
+              {!centralized ? (
+                <Link
+                  href="/org-chart"
+                  className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+                >
+                  View published chart
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-4">
             <StructureEditorPanel showQueue />
           </div>
@@ -129,11 +170,13 @@ export function ManageClient({ requestedTab }: { requestedTab?: string }) {
           <p className="eyebrow">More</p>
           <h2 className="mt-1 text-[1.25rem] leading-tight">Other management tools</h2>
           <div className="mt-4 flex flex-wrap gap-2">
-            <Link href="/usg/officers" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Officers</Link>
-            <Link href="/usg/surveys" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Surveys</Link>
-            <Link href="/usg/personal-requests" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Personal requests</Link>
+            {!centralized ? (
+              <Link href="/usg/manage?tab=people&view=officers" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">People &amp; Units</Link>
+            ) : null}
+            <Link href="/usg/forms" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Forms</Link>
+            <Link href="/usg/request?tab=personal" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Personal requests</Link>
             <Link href="/usg/events" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Events</Link>
-            <Link href="/usg/messages" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Messages</Link>
+            <Link href="/usg/messages" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Inbox</Link>
           </div>
         </div>
       ) : null}

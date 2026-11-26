@@ -1,10 +1,10 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
+import { readTestAccounts } from "./test-fixtures.mjs";
 
 const BASE = process.env.TOURS_BASE_URL ?? process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const SHOTS = "C:/Users/Julius M. Matro/Desktop/sir tonie projects/screenshots/tours";
-const CREDENTIALS = "C:/Users/Julius M. Matro/Desktop/sir tonie projects/credentials/smartgov-test-accounts.txt";
 
 const VIEWPORTS = [
   { name: "mobile", width: 360, height: 800 },
@@ -16,14 +16,12 @@ const ROUTES = {
   usg: [
     "/usg",
     "/usg/structure",
-    "/usg/officers",
     "/usg/request",
     "/usg/messages",
     "/usg/manage",
     "/usg/events",
     "/usg/settings",
-    "/usg/surveys",
-    "/usg/surveys/*",
+    "/usg/forms",
   ],
   lsg: [
     "/lsg",
@@ -32,8 +30,7 @@ const ROUTES = {
     "/lsg/manage",
     "/lsg/events",
     "/lsg/settings",
-    "/lsg/surveys",
-    "/lsg/surveys/*",
+    "/lsg/forms",
     "/my-council",
     "/my-council/structure",
   ],
@@ -58,13 +55,13 @@ const NAV_LABELS = {
   "/usg/request": "Request",
   "/usg/messages": "Inbox",
   "/usg/events": "Events and Acts",
-  "/usg/surveys": "Survey",
+  "/usg/forms": "Forms",
   "/usg/settings": "Settings",
   "/lsg": "Overview",
   "/lsg/manage": "Manage",
   "/lsg/request": "Request",
   "/lsg/events": "Events and Acts",
-  "/lsg/surveys": "Survey",
+  "/lsg/forms": "Forms",
   "/lsg/settings": "Settings",
   "/my-council": "My Council",
   "/my-council/structure": "My Council",
@@ -79,11 +76,8 @@ const FEDERATED_TABS = {
     { parent: "Events and Acts", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Events and Acts", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", href: "/usg/manage?tab=people&view=units", tab: "people", label: "People & Units", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
   lsg: [
     { parent: "Request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "workspace-nav", kind: "nav", crumb: "Request" },
@@ -91,9 +85,7 @@ const FEDERATED_TABS = {
     { parent: "Events and Acts", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Events and Acts", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
 };
 
@@ -121,19 +113,7 @@ function check(label, condition, detail = "") {
 }
 
 function fixture() {
-  const text = readFileSync(CREDENTIALS, "utf8");
-  const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
-  const emails = {};
-  for (const line of text.split(/\r?\n/)) {
-    const email = line.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
-    if (!email) continue;
-    if (/^\s*Owner\s*\/\s*Founder/i.test(line)) emails.usg = email;
-    else if (/^\s*President\s+Pedro/i.test(line)) emails.lsg = email;
-  }
-  if (!password || !emails.usg || !emails.lsg) {
-    throw new Error("Fixture credentials are missing expected accounts.");
-  }
-  return { password, emails };
+  return readTestAccounts();
 }
 
 function routeSlug(route) {
@@ -769,7 +749,7 @@ async function publicPass(browser) {
 async function main() {
   mkdirSync(SHOTS, { recursive: true });
   console.log("  SKIP  /invite/* requires a live invite token");
-  console.log("  SKIP  /survey/* requires a live survey id");
+  console.log("  SKIP  /forms/*/* requires a live form id");
 
   let credentials;
   try {

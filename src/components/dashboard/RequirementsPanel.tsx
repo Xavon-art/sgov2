@@ -5,6 +5,8 @@ import { ActionError } from "@/components/dashboard/workspace-shared";
 import { RequirementPrecheckPanel } from "@/components/dashboard/RequirementPrecheckPanel";
 import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Button } from "@/components/ui/Button";
+import { CountdownChip } from "@/components/ui/CountdownChip";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Reveal } from "@/components/fx/Reveal";
 import {
   IconArrowLeft,
@@ -12,7 +14,7 @@ import {
   IconSubmission,
   IconVerification,
 } from "@/components/ui/Icons";
-import { dueLabel } from "@/lib/tasks";
+import { STATUS_LABEL, normalizeStatus, type Status } from "@/lib/status";
 import { uploadFile } from "@/lib/upload-client";
 
 type TaskRequirementSummary = {
@@ -21,10 +23,13 @@ type TaskRequirementSummary = {
   details: string;
   dueDate: string | null;
   dueTime?: string | null;
+  dueAt?: string | null;
+  gracePeriodMinutes?: number | null;
+  autoClose?: boolean;
   priority: "low" | "normal" | "high";
   overdue: boolean;
   daysLeft: number | null;
-  assignments: Array<{ unitId: string; unitName: string; status: "assigned" | "in_progress" | "done"; note: string }>;
+  assignments: Array<{ unitId: string; unitName: string; status: Status; note: string }>;
   doneUnits: number;
   totalUnits: number;
   isClosed?: boolean;
@@ -33,7 +38,7 @@ type TaskRequirementSummary = {
 type ProposalSummary = {
   id: string;
   title: string;
-  status: string;
+  status: Status;
   authorKind: string;
   activityType: string;
   eventDate: string | null;
@@ -49,7 +54,7 @@ type ProposalRequirement = {
   id: string;
   label: string;
   detail: string | null;
-  status: "requested" | "submitted" | "accepted" | "waived";
+  status: Status;
   linkUrl: string | null;
   originalName: string | null;
   respondedNote: string | null;
@@ -78,7 +83,7 @@ type ProposalDetail = {
   id: string;
   title: string;
   description: string | null;
-  status: string;
+  status: Status;
   authorKind: string;
   activityType: string;
   eventDate: string | null;
@@ -130,40 +135,27 @@ const ACTIVITY_TYPES = [
   ["special", "Special"],
 ] as const;
 
-const PROPOSAL_STATUS: Record<string, string> = {
-  submitted: "Waiting for USG",
-  under_review: "Under review",
-  returned: "Returned for revision",
-  requirements_requested: "Requirements requested",
-  approved: "Approved",
-  rejected: "Rejected",
-  published: "Published",
+const PROPOSAL_LEGACY: Record<string, Status> = {
+  submitted: "pending",
+  requirements_requested: "under_review",
+  published: "approved",
 };
 
-const REQUIREMENT_STATUS: Record<string, string> = {
-  requested: "Needed",
-  submitted: "Submitted",
-  accepted: "Accepted",
-  waived: "Waived",
+const REQUIREMENT_LEGACY: Record<string, Status> = {
+  requested: "pending",
+  submitted: "under_review",
+  accepted: "approved",
+  waived: "rejected",
 };
 
-function statusLabel(status: string): string {
-  return PROPOSAL_STATUS[status] ?? status.replaceAll("_", " ");
+function proposalStatus(value: unknown): Status {
+  const raw = String(value ?? "pending");
+  return raw in STATUS_LABEL ? (raw as Status) : (PROPOSAL_LEGACY[raw] ?? normalizeStatus(raw));
 }
 
-function statusClass(status: string): string {
-  if (status === "approved" || status === "published") return "border-[#8bb39a] bg-[#8bb39a]/10 text-[#3d6b4d]";
-  if (status === "rejected") return "border-[#d9a99c] bg-[#a5442c]/[0.06] text-[#a5442c]";
-  if (status === "returned") return "border-[#d8c18f] bg-[#d8c18f]/10 text-[#7d6428]";
-  if (status === "requirements_requested") return "border-[#a9bdd6] bg-[#a9bdd6]/10 text-[#3d5673]";
-  return "border-line bg-canvas/60 text-muted";
-}
-
-function requirementClass(status: string): string {
-  if (status === "accepted") return "border-[#8bb39a] bg-[#8bb39a]/10 text-[#3d6b4d]";
-  if (status === "waived") return "border-line bg-canvas/60 text-muted";
-  if (status === "submitted") return "border-[#a9bdd6] bg-[#a9bdd6]/10 text-[#3d5673]";
-  return "border-[#d8c18f] bg-[#d8c18f]/10 text-[#7d6428]";
+function requirementStatus(value: unknown): Status {
+  const raw = String(value ?? "requested");
+  return raw in STATUS_LABEL ? (raw as Status) : (REQUIREMENT_LEGACY[raw] ?? normalizeStatus(raw));
 }
 
 function uuidv4() {
@@ -273,19 +265,18 @@ function toTaskSummaries(value: unknown): TaskRequirementSummary[] {
       details: String(row.details ?? ""),
       dueDate: typeof row.dueDate === "string" ? row.dueDate : null,
       dueTime: typeof row.dueTime === "string" ? row.dueTime : null,
+      dueAt: typeof row.dueAt === "string" ? row.dueAt : null,
+      gracePeriodMinutes: typeof row.gracePeriodMinutes === "number" ? row.gracePeriodMinutes : null,
+      autoClose: row.autoClose === true,
       priority: row.priority === "high" || row.priority === "low" ? row.priority : "normal",
       overdue: row.overdue === true,
       daysLeft: typeof row.daysLeft === "number" ? row.daysLeft : null,
       assignments: assignments.map((rawAssignment) => {
         const assignment = rawAssignment as Record<string, unknown>;
-        const status = String(assignment.status ?? "assigned");
         return {
           unitId: String(assignment.unitId ?? ""),
           unitName: String(assignment.unitName ?? "Unit"),
-          status:
-            status === "in_progress" || status === "done"
-              ? status
-              : "assigned",
+          status: normalizeStatus(String(assignment.status ?? "pending")),
           note: String(assignment.note ?? ""),
         };
       }),
@@ -303,7 +294,7 @@ function toProposalSummaries(value: unknown): ProposalSummary[] {
     return {
       id: String(row.id ?? ""),
       title: String(row.title ?? "Proposal"),
-      status: String(row.status ?? "submitted"),
+      status: proposalStatus(row.status),
       authorKind: String(row.authorKind ?? "lsg"),
       activityType: String(row.activityType ?? ""),
       eventDate: typeof row.eventDate === "string" ? row.eventDate : null,
@@ -327,7 +318,7 @@ function toProposalDetail(value: unknown): ProposalDetail | null {
     id: String(row.id ?? ""),
     title: String(row.title ?? "Proposal"),
     description: typeof row.description === "string" ? row.description : null,
-    status: String(row.status ?? "submitted"),
+    status: proposalStatus(row.status),
     authorKind: String(row.authorKind ?? "lsg"),
     activityType: String(row.activityType ?? ""),
     eventDate: typeof row.eventDate === "string" ? row.eventDate : null,
@@ -359,15 +350,11 @@ function toProposalDetail(value: unknown): ProposalDetail | null {
     }),
     requirements: requirements.map((raw) => {
       const item = raw as Record<string, unknown>;
-      const status = String(item.status ?? "requested");
       return {
         id: String(item.id ?? ""),
         label: String(item.label ?? "Requirement"),
         detail: typeof item.detail === "string" ? item.detail : null,
-        status:
-          status === "submitted" || status === "accepted" || status === "waived"
-            ? status
-            : "requested",
+        status: requirementStatus(item.status),
         linkUrl: typeof item.linkUrl === "string" ? item.linkUrl : null,
         originalName: typeof item.originalName === "string" ? item.originalName : null,
         respondedNote: typeof item.respondedNote === "string" ? item.respondedNote : null,
@@ -507,29 +494,32 @@ export function RequirementsPanel({
               </div>
 
               <div className="grid gap-3">
-                {tasks.map((task) => {
-                  const due = dueLabel(task);
-                  return (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => onOpenTask(task.id)}
-                      className="w-full rounded-xl border border-line bg-canvas/30 p-4 text-left transition hover:border-ink/20"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="font-medium">{task.title}</div>
-                          <div className="mt-1 text-sm text-muted">
-                            {task.doneUnits}/{task.totalUnits} units done · {due.text}
-                          </div>
+                {tasks.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onOpenTask(task.id)}
+                    className="w-full rounded-xl border border-line bg-canvas/30 p-4 text-left transition hover:border-ink/20"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-medium">{task.title}</div>
+                        <div className="mt-1 text-sm text-muted">
+                          {task.doneUnits}/{task.totalUnits} units done
                         </div>
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${due.late ? "text-[#a5442c]" : "text-muted"}`}>
-                          {task.isClosed ? "closed" : task.priority}
-                        </span>
                       </div>
-                    </button>
-                  );
-                })}
+                      <div className="flex items-center gap-2">
+                        <CountdownChip
+                          dueAt={task.dueAt}
+                          gracePeriodMinutes={task.gracePeriodMinutes}
+                          autoClose={task.autoClose}
+                          closed={task.isClosed}
+                        />
+                        <span className="text-xs text-muted">{task.isClosed ? "closed" : task.priority}</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
                 {tasks.length === 0 && (
                   <p className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
                     No USG requirements have been sent yet.
@@ -580,9 +570,7 @@ export function RequirementsPanel({
                           Version {proposal.version} · {fmtDate(proposal.eventDate)}
                         </div>
                       </div>
-                      <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs ${statusClass(proposal.status)}`}>
-                        {statusLabel(proposal.status)}
-                      </span>
+                      <StatusBadge status={proposal.status} />
                     </div>
                     {proposal.latestRemark && (
                       <p className="mt-2 line-clamp-2 text-xs text-muted">{proposal.latestRemark}</p>
@@ -633,9 +621,7 @@ function ProposalDetailCard({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-xl font-medium">{detail.title}</h2>
-              <span className={`rounded-full border px-2 py-0.5 text-xs ${statusClass(detail.status)}`}>
-                {statusLabel(detail.status)}
-              </span>
+              <StatusBadge status={detail.status} />
             </div>
             <p className="mt-2 text-sm text-muted">
               {detail.unitName ?? "LSG unit"} · {detail.programName ?? "Standalone activity"} ·{" "}
@@ -669,9 +655,7 @@ function ProposalDetailCard({
                   <div className="font-medium">{requirement.label}</div>
                   {requirement.detail && <p className="mt-1 text-sm text-muted">{requirement.detail}</p>}
                 </div>
-                <span className={`rounded-full border px-2 py-0.5 text-xs ${requirementClass(requirement.status)}`}>
-                  {REQUIREMENT_STATUS[requirement.status] ?? requirement.status}
-                </span>
+                <StatusBadge status={requirement.status} />
               </div>
               {requirement.linkUrl && (
                 <a href={requirement.linkUrl} target="_blank" rel="noreferrer" className="mt-2 block text-sm underline">
@@ -755,23 +739,23 @@ function UsgProposalActions({
   onDone: () => Promise<void>;
   onError: (message: string | null) => void;
 }) {
-  if (detail.status === "submitted") {
+  if (detail.status === "pending") {
     return <StartReviewButton proposalId={detail.id} onDone={onDone} onError={onError} />;
   }
   if (detail.status === "under_review") {
-    return <ReviewProposalForm detail={detail} onDone={onDone} onError={onError} />;
-  }
-  if (detail.status === "requirements_requested") {
-    const submitted = detail.requirements.filter((requirement) => requirement.status === "submitted");
-    const pending = detail.requirements.filter((requirement) => requirement.status === "requested");
-    if (pending.length === 0 && submitted.length > 0) {
-      return <VerifyRequirementsForm detail={detail} requirements={submitted} onDone={onDone} onError={onError} />;
+    const requested = detail.requirements.filter((requirement) => requirement.status === "pending");
+    const answered = detail.requirements.filter((requirement) => requirement.status === "under_review");
+    if (answered.length > 0 && requested.length === 0) {
+      return <VerifyRequirementsForm detail={detail} requirements={answered} onDone={onDone} onError={onError} />;
     }
-    return (
-      <section className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
-        Waiting for the LSG to answer the requested requirements.
-      </section>
-    );
+    if (requested.length > 0) {
+      return (
+        <section className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
+          Waiting for the LSG to answer the requested requirements.
+        </section>
+      );
+    }
+    return <ReviewProposalForm detail={detail} onDone={onDone} onError={onError} />;
   }
   return null;
 }
@@ -1007,8 +991,8 @@ function LsgProposalActions({
   onDone: () => Promise<void>;
   onError: (message: string | null) => void;
 }) {
-  if (detail.status === "requirements_requested") {
-    const requested = detail.requirements.filter((requirement) => requirement.status === "requested");
+  if (detail.status === "under_review") {
+    const requested = detail.requirements.filter((requirement) => requirement.status === "pending");
     if (requested.length > 0) {
       return <RespondRequirementsForm detail={detail} requirements={requested} onDone={onDone} onError={onError} />;
     }
@@ -1018,11 +1002,10 @@ function LsgProposalActions({
   }
   return (
     <section className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
-      {detail.status === "submitted" && "This requirement has been sent and is waiting for USG."}
+      {detail.status === "pending" && "This requirement has been sent and is waiting for USG."}
       {detail.status === "under_review" && "USG is reviewing this requirement."}
       {detail.status === "approved" && "USG approved this requirement."}
       {detail.status === "rejected" && "USG rejected this requirement."}
-      {detail.status === "published" && "This requirement is published."}
     </section>
   );
 }

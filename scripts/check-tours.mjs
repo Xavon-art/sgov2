@@ -13,9 +13,17 @@ const REDIRECT_ONLY = new Set([
   "/central",
   "/central/*",
   "/usg/survey",
+  "/usg/officers",
   "/usg/personal-requests",
+  "/usg/resolutions",
+  "/usg/structure",
+  "/usg/surveys",
+  "/usg/surveys/*",
   "/lsg/survey",
   "/lsg/personal-requests",
+  "/lsg/resolutions",
+  "/lsg/surveys",
+  "/structure/preview",
 ]);
 
 const REQUIRED_SHELL_ANCHORS = [

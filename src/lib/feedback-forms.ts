@@ -13,6 +13,14 @@ export type {
   PublicFeedbackSubmissionInput,
 } from "@/lib/feedback-forms-schema";
 
+export function canonicalFormsPublicPath(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (path.startsWith("/feedback/f/")) {
+    return `/forms/feedback/${path.slice("/feedback/f/".length)}`;
+  }
+  return path;
+}
+
 export type FeedbackFormStatus = "draft" | "open" | "closed";
 export type FeedbackAccessMode = "signed_in" | "public_link";
 export type FeedbackIdentityMode = "identified" | "anonymous";

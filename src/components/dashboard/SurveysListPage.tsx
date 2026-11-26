@@ -104,7 +104,7 @@ export function SurveysListPage({ isUsg }: { isUsg: boolean }) {
       setDeadline("");
       setNote("Survey created.");
       await load();
-      router.push(`${isUsg ? "/usg" : "/lsg"}/surveys/${data.surveyId}`);
+      router.push(`${isUsg ? "/usg" : "/lsg"}/forms?type=survey&id=${data.surveyId}`);
     } catch {
       setActionError("We could not reach the server. Check your connection.");
     } finally {

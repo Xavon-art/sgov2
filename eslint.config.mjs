@@ -16,6 +16,10 @@ const eslintConfig = defineConfig([
     // walks into a sibling feature's .next output and dies on minified
     // chunks. The ignores above are why this is needed and not sufficient.
     ".worktrees/**",
+    "capture*.js",
+    "capture_ai*.js",
+    "probe_owner.js",
+    "dbg-upload.mjs",
   ]),
 ]);
 

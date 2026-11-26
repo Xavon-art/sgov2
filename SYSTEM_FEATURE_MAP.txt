@@ -1,0 +1,1049 @@
+PENDING, DRAFT, UNDER REVIEW, RETURNED, APPROVED, REJECTED, OVERDUE, plus a LATE SUBMISSION flag.
+
+================================================================================
+SMARTGOV SYSTEM FEATURE MAP
+Phase 0 analysis for the USG + LSG redesign
+Generated 2026-11-26 against HEAD b6dc39d plus the uncommitted working tree
+================================================================================
+
+HOW TO READ THIS FILE
+- Section 1 defines the unified status model this redesign targets.
+- Section 2 records roles, shells, and access rules.
+- Sections 3 and 4 list every dashboard item in the exact order the nav shows.
+- Section 5 gives each feature the required fields (ROLE ACCESS, LOCATION,
+  STATUS, DESCRIPTION, RULES, WORKTREE, FILES, TABLES, NOTES).
+- Section 6 traces the four partially-wired features end to end.
+- Section 7 inventories every status string and the file that defines it.
+- Section 8 records the status drift that migration 04600 introduces.
+- Section 9 lists page routes and API routes.
+- Section 10 records UNCERTAIN items and decisions needed before code.
+
+Confidence: routes, components, nav, and TS types were read directly from the
+working tree. SQL behaviour was read from the migration files. Database state
+(whether 04600 is applied) could not be checked; see UNCERTAIN.
+
+================================================================================
+SECTION 1. UNIFIED STATUS MODEL (TARGET)
+================================================================================
+
+Canonical statuses: PENDING, DRAFT, UNDER REVIEW, RETURNED, APPROVED,
+REJECTED, OVERDUE.
+Modifier flag: LATE SUBMISSION (derived; not a status value).
+
+Rules implied by the brief and by the existing system:
+- UNDER REVIEW and RETURNED are separate. A returned item is back with the
+  submitting unit and must be resubmitted; it is not rejected.
+- OVERDUE is derived from a due date and an open status. It is not a stored
+  lifecycle state in task_assignments (see 20260101002400_task_assignments.sql).
+- LATE SUBMISSION is a flag on a submitted item whose submitted_at is after its
+  due date. It is independent of OVERDUE.
+- The current TS model in src/lib/status.ts has no `returned`; that is a direct
+  gap against this header.
+- The latest migration, 20260101004600_unified_status_model.sql, also has no
+  `returned`. It maps every returned/needs-revision/superseded value to
+  `rejected`, which loses the "send back for changes" state. This is the single
+  largest design conflict found (Section 8).
+
+================================================================================
+SECTION 2. ROLES, SHELLS, AND ACCESS
+================================================================================
+
+Account scopes: owner, reviewer, self (WorkspaceRole.accountScope).
+Workspace side: usg or lsg, resolved from the session by the database.
+Governance model: federated or unitary (isCentral / governanceModel).
+Centralized mode hides unit-specific items (People & Units, Published chart
+action, LSG Resolutions); LSG unit identity stays in Profile.
+
+Shell: src/components/dashboard/AppShell.tsx wraps every dashboard page.
+Nav: src/components/dashboard/usg-nav.ts and lsg-nav.ts.
+Context: src/components/dashboard/dashboard-context.tsx (role, unit, refresh).
+Guards: server layouts/pages call currentAccount() and redirect; owner-only
+pages also render <NotAvailable /> (src/components/dashboard/NotAvailable.tsx)
+instead of silently failing. `/usg/officers` is owner-only this way.
+
+USG access summary:
+- owner: full Manage, People & Units, Government structure with the published
+  chart action, Profile and Customization.
+- reviewer: Government structure queue, Documents, Budget, Feedback.
+- self: Profile and Customization only.
+LSG access summary:
+- all LSG users get the unit's Manage tabs and Request/Events/Surveys.
+- Resolutions is hidden when centralized.
+
+================================================================================
+SECTION 3. USG DASHBOARD INVENTORY (IN NAV ORDER)
+================================================================================
+
+Top level:
+1. Overview ............ /usg ............................... F1
+2. Manage .............. /usg/manage ........................ F2 (children below)
+   2.1 People & Units ............ ?tab=people&view=units ... F2-F5 (owner)
+   2.2 Government structure ....... ?tab=structure ........... F6
+       View published chart action  /org-chart ............... F7 (owner, non-central)
+   2.3 Profile and Customization .. ?tab=profile ............. F8
+   2.4 Documents .................. ?tab=documents ........... F9
+   2.5 Budget ..................... ?tab=budget .............. F11
+   2.6 Feedback ................... ?tab=feedback ............ F13 (reviewers)
+3. Inbox ............... /usg/messages ...................... F14
+4. Request ............. /usg/request ....................... F15
+   4.1 Tasks ...................... ?tab=tasks ............... F15
+   4.2 Requirements ............... ?tab=requirements ........ F16
+   4.3 Personal Requests .......... /usg/personal-requests -> request?tab=personal ... F17
+   4.4 Resolutions ................ ?tab=resolutions ......... F18
+5. Events and Acts ..... /usg/events ........................ F19
+   5.1 Calendar ................... ?tab=calendar ............ F19
+   5.2 Future Events .............. ?tab=future .............. F20
+   5.3 Accomplishment ............. ?tab=accomplishment ...... F21
+6. Forms ............... /usg/forms ......................... F22
+7. Settings ............ /usg/settings ...................... F8
+
+Legacy aliases (redirects, keep or fold into the routes above):
+- /usg/survey -> /usg/forms
+- /usg/personal-requests -> /usg/request?tab=personal
+- /usg/structure -> /structure/editor?returnTo=/usg/manage?tab=structure
+  (owner only; non-owner redirected to /lsg)
+- /usg/officers -> /usg/manage?tab=people&view=officers
+- /usg/accounts -> /usg/manage?tab=people&view=permissions
+- /usg/invites -> /usg/manage?tab=people&view=invites
+- /usg/umbrella -> /usg/manage?tab=people&view=units
+
+Note: the current ManageClient Tab union has no "published" value. The
+Government structure panel links View published chart to /org-chart instead.
+An older map that listed a "published" tab or nav child is stale.
+
+================================================================================
+SECTION 4. LSG DASHBOARD INVENTORY (IN NAV ORDER)
+================================================================================
+
+Top level:
+1. Overview ............ /lsg ............................... F1
+2. Manage .............. /lsg/manage ........................ F2 (children below)
+   2.1 Government structure ....... ?tab=structure ........... F6
+   2.2 Profile and Customization .. ?tab=profile ............. F8
+   2.3 Documents .................. ?tab=documents ........... F9
+   2.4 Budget ..................... ?tab=budget .............. F11
+   2.5 Feedback ................... ?tab=feedback ............ F13
+3. Inbox ............... /lsg/messages ...................... F14
+4. Request ............. /lsg/request ....................... F15
+   4.1 Tasks ...................... ?tab=tasks ............... F15
+   4.2 Requirements ............... ?tab=requirements ........ F16
+   4.3 My Personal Requests ....... /lsg/personal-requests -> request?tab=personal ... F17
+   4.4 Resolutions ................ ?tab=resolutions ......... F18 (non-central only)
+5. Events and Acts ..... /lsg/events ........................ F19
+   5.1 Calendar ................... ?tab=calendar ............ F19
+   5.2 Future Events .............. ?tab=future .............. F20
+   5.3 Accomplishment ............. ?tab=accomplishment ...... F21
+6. Forms ............... /lsg/forms ......................... F22
+7. Settings ............ /lsg/settings ...................... F8
+
+Legacy aliases:
+- /lsg/survey -> /lsg/forms
+- /lsg/manage?tab=unit -> /lsg/manage?tab=profile
+- /lsg/personal-requests -> /lsg/request?tab=personal
+
+LSG Request also mounts LsgRequestBudgetPanel (a per-unit budget view) inside
+the Request page, separate from Manage > Budget. This is a duplicate surface to
+resolve (see PLAN.md P5).
+
+================================================================================
+SECTION 5. FEATURE DETAILS
+================================================================================
+
+--------------------------------------------------------------------------------
+F1. OVERVIEW
+--------------------------------------------------------------------------------
+ROLE ACCESS: all signed-in users. USG sees federated totals; LSG sees its unit.
+LOCATION: /usg, /lsg (src/app/usg/page.tsx, src/app/lsg/page.tsx).
+STATUS: Partially Functional.
+DESCRIPTION: KPI tiles and breakdowns: open tasks, overdue tasks, open requests,
+pending events, open surveys, budget totals, plus a dashboard layout.
+RULES: Read-only. Reviewer/owner can drill into review surfaces; self cannot.
+WORKTREE: page -> AppShell -> FederatedOverview -> GET /api/overview +
+GET /api/dashboard/layout + useBudgetStore -> pg RPCs -> tiles/charts.
+FILES: src/components/dashboard/FederatedOverview.tsx,
+  src/app/api/overview/route.ts, src/app/api/dashboard/layout/route.ts,
+  src/components/dashboard/BudgetPanel.tsx.
+TABLES/RPC: tasks, task_assignments, proposals, personal_requests, events,
+  surveys, budget_requests; list_overview, list_dashboard_layout.
+NOTES: /api/overview counts legacy literals "submitted", "claimed", "upcoming",
+  "open" (lines 114-148). After 04600 these become zero. The unused
+  /api/dashboard route was removed in P8; its migration guards remain.
+
+--------------------------------------------------------------------------------
+F2. YOUR UMBRELLA / UNIT DETAILS
+--------------------------------------------------------------------------------
+ROLE ACCESS: owner/reviewer/self per TAB_ACCESS; USG owner sees all units;
+  LSG sees its own unit. Hidden in centralized mode.
+LOCATION: /usg/manage?tab=people&view=units (UmbrellaSection);
+  /lsg/manage?tab=profile (unit identity fields).
+STATUS: Functional.
+DESCRIPTION: USG umbrella tree of LSGs; LSG unit details and linkage.
+RULES: Unit metadata edits are owner/reviewer; self read-only.
+WORKTREE: ManageClient/LSG page -> UmbrellaSection | ProfileSection ->
+  /api/umbrella, /api/my-unit, /api/units, /api/locations -> RPCs -> units.
+FILES: src/components/dashboard/UmbrellaSection.tsx,
+  src/components/dashboard/ProfileSection.tsx, src/app/usg/manage/ManageClient.tsx,
+  src/app/lsg/manage/page.tsx.
+TABLES: units, organizations, locations, unit_links.
+NOTES: LSG Unit details merged into Profile in P8; ?tab=unit redirects there.
+
+--------------------------------------------------------------------------------
+F3. INVITES
+--------------------------------------------------------------------------------
+ROLE ACCESS: USG owner (nav filters it out in centralized mode).
+LOCATION: /usg/manage?tab=invites.
+STATUS: Functional.
+DESCRIPTION: Create, resend, cancel invitation codes; OTP verification.
+RULES: One live code per unit; resend rotates; cancel revokes.
+WORKTREE: InvitesPanel -> /api/invites, /api/invites/resend, /api/invites/cancel,
+  /api/invites/verify-otp -> RPCs -> invites/invite_codes.
+FILES: src/components/dashboard/InvitesPanel.tsx, src/app/api/invites/**.
+TABLES: invites, invite_codes, invite_otps.
+NOTES: Invite status vocabulary: pending, activated, expired, revoked.
+
+--------------------------------------------------------------------------------
+F4. ACCOUNTS
+--------------------------------------------------------------------------------
+ROLE ACCESS: owner only, non-central only.
+LOCATION: /usg/manage?tab=people&view=permissions; /usg/accounts redirects there.
+STATUS: Functional.
+DESCRIPTION: Cross-unit account list, permission level, deactivate/reactivate.
+RULES: Cannot demote the last owner; deactivation blocks sign-in.
+WORKTREE: AccountsPanel -> /api/org-accounts, /api/permissions -> RPCs ->
+  accounts/org_accounts.
+FILES: src/components/dashboard/AccountsPanel.tsx, src/app/api/org-accounts/**,
+  src/app/api/permissions/route.ts, src/app/usg/accounts/page.tsx.
+TABLES: accounts, org_accounts, units.
+NOTES: Overlaps F5 Officers (same population, different verbs). Merge into one
+  "People" surface in P8.
+
+--------------------------------------------------------------------------------
+F5. OFFICERS (owner-only roster)
+--------------------------------------------------------------------------------
+ROLE ACCESS: owner only; non-owner sees NotAvailable.
+LOCATION: /usg/officers.
+STATUS: Functional.
+DESCRIPTION: Officer roster per unit; suspend/purge an officer.
+RULES: Suspension keeps history; purge removes the officer record.
+WORKTREE: page -> OfficersPanel -> /api/officers, /api/officers/[id]/deactivate,
+  /api/officers/[id]/purge -> RPCs -> officers.
+FILES: src/app/usg/officers/page.tsx, src/components/dashboard/OfficersPanel.tsx,
+  src/app/api/officers/**.
+TABLES: officers, accounts.
+NOTES: Not linked from nav. Overlaps F4. Merge candidate; do not delete until
+  the Accounts tab can do suspend/purge.
+
+--------------------------------------------------------------------------------
+F6. GOVERNMENT STRUCTURE
+--------------------------------------------------------------------------------
+ROLE ACCESS: USG owner/reviewer (build + review), LSG owner/reviewer (build and
+  submit); self read-only.
+LOCATION: /usg/manage?tab=structure, /lsg/manage?tab=structure;
+  full-page editor /structure/editor; preview /structure/preview.
+STATUS: Partially Functional (status drift after 04600).
+DESCRIPTION: Build org chart (positions, bodies, committees), submit for review,
+  USG approves/returns, publish; structure queue for USG reviewers.
+RULES: One active published structure per unit; submitting locks the draft;
+  return requires a remark; approving supersedes the prior published version.
+WORKTREE: StructureEditorPanel (showQueue on USG) -> /api/structures,
+  /api/structures/[unitId], /api/structures/photos, /api/reviewer ->
+  RPCs submit_structure/review_structure/publish -> structures,
+  structure_positions, structure_bodies -> /org-chart reads approved.
+FILES: src/components/dashboard/StructureEditorPanel.tsx,
+  src/components/structure/**, src/app/api/structures/**,
+  src/app/api/reviewer/route.ts, src/app/structure/editor/page.tsx,
+  src/app/org-chart/page.tsx.
+TABLES: structures, structure_positions, structure_bodies, structure_photos.
+STATUS VALUES: draft, submitted, approved, returned, rejected, superseded.
+NOTES: 04600 maps submitted->pending, returned/superseded->rejected, but the
+  RPCs still write/read submitted/returned/superseded. If 04600 is applied the
+  submit and return paths fail or the queue empties. This is the biggest
+  functional risk in Manage.
+
+--------------------------------------------------------------------------------
+F7. PUBLISHED CHART
+--------------------------------------------------------------------------------
+ROLE ACCESS: owner action in Government structure (non-central). Public viewers
+can read /org-chart; LSG unit users are redirected to /my-council.
+LOCATION: /org-chart, opened from Manage > Government structure > View published chart.
+STATUS: Partially Functional (depends on F6 approval state).
+DESCRIPTION: Read-only published org chart for the umbrella or unit.
+RULES: Only the latest approved structure is shown.
+WORKTREE: /org-chart -> org chart loader -> structures (approved) + positions.
+FILES: src/app/org-chart/page.tsx, src/components/org-chart/**,
+  src/lib/chart/**.
+TABLES: structures, structure_positions, structure_bodies.
+NOTES: If 04600 rewrites approved-adjacent states, republishing can strand the
+  chart. No separate Manage tab or nav child exists.
+
+--------------------------------------------------------------------------------
+F8. PROFILE AND CUSTOMIZATION / SETTINGS
+--------------------------------------------------------------------------------
+ROLE ACCESS: all users (self can edit own profile); owner can edit unit profile.
+LOCATION: /usg/manage?tab=profile, /lsg/manage?tab=profile, /usg/settings,
+  /lsg/settings.
+STATUS: Functional (one known cosmetic bug: save-look logo not persisting).
+DESCRIPTION: Account profile, unit branding, look/theme, timezone.
+RULES: Profile edits are self-scoped; branding is owner-scoped.
+WORKTREE: ProfileSection -> /api/profile, /api/profile/officer,
+  /api/org-profile, /api/upload -> RPCs -> accounts/units/settings.
+FILES: src/components/dashboard/ProfileSection.tsx,
+  src/components/dashboard/SettingsSection.tsx,
+  src/app/api/profile/**, src/app/api/org-profile/route.ts.
+TABLES: accounts, officers, units, org_profiles.
+NOTES: Settings and Profile are two doors to the same account data. Keep both
+  routes but share one form component.
+
+--------------------------------------------------------------------------------
+F9. DOCUMENTS
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG submits; USG reviewer/owner approves; self read-only.
+LOCATION: /usg/manage?tab=documents, /lsg/manage?tab=documents.
+STATUS: Functional (approval gate edge case noted).
+DESCRIPTION: Required-document catalog and submissions with approve/reject.
+RULES: Catalog defines required docs per scope; a submission is pending until a
+  USG reviewer decides; approved docs feed compliance.
+WORKTREE: DocumentLibraryPanel -> /api/documents, /api/documents/[submissionId],
+  /api/documents/[submissionId]/approve, /api/catalog-files/[documentKey],
+  /api/files/[submissionId] -> RPCs -> document_catalog, document_submissions.
+FILES: src/components/dashboard/DocumentLibraryPanel.tsx,
+  src/app/api/documents/**, src/lib/document-search.ts.
+TABLES: document_catalog, document_submissions, compliance.
+STATUS VALUES: document_catalog.approval_status pending/approved/rejected;
+  submission decision pending/approved/rejected.
+NOTES: 04600 widens document_catalog but keeps pending/approved/rejected, so
+  documents are the least affected module. The known edge case is approval
+  blocked when a unit has no submitted row for an optional document.
+
+--------------------------------------------------------------------------------
+F10. SEARCH
+--------------------------------------------------------------------------------
+ROLE ACCESS: USG reviewer/owner; LSG all.
+LOCATION: /usg/manage?tab=documents, /lsg/manage?tab=documents.
+STATUS: Functional.
+DESCRIPTION: Full-text search over documents and catalog entries.
+RULES: Scoped by side/unit; no cross-tenant leakage.
+WORKTREE: DocumentLibraryPanel -> /api/documents (query params) -> pg search ->
+  results.
+FILES: src/components/dashboard/DocumentLibraryPanel.tsx,
+  src/app/api/documents/route.ts, src/lib/document-search.ts.
+TABLES: document_catalog, document_submissions.
+NOTES: Search merged into Documents in P8; ?tab=search redirects.
+
+--------------------------------------------------------------------------------
+F11. BUDGET
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG files/views own; USG owner/reviewer reviews all.
+LOCATION: /usg/manage?tab=budget, /lsg/manage?tab=budget; also the LSG Request
+  page mounts LsgRequestBudgetPanel.
+STATUS: Partially Functional (RPC status drift; UI works).
+DESCRIPTION: Budget requests with line items, requested/approved/expense totals,
+  USG approve/decline with remark.
+RULES: A request starts submitted; USG can return or decide; decline requires a
+  remark; event/proposal links are optional.
+WORKTREE: BudgetPanel -> useBudgetStore -> /api/budgets, /api/budgets/[id],
+  /api/budgets/[id]/review -> RPCs -> budget_requests, budget_items.
+FILES: src/components/dashboard/BudgetPanel.tsx,
+  src/components/dashboard/LsgRequestBudgetPanel.tsx, src/lib/budgets.ts,
+  src/app/api/budgets/**.
+TABLES: budget_requests, budget_items, budget_expenses.
+STATUS VALUES: submitted, returned, approved, rejected (02300); TS maps these to
+  pending/approved/rejected (src/lib/budgets.ts, src/lib/status.ts).
+NOTES: 04600 rewrites the check to pending/approved/rejected but review_budget
+  still writes returned/approved/rejected, and open counts still filter
+  submitted/returned. If 04600 is applied, return fails and the queue miscounts.
+
+--------------------------------------------------------------------------------
+F12. MONITORING
+--------------------------------------------------------------------------------
+ROLE ACCESS: no UI; the migration RPC stays authority-checked.
+LOCATION: none; /usg/manage?tab=monitoring redirects to /usg.
+STATUS: UI retired in P8; migration RPC retained.
+DESCRIPTION: Legacy per-campus aggregation counts remain in migration 03240 for
+  authority coverage only.
+RULES: Read-only legacy aggregation; no drill-down and no client surface.
+WORKTREE: src/lib/monitoring.ts -> scripts/check-compliance.ts CSV probe only;
+  no MonitoringPanel and no /api/monitoring route.
+FILES: src/lib/monitoring.ts,
+  supabase/migrations/20260101003240_monitoring_by_campus.sql.
+TABLES: task_assignments, events, budget_requests, proposals, personal_requests.
+STATUS VALUES (lib/monitoring.ts): pending, under_review, approved, returned,
+  rejected, cancelled.
+NOTES: Migration 03240 computes CASE over legacy values (grant, declined,
+  withdrawn, expired, claimed, honored, not_honored, done, in_progress, closed).
+  The unified labels in lib/monitoring.ts do not match the SQL.
+
+--------------------------------------------------------------------------------
+F13. FEEDBACK
+--------------------------------------------------------------------------------
+ROLE ACCESS: USG reviewer/owner; LSG all (own forms and responses).
+LOCATION: /usg/manage?tab=feedback, /lsg/manage?tab=feedback.
+STATUS: Partially Functional (forms regress if 04600 is applied; classic panel
+  still works).
+DESCRIPTION: FeedbackWorkspace forms/responses/answer; classic message entry UI
+  was removed in P8 and Inbox is the messages surface.
+RULES: Forms are draft/open/closed; a response is new until acknowledged;
+  public submission requires status open.
+WORKTREE: FeedbackWorkspace -> /api/feedback/forms, /api/feedback/forms/[id],
+  .../questions, .../responses, .../status, .../link, .../export ->
+  RPCs -> feedback_forms, feedback_form_questions, feedback_form_responses.
+FILES: src/components/dashboard/FeedbackWorkspace.tsx,
+  src/lib/feedback-forms.ts, src/lib/feedback.ts, src/app/api/feedback/**.
+TABLES: feedback_forms, feedback_form_questions, feedback_form_responses,
+  feedback_entries.
+STATUS VALUES: forms draft/open/closed; responses new/acknowledged; classic
+  entries new/acknowledged.
+NOTES: 04600 maps forms open->pending, closed->rejected, but
+  set_feedback_form_status only accepts open/closed and the public loader
+  requires status='open'. If 04600 is applied, publishing and public submission
+  break. This is a hard regression. Also: classic "messages" duplicates Inbox
+  and should be folded out (PLAN P8).
+
+--------------------------------------------------------------------------------
+F14. INBOX / MESSAGES
+--------------------------------------------------------------------------------
+ROLE ACCESS: all users, scoped to their conversations.
+LOCATION: /usg/messages, /lsg/messages.
+STATUS: Functional.
+DESCRIPTION: Direct conversations between USG and LSG; read/unread, unsend.
+RULES: Participants only; unread counts drive the shell badge.
+WORKTREE: MessagesPanel -> /api/conversations,
+  /api/conversations/[id]/messages, .../read, .../delete, .../unsend/[mid] ->
+  RPCs -> conversations/messages.
+FILES: src/components/dashboard/MessagesPanel.tsx,
+  src/app/api/conversations/**.
+TABLES: conversations, conversation_participants, messages.
+NOTES: Classic feedback "messages" tab is a second DM surface; fold into this.
+
+--------------------------------------------------------------------------------
+F15. REQUEST > TASKS
+--------------------------------------------------------------------------------
+ROLE ACCESS: USG creates/assigns/reviews; LSG updates its unit's assignment and
+  submits; self read-only.
+LOCATION: /usg/request, /lsg/request (default tab).
+STATUS: Partially Functional (status drift).
+DESCRIPTION: Tasks pushed to units, per-unit assignments, requirements,
+  extensions, threads, file responses, completion approval.
+RULES: USG owns task creation and final done; LSG moves assigned->in_progress->
+  submitted; overdue is derived; extensions need USG decision.
+WORKTREE: RequestSection tasks tab -> /api/tasks, /api/tasks/[taskId],
+  /api/tasks/answers, /api/tasks/extensions, /api/tasks/thread,
+  /api/tasks/[taskId]/zip -> RPCs -> tasks, task_assignments,
+  task_requirements, task_responses, task_extensions.
+FILES: src/components/dashboard/RequestSection.tsx, src/lib/tasks.ts,
+  src/app/api/tasks/**, src/app/api/requirements/default/route.ts.
+TABLES: tasks, task_assignments, task_requirements, task_responses,
+  task_extensions, task_threads.
+STATUS VALUES: assigned, in_progress, submitted, done (02400 + 03113);
+  API filter STATUSES = assigned/in_progress/done (src/app/api/tasks/route.ts);
+  TS maps to draft/pending/under_review/approved.
+NOTES: /api/tasks filter omits submitted, so submitted work disappears from the
+  list. 04600 remaps assignments to pending/draft/under_review/approved/rejected/
+  overdue; create_task inserts without status, so it relies on the default and
+  will fail once the default/check change. "Submit for review" needs a single
+  explicit action (PLAN P1).
+
+--------------------------------------------------------------------------------
+F16. REQUEST > REQUIREMENTS (PROPOSALS)
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG submits proposals; USG reviews, requests requirements, verifies.
+LOCATION: /usg/request?tab=requirements, /lsg/request?tab=requirements.
+STATUS: Partially Functional (legacy status vocabulary in UI; 04600 drift).
+DESCRIPTION: Proposal lifecycle with requirements the unit must satisfy, then
+  USG verification.
+RULES: Submit -> under review -> requirements requested -> unit submits
+  requirements -> USG verifies -> approve/reject/publish.
+WORKTREE: RequirementsPanel -> /api/proposals, /api/proposals/[id],
+  /api/proposals/[id]/start-review, /api/proposals/[id]/review,
+  /api/proposals/[id]/requirements/submit,
+  /api/proposals/[id]/requirements/verify -> RPCs -> proposals,
+  proposal_requirements.
+FILES: src/components/dashboard/RequirementsPanel.tsx,
+  src/app/api/proposals/**, src/lib/proposals.ts (if present).
+TABLES: proposals, proposal_requirements, proposal_versions.
+STATUS VALUES: submitted, under_review, requirements_requested, returned,
+  approved, rejected, published (03050); requirement statuses requested,
+  submitted, accepted, waived. RequirementsPanel duplicates these strings in a
+  local PROPOSAL_STATUS map.
+NOTES: 04600 maps to unified states but leaves requirements_requested in the
+  constraint and the UI still writes it. Review route passes decision straight
+  to SQL with no whitelist.
+
+--------------------------------------------------------------------------------
+F17. REQUEST > PERSONAL REQUESTS
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG files; USG owner/reviewer decides; self read-only.
+LOCATION: /usg/request?tab=personal, /lsg/request?tab=personal (alias routes
+  /usg/personal-requests, /lsg/personal-requests redirect here).
+STATUS: Partially Functional (status drift).
+DESCRIPTION: Unit requests to USG (e.g. permissions, logistics) with decisions
+  and revision loops.
+RULES: submitted -> granted/declined or needs_revision; unit resubmits; expired
+  when past deadline; withdraw allowed.
+WORKTREE: RequestSection personal tab -> /api/requests -> RPCs ->
+  personal_requests, personal_request_events.
+FILES: src/components/dashboard/RequestSection.tsx,
+  src/app/api/requests/route.ts.
+TABLES: personal_requests, personal_request_events.
+STATUS VALUES: submitted, granted, declined, needs_revision,
+  submission_required, withdrawn, expired (03450); the TS union in
+  RequestSection duplicates them.
+NOTES: 04600 maps these to pending/approved/rejected/under_review, but decide
+  and resubmit still write legacy values. The UI union will not typecheck
+  against unified rows.
+
+--------------------------------------------------------------------------------
+F18. REQUEST > RESOLUTIONS
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG drafts/submits; USG reviewer/owner reviews/publishes; hidden
+  when centralized.
+LOCATION: /usg/request?tab=resolutions, /lsg/request?tab=resolutions.
+STATUS: Partially Functional (review type mismatch).
+DESCRIPTION: Resolution drafting, submission, USG review, publication, public
+  record.
+RULES: submitted -> under_review -> approved/returned -> published; return
+  requires a remark.
+WORKTREE: ResolutionPanel -> /api/resolutions, /api/resolutions/[id],
+  /api/resolutions/[id]/review -> RPCs create_resolution/review_resolution ->
+  resolutions, resolution_versions, resolution_files.
+FILES: src/components/dashboard/ResolutionPanel.tsx,
+  src/app/api/resolutions/**, src/lib/resolutions.ts,
+  src/app/api/files/resolution/[resolutionId]/route.ts.
+TABLES: resolutions, resolution_versions, resolution_files.
+STATUS VALUES: submitted, under_review, approved, returned, published (03200);
+  TS exposes unified Status.
+NOTES: Route accepts under_review/approved/returned/published, but the
+  ResolutionDecision type only allows approved/rejected/returned, and rows are
+  not normalized. "published" has no TS status. create_resolution omits status
+  and depends on default 'submitted'. 04600 removes submitted/returned/published
+  from the constraint.
+
+--------------------------------------------------------------------------------
+F19. EVENTS AND ACTS > CALENDAR
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG creates claims; USG decides; all read.
+LOCATION: /usg/events?tab=calendar, /lsg/events?tab=calendar.
+STATUS: Partially Functional (event status drift; claim note bug is fixed in
+  this working tree).
+DESCRIPTION: Calendar of events/acts with claim flow and honour decision.
+RULES: LSG files an event and claims it; USG honours or does not honour with a
+  reason; cancelled events stay visible but inactive.
+WORKTREE: EventsWorkspace -> /api/events, /api/events/[id],
+  /api/events/[id]/claim, /api/events/[id]/decide,
+  /api/events/[id]/assignees -> RPCs create_event/claim_event/decide_event ->
+  events, event_assignees, event_files.
+FILES: src/components/dashboard/EventsWorkspace.tsx, src/app/api/events/**.
+TABLES: events, event_assignees, event_files.
+STATUS VALUES: upcoming, claimed, honored, rejected, cancelled; separate
+  honor_status pending/honored/not_honored (03160). UI filter treats
+  status==="under_review" as claimed (EventsWorkspace line 184).
+NOTES: The claim route reads body.claimNote ?? body.note, so the older
+  note/claimNote mismatch is resolved. 04600 rewrites event status to
+  pending/under_review/approved/rejected, but create_event/claim_event/
+  decide_event still write upcoming/claimed/honored/not_honored, and
+  "cancelled" is not in the 04600 set at all.
+
+--------------------------------------------------------------------------------
+F20. EVENTS AND ACTS > FUTURE EVENTS
+--------------------------------------------------------------------------------
+ROLE ACCESS: same as F19.
+LOCATION: /usg/events?tab=future, /lsg/events?tab=future.
+STATUS: Partially Functional (inherits F19 status drift).
+DESCRIPTION: Upcoming list with filters (open/claimed/honoured/cancelled).
+RULES: Same event records as Calendar; no separate table.
+WORKTREE: EventsWorkspace tab -> same /api/events.
+FILES: src/components/dashboard/EventsWorkspace.tsx.
+TABLES: events.
+NOTES: The "open" filter is a UI-only label, not a DB status; keep it as a
+  derived filter after unification.
+
+--------------------------------------------------------------------------------
+F21. EVENTS AND ACTS > ACCOMPLISHMENT
+--------------------------------------------------------------------------------
+ROLE ACCESS: LSG submits reports; USG reviewer acknowledges/returns.
+LOCATION: /usg/events?tab=accomplishment, /lsg/events?tab=accomplishment.
+STATUS: Partially Functional (decision vocabulary mismatch).
+DESCRIPTION: Post-event accomplishment reports with files and USG review.
+RULES: submitted -> acknowledged or returned with remark.
+WORKTREE: AccomplishmentPanel -> /api/accomplishment-reports,
+  /api/accomplishment-reports/[id], .../review,
+  /api/accomplishment-files/[fileId] -> RPCs -> accomplishment_reports,
+  accomplishment_files.
+FILES: src/components/dashboard/AccomplishmentPanel.tsx,
+  src/app/api/accomplishment-reports/**, src/lib/accomplishment-reports.ts.
+TABLES: accomplishment_reports, accomplishment_files.
+STATUS VALUES: submitted, acknowledged, returned (03250).
+NOTES: The panel sends approved/rejected while the RPC expects acknowledged/
+  returned; the action currently fails or is rejected by SQL. 04600 maps to
+  pending/approved/rejected, which removes acknowledged entirely.
+
+--------------------------------------------------------------------------------
+F22. SURVEY
+--------------------------------------------------------------------------------
+ROLE ACCESS: USG and LSG can build surveys; respondents are public/OTP-gated.
+LOCATION: /usg/forms?type=survey, /lsg/forms?type=survey;
+  public /forms/survey/[key].
+STATUS: Functional (surveys are untouched by 04600).
+DESCRIPTION: Build questions, publish, collect OTP-verified responses, view
+  results and AI summary.
+RULES: draft -> open -> closed; only open accepts responses; results after
+  close or to owners.
+WORKTREE: SurveysListPage/SurveyDetail -> /api/surveys, /api/surveys/[id],
+  .../questions, .../publish, .../close, .../responses, .../results,
+  .../otp/send, .../otp/verify, .../ai-summary -> RPCs -> surveys,
+  survey_questions, survey_responses.
+FILES: src/components/dashboard/SurveysListPage.tsx, src/app/surveys/**,
+  src/app/survey/[id]/page.tsx, src/app/api/surveys/**.
+TABLES: surveys, survey_questions, survey_responses, survey_otps.
+STATUS VALUES: draft, open, closed (03060).
+NOTES: Overlaps feedback forms conceptually (both build forms). Decision needed
+  on whether to merge; do not delete surveys in this pass.
+
+--------------------------------------------------------------------------------
+F23. NOTIFICATIONS
+--------------------------------------------------------------------------------
+ROLE ACCESS: all users.
+LOCATION: shell top bar; /notifications.
+STATUS: Functional.
+DESCRIPTION: In-app notifications with unread badge, read/read-all/delete,
+  item-specific deep links, and submit/review/decision/overdue/late workflow notices.
+RULES: Self-scoped; cron/tick fans out outbox rows; each notification opens the
+  canonical tab and item it describes.
+WORKTREE: shell -> /api/notifications, .../unread, .../read-all,
+  .../[id]/read, .../[id]/delete; /api/cron/tick -> outbox;
+  tasks/requests/budgets/events/messages -> notifications.
+FILES: src/components/dashboard/AppShell.tsx,
+  src/app/api/notifications/**, src/lib/notifications-server.ts,
+  src/components/dashboard/RequestSection.tsx, ReviewQueuePanel.tsx,
+  UsgBudgetPanel.tsx, LsgBudgetPanel.tsx, EventsWorkspace.tsx,
+  AccomplishmentPanel.tsx, MessagesPanel.tsx.
+TABLES: notifications, notification_outbox.
+NOTES: Submission and decision notices are written through RPC wrappers and API
+  helpers; links land on task, personal request, review queue, budget, event,
+  accomplishment report, Forms, or Inbox detail surfaces.
+
+--------------------------------------------------------------------------------
+F24. PUBLIC FEEDBACK FORM
+--------------------------------------------------------------------------------
+ROLE ACCESS: anyone with the link; token-gated.
+LOCATION: /feedback/f/[token].
+STATUS: Partially Functional (regression if 04600 is applied).
+DESCRIPTION: Public form render and response submission.
+RULES: Token resolves to one form; only status open accepts responses; one
+  response per token/identity as enforced by SQL.
+WORKTREE: server page -> getPublicFeedbackForm(token) ->
+  /api/feedback/public/[slug] (POST) and /api/feedback/public/status ->
+  RPCs -> feedback_forms, feedback_form_responses.
+FILES: src/app/feedback/f/[token]/page.tsx,
+  src/components/dashboard/PublicFeedbackForm.tsx,
+  src/app/api/feedback/public/[slug]/route.ts,
+  src/app/api/feedback/public/status/route.ts, src/lib/feedback-forms.ts.
+TABLES: feedback_forms, feedback_form_questions, feedback_form_responses.
+STATUS VALUES: forms draft/open/closed; responses new/acknowledged.
+NOTES: The page and API exist and are wired. 04600 changes form status to
+  pending/rejected while the loader requires open, so the public page would
+  report unavailable. No /api/feedback/f/[token] route exists, which is correct.
+
+--------------------------------------------------------------------------------
+F25. PUBLIC SURVEY
+--------------------------------------------------------------------------------
+ROLE ACCESS: anyone with the link; OTP-gated.
+LOCATION: /survey/[id].
+STATUS: Functional.
+DESCRIPTION: Public survey render, OTP send/verify, response submit.
+RULES: Only open surveys; one verified response per identity.
+WORKTREE: page -> /api/surveys/[id], .../otp/send, .../otp/verify,
+  .../responses -> RPCs -> surveys/survey_responses.
+FILES: src/app/survey/[id]/page.tsx, src/app/api/surveys/**.
+TABLES: surveys, survey_questions, survey_responses.
+NOTES: Separate from feedback forms; merging is a product decision.
+
+--------------------------------------------------------------------------------
+F26. AUTH, ONBOARDING, INVITE ACCEPTANCE
+--------------------------------------------------------------------------------
+ROLE ACCESS: public until signed in.
+LOCATION: /login, /register, /forgot-password, /reset-password, /activate/
+  complete, /invite/[token], /invite/[token]/verify, /create/**.
+STATUS: Functional.
+DESCRIPTION: Email/password login, OTP reset, invite acceptance, institution
+  onboarding wizard.
+RULES: Session token cookie; OTP expiry; owner bootstrap via resend-owner-code.
+WORKTREE: pages -> /api/auth/**, /api/invites/**, /api/organization,
+  /api/verifications -> RPCs -> accounts, invites, organizations.
+FILES: src/app/login/page.tsx, src/app/register/page.tsx,
+  src/app/invite/[token]/page.tsx, src/app/create/**, src/app/api/auth/**.
+TABLES: accounts, sessions, invites, organizations, verifications.
+NOTES: Out of scope for the dashboard redesign except redirect targets.
+
+--------------------------------------------------------------------------------
+F27. AUDIT LOG / DEV OUTBOX
+--------------------------------------------------------------------------------
+ROLE ACCESS: owner (audit); dev only (outbox).
+LOCATION: /api/audit-log, /dev/outbox.
+STATUS: Functional.
+DESCRIPTION: Audit trail reads; local email outbox viewer.
+RULES: Read-only.
+FILES: src/app/api/audit-log/route.ts, src/app/dev/outbox/page.tsx.
+TABLES: audit_log, notification_outbox.
+NOTES: Not a dashboard nav item.
+
+================================================================================
+SECTION 6. DEEP TRACES OF THE FOUR PARTIALLY-WIRED FEATURES
+================================================================================
+
+6.1 RESOLUTIONS
+1. User opens /usg/request?tab=resolutions (or /lsg/...). RequestSection reads
+   the tab param and renders ResolutionPanel.
+2. Panel GETs /api/resolutions. Route calls list_resolutions with the session
+   token; SQL scopes by side/unit and returns rows. Rows are typed as
+   ResolutionRow; status is a plain string.
+3. Create: panel POSTs /api/resolutions. Route calls create_resolution with
+   title/body/files. SQL inserts without a status, so the column default
+   'submitted' applies.
+4. Review: USG panel POSTs /api/resolutions/[id]/review with
+   decision in {under_review, approved, returned, published} and a remark.
+   Route validates the id and decision, requires a remark for returned, then
+   calls review_resolution. SQL enforces USG reviewer role from the session and
+   writes the decision.
+5. Publish: decision=published flips the public record; the public page reads
+   approved/published rows.
+6. What works: list, create, review, publish, file upload, public read.
+7. What does not: the TS ResolutionDecision type omits under_review and
+   published and includes rejected; rows are not passed through normalizeStatus,
+   so a legacy 'submitted' row does not match the unified badge map; 04600
+   removes submitted/returned/published from the constraint, so create and
+   return/publish break if it is applied.
+
+6.2 PROPOSALS / REQUIREMENTS
+1. User opens Request > Requirements. RequirementsPanel GETs /api/proposals.
+   Route calls list_proposals and returns rows.
+2. Create: panel POSTs /api/proposals with program/title/description/type/date/
+   budget. Route calls create_proposal. SQL inserts status 'submitted' (or
+   'requirements_requested' when requirements are attached).
+3. Start review: POST /api/proposals/[id]/start-review -> start_proposal_review
+   -> status 'under_review'.
+4. Review: POST /api/proposals/[id]/review with decision and optional
+   requirements. Route passes decision/remark/requirements to review_proposal
+   with no whitelist. SQL moves to requirements_requested / approved / rejected /
+   returned.
+5. Unit requirement submission: POST .../requirements/submit -> submit_
+   proposal_requirements -> requirement rows 'submitted'; proposal may move to
+   under_review.
+6. Verify: POST .../requirements/verify -> verify_proposal_requirements ->
+   requirements 'accepted' or 'waived'.
+7. What works: the full happy path exists and is wired.
+8. What does not: RequirementsPanel keeps its own PROPOSAL_STATUS map with
+   legacy strings, so unified rows render without a label/colour; 04600 keeps
+   requirements_requested but remaps the rest; review route has no decision
+   whitelist; there is no explicit "Submit for review" action separate from
+   create.
+
+6.3 ACCOMPLISHMENT REPORTS
+1. User opens Events > Accomplishment. AccomplishmentPanel GETs
+   /api/accomplishment-reports -> list_accomplishment_reports -> rows.
+2. Create: panel POSTs /api/accomplishment-reports with event id, narrative,
+   files. SQL inserts status 'submitted'.
+3. USG review: panel POSTs /api/accomplishment-reports/[id]/review with
+   decision. The panel currently sends approved/rejected, but review_
+   accomplishment_report expects acknowledged/returned. The route forwards the
+   value, so SQL rejects the decision or returns an error reason.
+4. What works: list, create, file upload, attachment download.
+5. What does not: review decision vocabulary (approved/rejected vs acknowledged/
+   returned) breaks the USG action; TS type and SQL disagree; 04600 removes
+   acknowledged entirely and maps to approved/rejected, so the mismatch persists
+   in a different form.
+
+6.4 PUBLIC FEEDBACK FORM (/feedback/f/[token])
+1. Visitor opens /feedback/f/[token]. The server page calls
+   getPublicFeedbackForm(token) from src/lib/feedback-forms.ts, which resolves
+   the token to a form and its questions, and requires form status 'open'.
+2. If unavailable, the page renders an unavailable state. If available, it
+   renders PublicFeedbackForm.
+3. Submit: client POSTs /api/feedback/public/[slug] with answers. Route calls
+   submit_feedback_form_response. SQL inserts a response with status 'new'.
+4. Status poll: client GETs /api/feedback/public/status?token=... to confirm
+   acceptance.
+5. What works: token resolution, render, submit, duplicate guard, public status
+   polling, no session required.
+6. What does not: 04600 rewrites feedback_forms.status from open to pending and
+   closed to rejected, while getPublicFeedbackForm and the public route still
+   require 'open'. If 04600 is applied, every public form becomes unavailable.
+   The route name is correct (/api/feedback/public/[slug]); there is no
+   /api/feedback/f/[token] endpoint and none is needed.
+
+================================================================================
+SECTION 7. STATUS STRING INVENTORY
+================================================================================
+
+For each module: stored vocabulary, the file that defines it, and the TS/UI
+mirror. "Defined" means the SQL CHECK/default or the TS type/label map.
+
+TASKS / TASK ASSIGNMENTS
+- Stored: assigned, in_progress, done (02400 line 42-43); 03113 adds the
+  vocabulary alignment for request-module statuses.
+- TS mirror: draft, pending, under_review, approved (src/lib/status.ts
+  LEGACY_TO_STATUS); src/lib/tasks.ts re-exports.
+- API filter: assigned, in_progress, done (src/app/api/tasks/route.ts line 10).
+- Derived: overdue (from due_date + open status).
+- 04600 target: pending, draft, under_review, approved, rejected, overdue.
+
+TASK REQUIREMENTS
+- Stored: pending, approved, flagged, returned (03112).
+- 04600 target: pending, under_review, approved, rejected.
+- No dedicated TS union; panel renders raw strings.
+
+TASK EXTENSIONS
+- Decision values are free-form at the route layer; the RPC validates. The
+  route forwards body.decision (src/app/api/tasks/extensions/route.ts line 47).
+- No central TS map. Needs a whitelist in P1/P3.
+
+PERSONAL REQUESTS
+- Stored: submitted, granted, declined, needs_revision, submission_required,
+  withdrawn, expired (03450 line 5+).
+- TS mirror: same union in src/components/dashboard/RequestSection.tsx line 120.
+- 04600 target: pending, approved, rejected, under_review.
+
+RESOLUTIONS
+- Stored: submitted, under_review, approved, returned, published (03200
+  lines 23-24).
+- TS mirror: unified Status (src/lib/status.ts) via src/lib/resolutions.ts;
+  ResolutionDecision = approved | rejected | returned (no under_review or
+  published).
+- 04600 target: pending, under_review, approved, rejected.
+
+PROPOSALS
+- Stored: submitted, under_review, requirements_requested, returned, approved,
+  rejected, published (03050 lines 18-24).
+- Requirements: requested, submitted, accepted, waived (03050 line 43-44).
+- TS mirror: local PROPOSAL_STATUS in RequirementsPanel.tsx line 134-149.
+- 04600 target: pending, under_review, approved, rejected (leaves
+  requirements_requested in the check).
+
+EVENTS
+- Stored: upcoming, claimed, honored, rejected, cancelled (03160 line 37).
+- honor_status: pending, honored, not_honored (03160 line 42).
+- TS/UI mirror: EventsWorkspace filter maps claimed to status under_review
+  (line 184); no central map.
+- 04600 target: pending, under_review, approved, rejected (cancelled is not
+  included).
+
+BUDGETS
+- Stored: submitted, returned, approved, rejected (02300 line 32-33).
+- TS mirror: unified Status (src/lib/budgets.ts, src/lib/status.ts).
+- 04600 target: pending, approved, rejected.
+
+STRUCTURES
+- Stored: draft, submitted, approved, returned, rejected, superseded
+  (02950 line 184 default draft + check; 02960 writes/reads).
+- TS mirror: unified Status via src/lib/structure/**; editor uses raw strings.
+- 04600 target: pending, draft, under_review, approved, rejected.
+
+DOCUMENTS
+- Stored: document_catalog.approval_status pending, approved, rejected
+  (03210 line 32-33); submission decision pending, approved, rejected.
+- TS mirror: unified Status via src/lib/document-search.ts.
+- 04600 target: pending, approved, rejected (widened set but same values used).
+
+ACCOMPLISHMENT REPORTS
+- Stored: submitted, acknowledged, returned (03250 line 11-12, 31).
+- TS mirror: unified Status via src/lib/accomplishment-reports.ts.
+- 04600 target: pending, approved, rejected.
+
+CLASSIC FEEDBACK ENTRIES
+- Stored: new, acknowledged (03260 line 8).
+- TS mirror: unified Status via src/lib/feedback.ts.
+- 04600 target: pending, approved.
+
+FEEDBACK FORMS
+- Stored: draft, open, closed (03300 line 7); responses new, acknowledged
+  (03300 line 61).
+- TS mirror: src/lib/feedback-forms.ts types/labels.
+- 04600 target: pending, draft, under_review, approved, rejected (removes open/
+  closed and new/acknowledged).
+
+SURVEYS
+- Stored: draft, open, closed (03060 line 33-34). Not touched by 04600.
+- TS mirror: survey components use raw strings.
+
+INVITES
+- Stored: pending, activated, expired, revoked (invite migrations; 00900 and
+  later).
+- TS mirror: InvitesPanel labels.
+
+MONITORING
+- TS-only vocabulary: pending, under_review, approved, returned, rejected,
+  cancelled (src/lib/monitoring.ts lines 1-8).
+- SQL CASE in 03240 still uses legacy values; no stored column.
+
+ACCOUNTS / OFFICERS
+- Account state: active/suspended (accounts migration); officer state:
+  active/suspended/purged (officer migrations).
+- TS mirror: AccountsPanel/OfficersPanel labels.
+
+================================================================================
+SECTION 8. STATUS DRIFT (MIGRATION 04600 VS RUNTIME)
+================================================================================
+
+Migration 20260101004600_unified_status_model.sql is the newest migration. It
+rewrites CHECK constraints on: task_assignments, budget_requests, proposals,
+events, structures, personal_requests, feedback_forms, feedback_entries,
+document_catalog, resolutions, accomplishment_reports (and related tables).
+It maps many legacy values to pending/approved/rejected.
+
+The runtime code was not updated to match:
+- No `returned` anywhere in the 04600 constraint set. RETURNED is required by
+  the brief and is the core of the review loop.
+- No `published` for resolutions/proposals; publication becomes approved.
+- No `open`/`closed` for feedback forms; public forms require open.
+- No `cancelled` for events; cancel path has no valid value.
+- No `acknowledged` for accomplishment; review RPC expects it.
+- No `requirements_requested` in the target set (03050 keeps it).
+- No `granted`/`declined`/`needs_revision`/`submission_required`/`withdrawn`/
+  `expired` for personal requests.
+- No `superseded` for structures; republish loses history semantics.
+
+Writers that still emit legacy values (would fail post-04600):
+- create_resolution / review_resolution (submitted, returned, published).
+- create_proposal / review_proposal / submit_proposal_requirements
+  (submitted, requirements_requested, returned, published).
+- create_event / claim_event / decide_event (upcoming, claimed, honored,
+  not_honored, cancelled).
+- decide_personal_request / resubmit (granted, declined, needs_revision,
+  submission_required, withdrawn, expired).
+- submit_structure / review_structure / publish_structure (submitted, returned,
+  superseded).
+- review_budget / budget open counts (submitted, returned).
+- review_accomplishment_report (acknowledged, returned).
+- set_feedback_form_status / submit_feedback_form_response (open, closed, new,
+  acknowledged).
+- create_task (inserts without status, relying on default assigned).
+- acknowledge_feedback (acknowledged).
+
+Readers that filter legacy values (would show nothing post-04600):
+- /api/overview: submitted, claimed, upcoming, open.
+- /api/tasks: assigned, in_progress, done (submitted already missing).
+- Monitoring SQL CASE (03240).
+- Budget open counts (02300).
+- Public feedback loader: open.
+- Structures queue: submitted/returned.
+
+Conclusion: either 04600 is not applied (then TS/libs already expect unified
+values that the DB never produces) or it is applied (then most write paths
+fail). Both states are inconsistent. P1 must reconcile SQL, TS, and UI in one
+migration plus code change before any new feature work.
+
+================================================================================
+SECTION 9. ROUTE / API INVENTORY
+================================================================================
+
+PAGE ROUTES (dashboard and public)
+- /usg, /lsg (Overview)
+- /usg/manage, /lsg/manage (tabbed Manage)
+- /usg/messages, /lsg/messages (Inbox)
+- /usg/request, /lsg/request (Request tabs)
+- /usg/personal-requests, /lsg/personal-requests (redirect to request?tab=personal)
+- /usg/events, /lsg/events (Events tabs)
+- /usg/forms, /lsg/forms, /forms/[type]/[key]
+- /usg/surveys, /lsg/surveys, /usg/surveys/[id], /lsg/surveys/[id],
+  /usg/survey, /lsg/survey, /survey/[id] (redirects to Forms)
+- /usg/settings, /lsg/settings
+- /usg/officers, /usg/accounts, /usg/invites, /usg/umbrella (redirect to People views)
+- /usg/structure (redirect to /structure/editor)
+- /structure/editor, /structure/preview, /org-chart
+- /feedback/f/[token] (public form)
+- /survey/[id] (public survey)
+- /notifications, /login, /register, /forgot-password, /reset-password
+- /activate/complete, /invite/[token], /invite/[token]/verify
+- /create, /create/account, /create/activated, /create/governance-model,
+  /create/institution, /create/review, /create/units, /create/verification
+- /central, /central/[...slug], /my-council, /my-council/structure
+- /dashboard, /dashboard/[...path] (legacy shell; verify before removal)
+- /dev/outbox
+
+API ROUTES (grouped)
+- Auth/account: auth/login, auth/logout, auth/register, auth/forgot-password,
+  auth/reset-password, auth/resend-owner-code, profile, profile/officer,
+  org-profile, permissions, org-accounts, officers, officers/[id]/deactivate,
+  officers/[id]/purge
+- Units/org: units, umbrella, my-unit, organization, locations, org-chart/*,
+  structures, structures/[unitId], structures/photos, structures/photos/[rosterId],
+  programs, programs/[id]
+- Invites: invites, invites/accept, invites/cancel, invites/resend,
+  invites/resend-code, invites/verify-otp
+- Overview/dashboard: overview, dashboard, dashboard/layout, reviewer, audit-log
+- Tasks: tasks, tasks/[taskId], tasks/[taskId]/zip, tasks/answers,
+  tasks/extensions, tasks/thread, tasks/thread/stream, requirements/default
+- Proposals: proposals, proposals/[id], proposals/[id]/review,
+  proposals/[id]/start-review, proposals/[id]/requirements/submit,
+  proposals/[id]/requirements/verify
+- Personal requests: requests
+- Resolutions: resolutions, resolutions/[id], resolutions/[id]/review,
+  files/resolution/[resolutionId]
+- Budgets: budgets, budgets/[id], budgets/[id]/review
+- Events: events, events/[id], events/[id]/assignees, events/[id]/claim,
+  events/[id]/decide
+- Accomplishment: accomplishment-reports, accomplishment-reports/[id],
+  accomplishment-reports/[id]/review, accomplishment-files/[fileId]
+- Documents: documents, documents/[submissionId],
+  documents/[submissionId]/approve, catalog-files/[documentKey],
+  files/[submissionId], files/requirement/[requirementId],
+  files/task-requirement/[requirementId]/[unitId],
+  files/task-response/[taskId]/[unitId], uploads
+- Compliance: compliance/precheck, compliance/[versionId]
+- Feedback: feedback, feedback/[id], feedback/[id]/acknowledge,
+  feedback/available, feedback/forms, feedback/forms/[id],
+  feedback/forms/[id]/export, feedback/forms/[id]/link,
+  feedback/forms/[id]/questions, feedback/forms/[id]/respond,
+  feedback/forms/[id]/responses,
+  feedback/forms/[id]/responses/[responseId]/acknowledge,
+  feedback/forms/[id]/status, feedback/public, feedback/public/[slug],
+  feedback/public/status
+- Surveys: surveys, surveys/[id], surveys/[id]/ai-summary, surveys/[id]/close,
+  surveys/[id]/otp/send, surveys/[id]/otp/verify, surveys/[id]/publish,
+  surveys/[id]/questions, surveys/[id]/questions/[qid], surveys/[id]/responses,
+  surveys/[id]/results
+- Messaging: conversations, conversations/[id]/messages,
+  conversations/[id]/read, conversations/[id]/delete,
+  conversations/[id]/unsend/[mid], feed
+- Notifications: notifications, notifications/unread, notifications/read-all,
+  notifications/[id]/read, notifications/[id]/delete, cron/tick, dev/outbox
+- Misc: ai/draft, ai/status, tours/progress, verifications
+
+================================================================================
+SECTION 10. UNCERTAIN / NEEDS DECISION
+================================================================================
+
+UNCERTAIN
+- Whether 20260101004600 is applied to the live database. The repo contains it
+  as the latest migration, but no DB access was available. Every "post-04600"
+  claim above is conditional on that.
+- Whether `docs/PLAN.md` is the intended plan file or should be superseded by
+  the new root PLAN.md. The brief asks for PLAN.md at the root; this file
+  assumes root and leaves docs/PLAN.md untouched.
+- Whether Phase 0 permits appending to CHANGELOG_SYSTEM_REDESIGN.txt. The phase
+  says "Output: SYSTEM_FEATURE_MAP.txt and PLAN.md only"; the standing rule says
+  append at the end. Deferred until the user confirms.
+- Exact runtime of the achievement review path: the panel sends approved/
+  rejected, the RPC expects acknowledged/returned. Whether any caller already
+  sends the RPC values elsewhere was not exhaustively searched.
+
+NEEDS DECISION (before P1 code)
+1. RETURNED must exist in the DB and TS. Confirm 04600 should be amended or
+   superseded rather than followed.
+2. Is `published` a separate status or a flag on approved? Resolutions and
+   proposals use it; the unified header does not list it.
+3. Are feedback forms and surveys one feature or two? Merging changes the
+   public routes and tables.
+4. Are classic feedback entries (new/acknowledged) still needed, or does the
+   forms feature replace them?
+5. Does "Submit for Review" apply to structures only, or also to tasks,
+   proposals, personal requests, budgets, and resolutions? The brief implies
+   every reviewable item.
+6. Budget period model: fiscal year only, or school year plus semesters? The
+   existing schema is request-centric, not allocation-centric.
+7. Late submission source of truth: due_date vs a deadline table per item type.
+8. Can "Accounts" and "Officers" be one screen? They act on the same people.
+
+================================================================================
+END OF SYSTEM FEATURE MAP
+================================================================================

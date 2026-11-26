@@ -7,7 +7,7 @@ import { Seal, Wordmark } from "@/components/ui/Seal";
 import { TourHelpButton } from "@/components/tours/HelpButton";
 import { loadTourProgress, saveTourProgress } from "@/lib/tours/progress";
 import { SignOutButton } from "@/components/dashboard/SignOutButton";
-import { useAccount } from "@/components/dashboard/dashboard-context";
+import { useAccount, useDashboard } from "@/components/dashboard/dashboard-context";
 import { formatNotificationTime, type NotificationItem } from "@/lib/notifications";
 import { useRealtimeSignals } from "@/lib/realtime";
 import { Enter } from "@/components/fx/Presence";
@@ -162,6 +162,7 @@ function AppShellInner({
   children: React.ReactNode;
 }) {
   const account = useAccount();
+  const { meta } = useDashboard();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   // Manual expand/collapse per section. When a key is absent the section follows
@@ -231,7 +232,7 @@ function AppShellInner({
     } catch {
       // ignore
     }
-  }, []);
+  }, [setUnread]);
 
   const loadNotificationList = useCallback(async () => {
     try {
@@ -243,7 +244,7 @@ function AppShellInner({
     } catch {
       // ignore
     }
-  }, []);
+  }, [setNotifs]);
 
   useRealtimeSignals(account.id, ["notification"], () => {
     void loadUnread();
@@ -385,7 +386,18 @@ function AppShellInner({
             aria-label="SmartGov home"
             className="flex min-w-0 items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brass focus-visible:ring-offset-2"
           >
-            {collapsed ? <Seal size={26} /> : <Wordmark compact />}
+            {meta.logoUrl ? (
+              <img
+                src={meta.logoUrl}
+                alt={`${meta.organizationName} logo`}
+                className={`shrink-0 object-contain ${collapsed ? "size-8" : "size-10"}`}
+                decoding="async"
+              />
+            ) : collapsed ? (
+              <Seal size={26} />
+            ) : (
+              <Wordmark compact />
+            )}
           </Link>
         </div>
 
@@ -524,7 +536,16 @@ function AppShellInner({
       >
         <div className="flex h-16 items-center justify-between border-b border-line/70 px-5">
           <Link href="/" aria-label="SmartGov home" onClick={() => setOpen(false)}>
-            <Wordmark compact />
+            {meta.logoUrl ? (
+              <img
+                src={meta.logoUrl}
+                alt={`${meta.organizationName} logo`}
+                className="size-9 shrink-0 object-contain"
+                decoding="async"
+              />
+            ) : (
+              <Wordmark compact />
+            )}
           </Link>
           <button
             type="button"

@@ -7,8 +7,11 @@ import { TimezonePicker } from "@/components/ui/TimezonePicker";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SectionIcon, selectClass } from "@/components/dashboard/workspace-shared";
 import { IconCheckCircle, IconClose, IconEvents, IconPencil, IconShield } from "@/components/ui/Icons";
-import { formatMoney, parseAmount, toDraftPayload, type BudgetRow } from "@/lib/budgets";
+import { formatMoney, type BudgetRow } from "@/lib/budgets";
 import { CalendarPanel } from "@/components/dashboard/CalendarPanel";
+import { BudgetModal } from "@/components/dashboard/budget-ui";
+import { LsgBudgetPanel } from "@/components/dashboard/LsgBudgetPanel";
+import { normalizeStatus, statusLabel, type Status } from "@/lib/status";
 import { AccomplishmentPanel } from "@/components/dashboard/AccomplishmentPanel";
 import { useBudgetStore } from "./budget-store";
 
@@ -31,7 +34,7 @@ type Ev = {
   venue: string | null;
   scope: string;
   unitId: string | null;
-  status: string;
+  status: Status;
   honorStatus: string;
   honorReason: string | null;
   source: string;
@@ -117,20 +120,12 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
   const [claimOpen, setClaimOpen] = useState(false);
   const [claimTarget, setClaimTarget] = useState<Ev | null>(null);
   const [claimNoteInput, setClaimNoteInput] = useState("");
+  const [handledEventLink, setHandledEventLink] = useState<string | null>(null);
 
   // budget
   const { budgets, loading: budgetsLoading, refresh: refreshBudgets } = useBudgetStore();
   const [budgetTarget, setBudgetTarget] = useState<Ev | null>(null);
-  const [budgetTitle, setBudgetTitle] = useState("");
-  const [budgetJustification, setBudgetJustification] = useState("");
-  const [budgetAmount, setBudgetAmount] = useState("");
-  const [budgetSaving, setBudgetSaving] = useState(false);
-  const [budgetError, setBudgetError] = useState<string | null>(null);
-
   const [spendTarget, setSpendTarget] = useState<{ event: Ev; budget: BudgetRow } | null>(null);
-  const [spendAmount, setSpendAmount] = useState("");
-  const [spendSaving, setSpendSaving] = useState(false);
-  const [spendError, setSpendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,7 +134,12 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       const res = await fetch("/api/events");
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
-      setEvents(json.events ?? []);
+      setEvents(
+        (json.events ?? []).map((event: Ev) => ({
+          ...event,
+          status: normalizeStatus(event.status),
+        })),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load events.");
     } finally {
@@ -158,6 +158,36 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
     }, 0);
     return () => clearTimeout(t);
   }, [load, loadBudgets]);
+
+  useEffect(() => {
+    const eventId = searchParams.get("event");
+    const action = searchParams.get("action");
+    if (!eventId || loading) return;
+    const linkKey = `${eventId}:${action ?? ""}`;
+    if (handledEventLink === linkKey) return;
+    const event = events.find((row) => row.id === eventId);
+    if (!event) return;
+    queueMicrotask(() => {
+      setHandledEventLink(linkKey);
+      if (action === "claim" && !isUsg && event.canClaim) {
+        setClaimTarget(event);
+        setClaimNoteInput("");
+        setClaimOpen(true);
+      }
+      if (action === "decide" && isUsg && event.canDecide) {
+        setDecideTarget(event);
+        setDecideDecision("honored");
+        setDecideNote("");
+        setDecideOpen(true);
+      }
+      if (action === "report") {
+        const node = Array.from(document.querySelectorAll("[data-event-id]")).find(
+          (element) => element.getAttribute("data-event-id") === eventId,
+        );
+        node?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }, [searchParams, loading, events, isUsg, handledEventLink]);
 
   useEffect(() => {
     if (isUsg) {
@@ -179,8 +209,8 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
 
   const filtered = events.filter((e) => {
     if (filter === "all") return true;
-    if (filter === "open") return e.status === "open" || e.status === "claimed";
-    if (filter === "claimed") return e.status === "claimed";
+    if (filter === "open") return e.status === "pending" || e.status === "under_review";
+    if (filter === "claimed") return e.status === "under_review";
     if (filter === "honored") return e.honorStatus === "honored";
     if (filter === "not_honored") return e.honorStatus === "not_honored";
     if (filter === "cancelled") return e.cancelledAt !== null;
@@ -342,94 +372,12 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
 
   const openBudget = (ev: Ev) => {
     setBudgetTarget(ev);
-    setBudgetTitle(`${ev.title} budget`.slice(0, 140));
-    setBudgetJustification("");
-    setBudgetAmount("");
-    setBudgetError(null);
-  };
-
-  const submitBudget = async () => {
-    if (!budgetTarget) return;
-    if (budgetTitle.trim().length < 4) {
-      setBudgetError("Give the budget a name of at least 4 characters.");
-      return;
-    }
-    const amount = parseAmount(budgetAmount);
-    if (amount === null || amount <= 0) {
-      setBudgetError("Enter an overall budget request above zero.");
-      return;
-    }
-    const payload = toDraftPayload([
-      { label: "Overall budget request", quantity: "1", unitCost: budgetAmount },
-    ]);
-    if (!payload.ok) {
-      setBudgetError(payload.message);
-      return;
-    }
-
-    setBudgetSaving(true);
-    setBudgetError(null);
-    try {
-      const res = await fetch("/api/budgets", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          eventId: budgetTarget.id,
-          title: budgetTitle.trim(),
-          justification: budgetJustification.trim(),
-          items: payload.items,
-        }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-      setBudgetTarget(null);
-      setNote("Budget request submitted.");
-      await loadBudgets();
-    } catch (e) {
-      setBudgetError(e instanceof Error ? e.message : "Could not submit the budget.");
-    } finally {
-      setBudgetSaving(false);
-    }
   };
 
   const approvedBudgetFor = (eventId: string) => approvedBudgets.get(eventId) ?? null;
 
   const openSpending = (ev: Ev, budget: BudgetRow) => {
     setSpendTarget({ event: ev, budget });
-    setSpendAmount(String(budget.actualSpent ?? 0));
-    setSpendError(null);
-  };
-
-  const saveSpending = async () => {
-    if (!spendTarget) return;
-    const amount = parseAmount(spendAmount);
-    const approved = Number(spendTarget.budget.approvedTotal ?? 0);
-    if (amount === null || amount < 0) {
-      setSpendError("Enter a valid amount.");
-      return;
-    }
-    if (amount > approved) {
-      setSpendError("Spending cannot exceed the approved budget.");
-      return;
-    }
-    setSpendSaving(true);
-    setSpendError(null);
-    try {
-      const res = await fetch(`/api/budgets/${spendTarget.budget.id}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ actualSpent: amount }),
-      });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-      setSpendTarget(null);
-      setNote("Spending recorded.");
-      await loadBudgets();
-    } catch (e) {
-      setSpendError(e instanceof Error ? e.message : "Could not record spending.");
-    } finally {
-      setSpendSaving(false);
-    }
   };
 
   const cancel = async (ev: Ev) => {
@@ -517,7 +465,7 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
           {filtered.map((e) => {
             const approvedBudget = approvedBudgetFor(e.id);
             return (
-            <div key={e.id} className="rounded-2xl border border-line bg-paper p-5">
+            <div key={e.id} data-event-id={e.id} className="rounded-2xl border border-line bg-paper p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-lg font-medium">{e.title}</div>
@@ -528,17 +476,24 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
                     {e.venue ? ` • ${e.venue}` : ""}
                   </div>
                   <div className="text-xs text-muted mt-1">
-                    Scope: {e.scope} • Status: {e.status} • Honour: {e.honorStatus}
-                    {e.source ? ` • Source: ${e.source}` : ""}
+                    Scope: {e.scope} - Status: {statusLabel(e.status)} - Honour: {e.honorStatus === "honored" ? "Honoured" : e.honorStatus === "not_honored" ? "Not honoured" : "Pending"}
+                    {e.source ? ` - Source: ${e.source}` : ""}
                   </div>
                   {e.description && <p className="mt-2 text-sm text-body whitespace-pre-wrap">{e.description}</p>}
                   {e.files.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {e.files.map((f) => (
-                        <a key={f.id} href={f.url ?? "#"} target="_blank" className="text-xs underline text-ink">
-                          {f.name}
-                        </a>
-                      ))}
+                        {e.files.map((f) =>
+                          f.url ? (
+                            <a key={f.id} href={f.url} target="_blank" className="text-xs underline text-ink">
+                              {f.name}
+                            </a>
+                          ) : (
+                            <span key={f.id} className="text-xs text-muted">
+                              {f.name}
+                            </span>
+                          ),
+                        )}
+
                     </div>
                   )}
                   {e.reportRequiredUnits && e.reportRequiredUnits.length > 0 && (
@@ -794,18 +749,18 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
           description={
             <div className="grid gap-2">
               <div className="flex gap-2">
-                <button
-                  onClick={() => setDecideDecision("honored")}
-                  className={`rounded-full px-3 py-1 text-sm ${decideDecision === "honored" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
-                >
-                  Honour
-                </button>
-                <button
-                  onClick={() => setDecideDecision("not_honored")}
-                  className={`rounded-full px-3 py-1 text-sm ${decideDecision === "not_honored" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
-                >
-                  Not honour
-                </button>
+                  <button
+                    onClick={() => setDecideDecision("honored")}
+                    className={`rounded-full px-3 py-1 text-sm ${decideDecision === "honored" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
+                  >
+                    Honour
+                  </button>
+                  <button
+                    onClick={() => setDecideDecision("not_honored")}
+                    className={`rounded-full px-3 py-1 text-sm ${decideDecision === "not_honored" ? "bg-ink text-canvas" : "border border-line text-ink"}`}
+                  >
+                    Not honour
+                  </button>
               </div>
               <textarea
                 value={decideNote}
@@ -855,114 +810,43 @@ export function EventsWorkspace({ isUsg }: { isUsg: boolean }) {
       )}
 
       {budgetTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl border border-line bg-paper p-6">
-            <div className="mb-1 flex items-center justify-between gap-4">
-              <div className="text-lg font-medium">Submit budget</div>
-              <button
-                type="button"
-                onClick={() => setBudgetTarget(null)}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="mb-4 text-sm text-muted">
-              {budgetTarget.title}
-              {budgetTarget.eventDate ? ` • ${budgetTarget.eventDate}` : ""}
-            </p>
-
-            <div className="grid gap-3">
-              <div>
-                <div className="mb-1 text-sm text-muted">Request name</div>
-                <input
-                  value={budgetTitle}
-                  onChange={(e) => setBudgetTitle(e.target.value)}
-                  className={selectClass}
-                />
-              </div>
-              <div>
-                <div className="mb-1 text-sm text-muted">Justification</div>
-                <textarea
-                  value={budgetJustification}
-                  onChange={(e) => setBudgetJustification(e.target.value)}
-                  rows={2}
-                  className={selectClass}
-                />
-              </div>
-
-              <div>
-                <div className="mb-1 text-sm text-muted">Overall budget request</div>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={budgetAmount}
-                  onChange={(e) => setBudgetAmount(e.target.value)}
-                  className={selectClass}
-                />
-              </div>
-
-              {budgetError && (
-                <p className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-sm font-medium text-[#a5442c]">
-                  {budgetError}
-                </p>
-              )}
-
-              <Button disabled={budgetSaving} onClick={() => void submitBudget()}>
-                {budgetSaving ? "Submitting…" : "Submit budget"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <BudgetModal
+          title="Budget"
+          onClose={() => setBudgetTarget(null)}
+          wide
+        >
+          <LsgBudgetPanel
+            compact
+            eventId={budgetTarget.id}
+            eventTitle={budgetTarget.title}
+            initialTab="request"
+            onDone={() => {
+              setBudgetTarget(null);
+              setNote("Budget request submitted.");
+              void loadBudgets();
+            }}
+          />
+        </BudgetModal>
       )}
 
       {spendTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-line bg-paper p-6">
-            <div className="mb-1 flex items-center justify-between gap-4">
-              <div className="text-lg font-medium">Record spending</div>
-              <button
-                type="button"
-                onClick={() => setSpendTarget(null)}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-            <p className="mb-4 text-sm text-muted">{spendTarget.event.title}</p>
-            <div className="grid gap-3">
-              <div className="rounded-xl border border-line bg-canvas px-3.5 py-2.5">
-                <div className="mb-1 text-sm text-muted">Remaining budget</div>
-                <div className="text-lg font-medium tabular-nums text-ink">
-                  ₱{formatMoney(Math.max(0, Number(spendTarget.budget.approvedTotal ?? 0) - Number(spendTarget.budget.actualSpent ?? 0)))}
-                </div>
-              </div>
-              <div>
-                <div className="mb-1 text-sm text-muted">Actual spent</div>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  value={spendAmount}
-                  onChange={(e) => setSpendAmount(e.target.value)}
-                  className={selectClass}
-                />
-              </div>
-              {spendError && (
-                <p className="rounded-xl border border-[#d9a99c] bg-[#a5442c]/[0.06] px-3.5 py-2.5 text-sm font-medium text-[#a5442c]">
-                  {spendError}
-                </p>
-              )}
-              <Button disabled={spendSaving} onClick={() => void saveSpending()}>
-                {spendSaving ? "Saving…" : "Save spending"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <BudgetModal
+          title="Record spending"
+          onClose={() => setSpendTarget(null)}
+          wide
+        >
+          <LsgBudgetPanel
+            compact
+            eventId={spendTarget.event.id}
+            eventTitle={spendTarget.event.title}
+            initialTab="expenses"
+            onDone={() => {
+              setSpendTarget(null);
+              setNote("Spending recorded.");
+              void loadBudgets();
+            }}
+          />
+        </BudgetModal>
       )}
     </div>
   );

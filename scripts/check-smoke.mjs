@@ -64,7 +64,6 @@ async function main() {
     "/api/documents",
     "/api/budgets",
     "/api/feed",
-    "/api/monitoring",
     "/api/accomplishment-reports",
     "/api/feedback",
     "/api/feedback/forms",
@@ -101,7 +100,6 @@ async function main() {
     "/api/documents",
     "/api/budgets",
     "/api/feed",
-    "/api/monitoring",
     "/api/accomplishment-reports",
     "/api/feedback",
     "/api/profile/officer",
@@ -134,15 +132,14 @@ async function main() {
   ]) {
     check(`LSG may read ${path}`, (await get(path, lsg.cookie)).status === 200);
   }
-  check("LSG may not read the monitoring API", (await get("/api/monitoring", lsg.cookie)).status === 403);
   check("LSG may not read the feedback API", (await get("/api/feedback", lsg.cookie)).status === 403);
   check(
     "LSG may not list the officer roster",
     (await get("/api/profile/officer?scope=all", lsg.cookie)).status === 403,
   );
-  const lsgIntoUsgTab = await get("/usg/manage?tab=monitoring", lsg.cookie);
+  const lsgIntoUsgTab = await get("/usg/manage?tab=people", lsg.cookie);
   check(
-    "LSG is redirected out of the USG monitoring tab",
+    "LSG is redirected out of the USG people tab",
     lsgIntoUsgTab.status === 307 && lsgIntoUsgTab.headers.get("location") === "/lsg",
     `got ${lsgIntoUsgTab.status} ${lsgIntoUsgTab.headers.get("location") ?? ""}`,
   );

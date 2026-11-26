@@ -3,6 +3,7 @@ import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
 import { UUID_RE } from "@/lib/feedback";
 import {
+  canonicalFormsPublicPath,
   deleteFeedbackForm,
   feedbackFormInputMessage,
   feedbackHttpStatus,
@@ -44,7 +45,9 @@ export async function GET(_request: Request, context: RouteContext) {
     }
     return NextResponse.json({
       ok: true,
-      form: res.form ?? null,
+      form: res.form
+        ? { ...res.form, publicPath: canonicalFormsPublicPath(res.form.publicPath) }
+        : null,
       scopes: res.scopes ?? [],
       questions: res.questions ?? [],
     });

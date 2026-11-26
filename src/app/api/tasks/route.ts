@@ -3,11 +3,10 @@ import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { readSessionToken } from "@/lib/auth/session";
+import { loadUnitRecipientIds, notifyAccounts } from "@/lib/notifications-server";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
-
-const STATUSES = new Set(["assigned", "in_progress", "done"]);
 
 /**
  * The Request section's task surface.
@@ -96,6 +95,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
   }
 
+  const unitIds = Array.isArray(body.unitIds)
+    ? body.unitIds.filter((value): value is string => typeof value === "string")
+    : [];
+  const gracePeriodMinutes = Number(body.gracePeriodMinutes ?? 0);
+  const reviewSlaDays = body.reviewSlaDays === null || body.reviewSlaDays === undefined || body.reviewSlaDays === ""
+    ? null
+    : Number(body.reviewSlaDays);
+  if (!Number.isInteger(gracePeriodMinutes) || gracePeriodMinutes < 0 || gracePeriodMinutes > 10080) {
+    return NextResponse.json({ ok: false, reason: "invalid_request", message: messageFor("invalid_request") }, { status: 400 });
+  }
+  if (reviewSlaDays !== null && (!Number.isInteger(reviewSlaDays) || reviewSlaDays < 1 || reviewSlaDays > 30)) {
+    return NextResponse.json({ ok: false, reason: "invalid_request", message: messageFor("invalid_request") }, { status: 400 });
+  }
+
   try {
     const res = await callRpc<TaskPayload>("create_task_v2", {
       p_session_token: token,
@@ -106,14 +119,30 @@ export async function POST(req: Request) {
       p_due_timezone: typeof body.dueTimezone === "string" && body.dueTimezone ? body.dueTimezone : null,
       p_priority: typeof body.priority === "string" ? body.priority : "normal",
       p_auto_close: body.autoClose === true,
-      p_unit_ids: Array.isArray(body.unitIds) ? body.unitIds : [],
+      p_unit_ids: unitIds,
       p_requirements: Array.isArray(body.requirements) ? body.requirements : [],
+      p_grace_period_minutes: gracePeriodMinutes,
+      p_review_sla_days: reviewSlaDays,
     });
 
     if (!res.ok) {
       return NextResponse.json(
         { ok: false, reason: res.reason, message: messageFor(res.reason) },
         { status: statusForReason(res.reason) },
+      );
+    }
+
+    if (res.taskId) {
+      const recipients = await loadUnitRecipientIds(token, unitIds);
+      await notifyAccounts(
+        token,
+        recipients.map((id) => ({ id })),
+        {
+          kind: "task_created",
+          title: "New task assigned",
+          body: `A new task was assigned: ${typeof body.title === "string" ? body.title.trim() : "Untitled task"}`,
+          link: `/lsg/request?tab=tasks&task=${res.taskId}`,
+        },
       );
     }
 

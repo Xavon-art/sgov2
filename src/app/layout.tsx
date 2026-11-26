@@ -24,7 +24,7 @@ const OG_IMAGE = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://sgov.vercel.app"),
+  metadataBase: new URL("https://sgov2.vercel.app"),
   title: {
     default: "SmartGov — One system. Every student council.",
     template: "%s · SmartGov",

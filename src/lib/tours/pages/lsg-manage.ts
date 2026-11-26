@@ -16,14 +16,8 @@ export const lsgManageTour: PageTour = {
     {
       target: "workspace-nav",
       title: "Everything under Manage",
-      body: "Documents, Search, Budget, and Feedback are sidebar links here — no duplicate tabs on the page.",
+      body: "Documents, Budget, and Feedback are sidebar links here — no duplicate tabs on the page.",
       placement: "right",
-    },
-    {
-      target: "manage-unit",
-      title: "Unit details",
-      body: "This section shows the office your council belongs to and where your unit sits under it.",
-      placement: "bottom",
     },
     {
       target: "manage-profile",

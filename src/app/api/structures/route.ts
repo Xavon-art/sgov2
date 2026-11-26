@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { readSessionToken } from "@/lib/auth/session";
+import { UUID_RE } from "@/lib/document-search";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,17 @@ function isAction(value: unknown): value is Action {
   return typeof value === "string" && (VALID_ACTIONS as readonly string[]).includes(value);
 }
 
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}
+
+function invalidReference(reference: "unit" | "structure") {
+  return NextResponse.json(
+    { ok: false, reason: "invalid_uuid", message: `That ${reference} reference is not valid.` },
+    { status: 400 },
+  );
+}
+
 export async function GET(req: Request) {
   const token = await readSessionToken();
   if (!token) {
@@ -61,7 +73,12 @@ export async function GET(req: Request) {
       // repeated here so the embedded editor cannot show a wider unit than the
       // standalone one.
       const chart = await callRpc<
-        | { ok: true; root: { id: string; name: string } | null; units: Array<{ id: string; name: string; unitType: string }> }
+        | {
+            ok: true;
+            scope: "organization" | "unit";
+            root: { id: string; name: string; unitType: string } | null;
+            units: Array<{ id: string; name: string; unitType: string; parentId?: string | null; seats?: unknown[] }>;
+          }
         | { ok: false; reason: string }
       >("unit_chart", { p_session_token: token });
 
@@ -76,10 +93,13 @@ export async function GET(req: Request) {
         p_session_token: token,
       }).then((r) => r.ok && r.accountScope === "owner").catch(() => false);
 
-      const belowRoot = chart.root ? chart.units.filter((u) => u.id !== chart.root?.id) : chart.units;
+      const root = chart.root;
+      const belowRoot = root ? chart.units.filter((u) => u.id !== root.id) : chart.units;
       const own = isOwner
-        ? chart.root ?? belowRoot[0]
-        : belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? chart.root;
+        ? root ?? belowRoot[0]
+        : chart.scope === "unit"
+          ? belowRoot[0] ?? null
+          : belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? root;
 
       if (!own) {
         return NextResponse.json(
@@ -166,6 +186,7 @@ export async function POST(req: Request) {
   try {
     switch (body.action) {
       case "save":
+        if (!isUuid(unitId)) return invalidReference("unit");
         return NextResponse.json(
           await callRpc<StructureResult>("save_structure_draft_v2", {
             p_session_token: token,
@@ -184,6 +205,7 @@ export async function POST(req: Request) {
         );
 
       case "submit":
+        if (!isUuid(structureId)) return invalidReference("structure");
         return NextResponse.json(
           await callRpc<StructureResult>("submit_structure", {
             p_session_token: token,
@@ -193,6 +215,7 @@ export async function POST(req: Request) {
         );
 
       case "review": {
+        if (!isUuid(structureId)) return invalidReference("structure");
         const decision = text(body.decision);
         if (decision !== "approved" && decision !== "returned" && decision !== "rejected") {
           return NextResponse.json(
@@ -211,6 +234,7 @@ export async function POST(req: Request) {
       }
 
       case "renew":
+        if (!isUuid(unitId)) return invalidReference("unit");
         return NextResponse.json(
           await callRpc<StructureResult>("request_structure_renewal", {
             p_session_token: token,

@@ -209,7 +209,7 @@ export function UmbrellaSection() {
                 Every LSG you add will show up here.
               </p>
             </div>
-            <ButtonLink href="/usg/manage?tab=invites" size="sm">
+            <ButtonLink href="/usg/manage?tab=people&view=invites" size="sm">
               Invite an LSG
             </ButtonLink>
           </div>

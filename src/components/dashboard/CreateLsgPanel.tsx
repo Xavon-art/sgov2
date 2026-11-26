@@ -94,12 +94,14 @@ export function CreateLsgPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setProvinces([]);
-    setCities([]);
-    setBarangays([]);
-    setProvince("");
-    setCity("");
-    setBarangay("");
+    queueMicrotask(() => {
+      setProvinces([]);
+      setCities([]);
+      setBarangays([]);
+      setProvince("");
+      setCity("");
+      setBarangay("");
+    });
     if (!region) return;
 
     void (async () => {
@@ -124,10 +126,12 @@ export function CreateLsgPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setCities([]);
-    setBarangays([]);
-    setCity("");
-    setBarangay("");
+    queueMicrotask(() => {
+      setCities([]);
+      setBarangays([]);
+      setCity("");
+      setBarangay("");
+    });
     if (!province) return;
 
     void loadPlaces("cities", { province })
@@ -145,8 +149,10 @@ export function CreateLsgPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setBarangays([]);
-    setBarangay("");
+    queueMicrotask(() => {
+      setBarangays([]);
+      setBarangay("");
+    });
     if (!city) return;
 
     void loadPlaces("barangays", { city })

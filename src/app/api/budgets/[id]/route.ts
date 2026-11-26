@@ -72,7 +72,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const { id } = await ctx.params;
 
-  let body: { actualSpent?: unknown };
+  let body: { actualSpent?: unknown; description?: unknown; receiptFile?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -96,11 +96,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     );
   }
 
+  const description = typeof body.description === "string" ? body.description.trim() : "";
+  const receiptFile = typeof body.receiptFile === "string" ? body.receiptFile.trim() : "";
+
   try {
-    const res = await callRpc<SpendResult>("set_budget_actual_spent", {
+    const res = await callRpc<SpendResult>("record_budget_spend_total", {
       p_session_token: token,
       p_budget_id: id,
       p_actual_spent: actualSpent,
+      p_description: description,
+      p_receipt_file: receiptFile || null,
     });
 
     if (!res.ok) {

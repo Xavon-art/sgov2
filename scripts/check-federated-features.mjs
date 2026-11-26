@@ -460,7 +460,20 @@ if (isMainEntry) {
   console.log("\nfederated feature contract\n");
   assertNavStable("usg", STABLE_NAV_IDS);
   assertNavStable("lsg", LSG_STABLE_NAV_IDS);
-  assertWidgetListStable("src/components/dashboard/FederatedOverview.tsx", STABLE_WIDGET_IDS);
+  assertIncludes("src/components/dashboard/FederatedOverview.tsx", [
+    "workspace-header",
+    "workspace-tiles",
+    "workspace-overview-action",
+    "workspace-overview-list",
+    "workspace-overview-budget",
+    "workspace-shortcuts",
+    "statusHref",
+    "needsReview",
+    "dueSoon",
+    "recentDecisions",
+    "fallingBehind",
+    "taskProgress",
+  ]);
   assertWidgetWhitelistStable(
     "supabase/migrations/20260101003194_dashboard_widget_preferences.sql",
     STABLE_WIDGET_IDS,
@@ -495,7 +508,7 @@ if (isMainEntry) {
   assertFile("src/app/api/documents/[submissionId]/route.ts");
   assertFile("src/app/api/documents/[submissionId]/approve/route.ts");
   assertFile("src/components/dashboard/DocumentLibraryPanel.tsx");
-  assertFile("src/components/dashboard/DocumentSearchPanel.tsx");
+  assertIncludes("src/components/dashboard/DocumentLibraryPanel.tsx", ["documents-filters"]);
   assertIncludes("supabase/migrations/20260101003210_document_catalog_and_search.sql", [
     "document_catalog",
     "search_documents",
@@ -513,7 +526,7 @@ if (isMainEntry) {
 
   // ---- Task 5: Event budget link and budget reflection ----
   assertFile("supabase/migrations/20260101003220_event_budget_link.sql");
-  assertFile("src/components/dashboard/BudgetPanel.tsx");
+  assertFile("src/components/dashboard/LsgBudgetPanel.tsx");
   assertIncludes("supabase/migrations/20260101003220_event_budget_link.sql", [
     "event_id",
     "submit_event_budget",
@@ -524,9 +537,9 @@ if (isMainEntry) {
     "grant execute",
   ]);
   assertIncludes("src/lib/budgets.ts", ["eventId", "eventTitle", "eventDate"]);
-  assertIncludes("src/app/api/budgets/route.ts", ["eventId", "submit_event_budget"]);
+  assertIncludes("src/app/api/budgets/route.ts", ["eventId", "submit_unit_budget_request"]);
   assertRouteContract("src/app/api/budgets/route.ts", ["GET", "POST"]);
-  assertIncludes("src/components/dashboard/EventsWorkspace.tsx", ["Submit budget", "/api/budgets"]);
+  assertIncludes("src/components/dashboard/EventsWorkspace.tsx", ["Submit budget", "LsgBudgetPanel"]);
 
   // ---- Task 6: Unified calendar and future events ----
   assertFile("supabase/migrations/20260101003230_unified_calendar.sql");
@@ -544,8 +557,6 @@ if (isMainEntry) {
   // ---- Task 7: Monitoring by campus ----
   assertFile("supabase/migrations/20260101003240_monitoring_by_campus.sql");
   assertFile("src/lib/monitoring.ts");
-  assertFile("src/app/api/monitoring/route.ts");
-  assertFile("src/components/dashboard/MonitoringPanel.tsx");
   assertIncludes("supabase/migrations/20260101003240_monitoring_by_campus.sql", [
     "monitoring_by_campus",
     "is_usg_side",
@@ -556,7 +567,6 @@ if (isMainEntry) {
     "documents",
     "resolutions",
   ]);
-  assertRouteContract("src/app/api/monitoring/route.ts", ["GET"]);
 
   // ---- Task 8: Federated accomplishment reports ----
   assertFile("supabase/migrations/20260101003250_accomplishment_reports.sql");
@@ -610,7 +620,6 @@ if (isMainEntry) {
   assertFile("src/app/api/feedback/route.ts");
   assertFile("src/app/api/feedback/[id]/route.ts");
   assertFile("src/app/api/feedback/[id]/acknowledge/route.ts");
-  assertFile("src/components/dashboard/FeedbackPanel.tsx");
   assertIncludes("supabase/migrations/20260101003260_feedback.sql", [
     "feedback_entries",
     "create_feedback",
@@ -634,12 +643,6 @@ if (isMainEntry) {
   assertRouteContract("src/app/api/feedback/route.ts", ["GET", "POST"]);
   assertRouteContract("src/app/api/feedback/[id]/route.ts", ["GET"]);
   assertRouteContract("src/app/api/feedback/[id]/acknowledge/route.ts", ["POST"]);
-  assertIncludes("src/components/dashboard/FeedbackPanel.tsx", [
-    "FeedbackPanel",
-    "/api/feedback",
-    "Acknowledged",
-    "No feedback has been submitted yet.",
-  ]);
   assertIncludes("src/app/usg/manage/ManageClient.tsx", [
     "FeedbackWorkspace",
     'feedback: "reviewer"',
@@ -651,10 +654,12 @@ if (isMainEntry) {
     "tab === \"feedback\"",
   ]);
   assertIncludes("src/components/dashboard/usg-nav.ts", [
-    '{ label: "Feedback", href: "/usg/manage?tab=feedback" }',
+    'label: "Forms"',
+    'href: "/usg/forms"',
   ]);
   assertIncludes("src/components/dashboard/lsg-nav.ts", [
-    '{ label: "Feedback", href: "/lsg/manage?tab=feedback" }',
+    'label: "Forms"',
+    'href: "/lsg/forms"',
   ]);
   assertIncludes("src/lib/auth/messages.ts", ["invalid_subject", "invalid_message"]);
   assertIncludes("scripts/check-authority.mjs", [
@@ -721,14 +726,40 @@ if (isMainEntry) {
     "/api/officers/",
     "/deactivate",
   ]);
-  assertIncludes("src/app/usg/manage/ManageClient.tsx", [
+  assertIncludes("src/components/dashboard/PeoplePanel.tsx", [
+    "PeoplePanel",
+    "UmbrellaSection",
+    "OfficersPanel",
+    "InvitesPanel",
     "AccountsPanel",
-    'accounts: "owner"',
-    'tab === "accounts"',
+    'active === "units"',
+    'active === "officers"',
+    'active === "invites"',
+    'active === "permissions"',
+    '`/usg/manage?tab=people&view=${item.id}`',
+  ]);
+  assertIncludes("src/app/usg/manage/ManageClient.tsx", [
+    "PeoplePanel",
+    'people: "owner"',
+    'tab === "people"',
+    'requestedTab === "accounts"',
+    "canManage && !centralized",
+    '!(centralized && requestedTab === "people")',
+  ]);
+  assertIncludes("src/app/api/officers/route.ts", [
+    "currentAccount",
+    'account.accountScope !== "owner"',
+    'messageFor("forbidden")',
+    "{ status: 403 }",
   ]);
   assertIncludes("src/components/dashboard/ProfileSection.tsx", ["OfficerProfileFields"]);
   assertIncludes("src/components/dashboard/usg-nav.ts", [
-    '{ label: "Accounts", href: "/usg/manage?tab=accounts" }',
+    '{ label: "People & Units", href: "/usg/manage?tab=people&view=units" }',
+  ]);
+  assertNoIncludes("src/components/dashboard/usg-nav.ts", [
+    'tab=accounts',
+    'tab=invites',
+    'tab=umbrella',
   ]);
   assertNoIncludes("src/components/dashboard/lsg-nav.ts", [
     '{ label: "Accounts", href: "/lsg/manage?tab=accounts" }',

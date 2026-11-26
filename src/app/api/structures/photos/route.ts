@@ -103,6 +103,13 @@ export async function POST(req: Request) {
     );
   }
 
+  if (!UUID_RE.test(unitId)) {
+    return NextResponse.json(
+      { ok: false, reason: "invalid_uuid", message: "That unit reference is not valid." },
+      { status: 400 },
+    );
+  }
+
   try {
     const res = await callRpc<PhotoWriteResult>("persist_structure_holder_photo", {
       p_session_token: token,

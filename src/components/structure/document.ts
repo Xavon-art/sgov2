@@ -53,6 +53,51 @@ export function emptyDocument(): StructureDocument {
   };
 }
 
+/**
+ * The one writer of the paired holder fields. The classic form, the chart
+ * builder, hydration and templates all come through here, so `holder` is always
+ * `holders[0]` (or null on a vacant seat). Pass no list to derive it from the
+ * position; pass `[]` to make a holder-free copy.
+ */
+export function withSyncedHolders(
+  position: StructurePosition,
+  holders?: StructureHolder[] | StructureHolder | null,
+): StructurePosition {
+  const list =
+    holders === undefined
+      ? position.holders?.length
+        ? position.holders.slice()
+        : position.holder
+          ? [position.holder]
+          : []
+      : Array.isArray(holders)
+        ? holders.slice()
+        : holders
+          ? [holders]
+          : [];
+  return { ...position, holder: list[0] ?? null, holders: list };
+}
+
+/** Applies the holder sync to every seat in a document. */
+export function syncDocumentHolders(
+  doc: StructureDocument,
+  holders?: StructureHolder[] | StructureHolder | null,
+): StructureDocument {
+  return {
+    ...doc,
+    committees: doc.committees.map((committee) => ({
+      ...committee,
+      positions: committee.positions.map((position) => withSyncedHolders(position, holders)),
+    })),
+  };
+}
+
+/** Mirrors the server's email check so an obviously bad address never autosaves. */
+export function validEmail(value: string): boolean {
+  const email = value.trim();
+  return email.length > 0 && email.length <= 254 && /^[^\s@]+@[^\s@]+$/.test(email);
+}
+
 /** Unknown or partial layouts fall back field by field, never wholesale. */
 export function normalizeLayout(raw?: Partial<StructureLayout> | null): StructureLayout {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_LAYOUT };
@@ -110,12 +155,12 @@ export function normalizeDocument(
       ...committee,
       positions: positions.map((position, pi) => {
         const raw = position as StructurePosition;
-        const holders = Array.isArray(raw.holders) && raw.holders.length
+        const rawHolders = Array.isArray(raw.holders) && raw.holders.length
           ? raw.holders
           : raw.holder && typeof raw.holder === "object" && Object.keys(raw.holder).length
             ? [raw.holder]
             : [];
-        const holder = holders[0] ?? null;
+        const synced = withSyncedHolders(raw, rawHolders);
         const key = raw.key || nextKey("pos");
         // A duplicated key would make two nodes unaddressable; re-key the later
         // one so the builder can still point at it.
@@ -130,8 +175,8 @@ export function normalizeDocument(
           maxHolders: Number.isFinite(raw.maxHolders)
             ? Math.max(0, Math.min(20, raw.maxHolders!))
             : 1,
-          holder,
-          ...(holders.length ? { holders } : {}),
+          holder: synced.holder,
+          holders: synced.holders,
         };
       }),
     };
@@ -224,8 +269,8 @@ export function checkDocument(doc: StructureDocument): DocumentProblem | null {
     title: string,
     at: DocumentProblem["at"],
   ): DocumentProblem | null => {
-    if (!holder.email.trim()) {
-      return { message: `${title} needs the holder's email.`, at };
+    if (!validEmail(holder.email)) {
+      return { message: `${title} needs a valid email address.`, at };
     }
     if (!holder.firstName?.trim() || !holder.lastName?.trim()) {
       return { message: `${title} needs the holder's first and last name.`, at };

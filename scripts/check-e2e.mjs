@@ -1,10 +1,10 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
+import { readTestAccounts } from "./test-fixtures.mjs";
 
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const SHOTS = "C:/Users/Julius M. Matro/Desktop/sir tonie projects/screenshots/audit";
-const CREDENTIALS = "C:/Users/Julius M. Matro/Desktop/sir tonie projects/credentials/smartgov-test-accounts.txt";
 
 const VIEWPORTS = [
   { name: "mobile", width: 390, height: 844 },
@@ -19,11 +19,8 @@ const FEDERATED_TABS = {
     { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=future", tab: "future", label: "Future Events", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Events and Acts", path: "/usg/events", href: "/usg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=monitoring", tab: "monitoring", label: "Monitoring", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=accounts", tab: "accounts", label: "Accounts", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
+    { parent: "Manage", path: "/usg/manage", href: "/usg/manage?tab=people&view=units", tab: "people", label: "People & Units", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
   lsg: [
     { parent: "Request", path: "/lsg/request", href: "/lsg/request?tab=resolutions", tab: "resolutions", label: "Resolutions", anchor: "workspace-nav", kind: "nav", crumb: "Request" },
@@ -31,9 +28,7 @@ const FEDERATED_TABS = {
     { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=future", tab: "future", label: "Future Events", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Events and Acts", path: "/lsg/events", href: "/lsg/events?tab=accomplishment", tab: "accomplishment", label: "Accomplishment", anchor: "workspace-nav", kind: "nav", crumb: "Events and Acts" },
     { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=documents", tab: "documents", label: "Documents", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=search", tab: "search", label: "Search", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
     { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=budget", tab: "budget", label: "Budget", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
-    { parent: "Manage", path: "/lsg/manage", href: "/lsg/manage?tab=feedback", tab: "feedback", label: "Feedback", anchor: "workspace-nav", kind: "nav", crumb: "Manage" },
   ],
 };
 
@@ -69,19 +64,7 @@ async function hideTourPrompts(page) {
 }
 
 function fixture() {
-  const text = readFileSync(CREDENTIALS, "utf8");
-  const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
-  const emails = {};
-  for (const line of text.split(/\r?\n/)) {
-    const email = line.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
-    if (!email) continue;
-    if (/^\s*Owner\s*\/\s*Founder/i.test(line)) emails.usg = email;
-    else if (/^\s*President\s+Pedro/i.test(line)) emails.lsg = email;
-  }
-  if (!password || !emails.usg || !emails.lsg) {
-    throw new Error("Fixture credentials are missing expected accounts.");
-  }
-  return { password, emails };
+  return readTestAccounts();
 }
 
 async function signIn(page, email, password) {
@@ -200,91 +183,27 @@ async function federatedTabsPass(page, role) {
 }
 
 async function federatedUiStatesPass(page, role) {
-  if (role === "usg") {
-    const searchTab = FEDERATED_TABS.usg.find((tab) => tab.tab === "search");
-    try {
-      await openFederatedTab(page, role, searchTab);
-      await page.locator("#document-search-q").first().fill("no-such-federation-document-2026");
-      await page.getByRole("button", { name: /search catalog/i }).first().click();
-      await page.getByText(/no documents match this search/i).first().waitFor({ timeout: 15000 });
-      check("USG document search shows its empty state", true);
-    } catch (error) {
-      check("USG document search shows its empty state", false, error.message);
-    }
-    return;
-  }
-
-  const feedbackTab = FEDERATED_TABS.lsg.find((tab) => tab.tab === "feedback");
-  const handler = async (route) => {
-    if (route.request().method() === "POST") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: false, message: "Forced submission failure." }),
-      });
-      return;
-    }
-    await route.continue();
-  };
+  const documentsTab = FEDERATED_TABS[role].find((tab) => tab.tab === "documents");
   try {
-    await openFederatedTab(page, role, feedbackTab);
-    await page.getByRole("tab", { name: "Direct messages", exact: true }).click();
-    await page.getByText("Send feedback", { exact: true }).first().waitFor({ timeout: 15000 });
-    await page.route("**/api/feedback", handler);
-    await page.getByLabel("Subject", { exact: true }).first().fill("Federation failure state");
-    await page
-      .getByLabel("Message", { exact: true })
-      .first()
-      .fill("This submission is forced to fail in the browser gate.");
-    const submit = page.getByRole("button", { name: /send feedback/i }).first();
-    await submit.click();
-    await page
-      .getByRole("alert")
-      .filter({ hasText: "Forced submission failure." })
-      .first()
-      .waitFor({ timeout: 15000 });
-    check("LSG feedback submission shows a visible failure", true);
-    check("LSG feedback submit stays usable after failure", await submit.isEnabled());
+    await openFederatedTab(page, role, documentsTab);
+    await page.locator("#documents-filter-q").first().fill("no-such-federation-document-2026");
+    await page.getByRole("button", { name: /search catalog/i }).first().click();
+    await page.getByText(/no documents match these filters/i).first().waitFor({ timeout: 15000 });
+    check(`${role} documents filter shows its empty state`, true);
   } catch (error) {
-    check("LSG feedback submission shows a visible failure", false, error.message);
-    check("LSG feedback submit stays usable after failure", false, error.message);
-  } finally {
-    await page.unroute("**/api/feedback", handler).catch(() => {});
+    check(`${role} documents filter shows its empty state`, false, error.message);
   }
 }
 
 async function feedbackPass(page, role, consoleErrors) {
-  const tab = FEDERATED_TABS[role].find((item) => item.tab === "feedback");
   const title = `E2E feedback ${role} ${Date.now()}`;
   let publicPage = null;
   try {
-    await openFederatedTab(page, role, tab);
-    await page.getByTestId("feedback-workspace").waitFor({ timeout: 30000 });
+    await nav(page, "Forms", new RegExp(`/${role}/forms`));
+    await page.getByRole("tab", { name: "Feedback forms", exact: true }).click();
+    await page.locator('[data-tour="forms-create"]').waitFor({ timeout: 30000 });
+    check(`${role} canonical Forms exposes Feedback forms`, await page.getByTestId("feedback-form-new").isVisible());
 
-    const tabs = page.getByTestId("feedback-workspace");
-    const labels = ["Forms", "Responses", "Answer", "Direct messages"];
-    const visible = await Promise.all(
-      labels.map(async (label) => (await tabs.getByRole("tab", { name: label, exact: true }).count()) === 1),
-    );
-    check(`${role} feedback workspace shows four sub-tabs`, visible.every(Boolean), JSON.stringify(visible));
-
-    for (const [label, marker] of [
-      ["Responses", "feedback-responses-panel"],
-      ["Answer", "feedback-answer-panel"],
-    ]) {
-      await tabs.getByRole("tab", { name: label, exact: true }).click();
-      await page.getByTestId(marker).waitFor({ timeout: 20000 });
-      check(`${role} feedback ${label} tab renders`, true);
-    }
-
-    await tabs.getByRole("tab", { name: "Direct messages", exact: true }).click();
-    await page
-      .getByText(role === "usg" ? "Feedback from your units" : "Send feedback", { exact: true })
-      .first()
-      .waitFor({ timeout: 20000 });
-    check(`${role} feedback Direct messages tab renders`, true);
-
-    await tabs.getByRole("tab", { name: "Forms", exact: true }).click();
     await page.getByTestId("feedback-form-new").click();
     await page.getByTestId("feedback-form-builder").waitFor({ timeout: 20000 });
     await page.waitForTimeout(1200);
@@ -311,13 +230,13 @@ async function feedbackPass(page, role, consoleErrors) {
     await page.getByText("Form opened.", { exact: true }).first().waitFor({ timeout: 20000 });
 
     const linkText = await page
-      .getByText(/\/feedback\/f\/[A-Za-z0-9_-]{32}/)
+      .getByText(/\/forms\/feedback\/[A-Za-z0-9_-]{32}/)
       .first()
       .textContent({ timeout: 20000 });
     const publicUrl = linkText?.trim() ?? "";
     check(
-      `${role} opened feedback form exposes its public link`,
-      /^https?:\/\/.+\/feedback\/f\/[A-Za-z0-9_-]{32}$/.test(publicUrl),
+      `${role} opened feedback form exposes its canonical public link`,
+      /^https?:\/\/.+\/forms\/feedback\/[A-Za-z0-9_-]{32}$/.test(publicUrl),
       publicUrl,
     );
 
@@ -393,7 +312,7 @@ async function rolePass(page, role, email, password, consoleErrors) {
 
   if (role === "usg") {
     try {
-      await nav(page, "Survey", /\/usg\/surveys/);
+      await nav(page, "Forms", /\/usg\/forms/);
       const title = page.locator("#s-title");
       await title.focus();
       await page.locator('button[type="submit"]').first().evaluate((el) => el.click());
@@ -415,10 +334,10 @@ async function rolePass(page, role, email, password, consoleErrors) {
       check(`${role} ${viewport.name} overview screenshot captured`, false, error.message);
     }
     try {
-      await nav(page, "Survey", new RegExp(`${base}/surveys`));
+      await nav(page, "Forms", new RegExp(`${base}/forms`));
       await page.waitForLoadState("networkidle");
-      await page.screenshot({ path: path.join(SHOTS, `${role}-survey-${viewport.name}.png`), fullPage: true });
-      check(`${role} ${viewport.name} survey screenshot captured`, true);
+      await page.screenshot({ path: path.join(SHOTS, `${role}-forms-${viewport.name}.png`), fullPage: true });
+      check(`${role} ${viewport.name} forms screenshot captured`, true);
     } catch (error) {
       check(`${role} ${viewport.name} survey screenshot captured`, false, error.message);
     }

@@ -3,8 +3,18 @@
  *
  * A catalog row is metadata only. Bytes stay behind an RPC-checked download
  * route, so a result can name a document without ever carrying its contents.
+ *
+ * Document statuses use the unified status model
+ * (see {@link src/lib/status}); older rows that still carry a legacy value are
+ * mapped on read through {@link normalizeStatus}. The labels and classes below
+ * are re-exported from the unified module so the whole product renders the same
+ * status the same way.
  */
-export type DocumentStatus = "pending" | "approved" | "rejected";
+
+import { STATUS_LABEL as DOCUMENT_STATUS_LABEL, STATUS_CLASS as DOCUMENT_STATUS_CLASS } from "@/lib/status";
+import type { Status } from "@/lib/status";
+
+export type DocumentStatus = Status;
 
 export type DocumentGroupKind = "requirement" | "resolution" | "event" | "request" | "task";
 
@@ -41,17 +51,8 @@ export type DocumentRow = {
 
 export type DocumentDecision = DocumentStatus;
 
-export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
-  pending: "Pending",
-  approved: "Approved",
-  rejected: "Rejected",
-};
-
-export const DOCUMENT_STATUS_CLASS: Record<DocumentStatus, string> = {
-  pending: "border-brass/40 bg-brass-soft/30 text-brass-deep",
-  approved: "border-ink/20 bg-ink/[0.06] text-ink",
-  rejected: "border-[#d9a99c] bg-[#a5442c]/[0.08] text-[#a5442c]",
-};
+export { DOCUMENT_STATUS_LABEL, DOCUMENT_STATUS_CLASS };
+export type { Status };
 
 export const GROUP_KIND_LABEL: Record<DocumentGroupKind, string> = {
   requirement: "Requirement",

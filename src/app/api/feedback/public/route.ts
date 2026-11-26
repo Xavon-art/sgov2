@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listPublicFeedbackForms } from "@/lib/feedback-forms";
+import { canonicalFormsPublicPath, listPublicFeedbackForms } from "@/lib/feedback-forms";
 
 export const runtime = "nodejs";
 
@@ -15,7 +15,13 @@ export async function GET() {
       );
     }
     return NextResponse.json(
-      { ok: true, forms: res.forms ?? [] },
+      {
+        ok: true,
+        forms: (res.forms ?? []).map((form) => ({
+          ...form,
+          publicPath: canonicalFormsPublicPath(form.publicPath),
+        })),
+      },
       { headers: NO_STORE },
     );
   } catch (error) {

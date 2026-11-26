@@ -3,6 +3,12 @@ import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { readSessionToken } from "@/lib/auth/session";
+import {
+  loadCurrentAccountId,
+  loadUnitRecipientIds,
+  loadUsgRecipientIds,
+  notifyAccounts,
+} from "@/lib/notifications-server";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -108,10 +114,11 @@ export async function POST(req: Request) {
       if (!taskId) {
         return NextResponse.json({ ok: false, message: "Malformed request." }, { status: 400 });
       }
+      const messageBody = typeof body.body === "string" ? body.body.trim() : "";
       const res = await callRpc<ThreadPayload>("post_task_message", {
         p_session_token: token,
         p_task_id: taskId,
-        p_body: typeof body.body === "string" ? body.body : "",
+        p_body: messageBody,
         p_unit_id: typeof body.unitId === "string" && body.unitId ? body.unitId : null,
         p_reply_to: typeof body.replyTo === "string" && body.replyTo ? body.replyTo : null,
       });
@@ -121,6 +128,35 @@ export async function POST(req: Request) {
           { status: statusForReason(res.reason) },
         );
       }
+
+      const actorId = await loadCurrentAccountId(token);
+      let recipientIds: string[];
+      if (res.side === "usg") {
+        const detail = await callRpc<RpcResult & { assignments?: Array<{ unitId?: string }> }>(
+          "task_detail",
+          { p_session_token: token, p_task_id: taskId },
+        );
+        const unitIds = (detail.assignments ?? [])
+          .map((assignment) => assignment.unitId)
+          .filter((id): id is string => typeof id === "string");
+        recipientIds = await loadUnitRecipientIds(token, unitIds);
+      } else {
+        recipientIds = await loadUsgRecipientIds(token);
+      }
+
+      const preview = messageBody.length > 160 ? `${messageBody.slice(0, 157)}...` : messageBody;
+      await notifyAccounts(
+        token,
+        recipientIds.map((id) => ({ id })),
+        {
+          kind: "task_thread_message",
+          title: "New task message",
+          body: preview,
+          link: `/${res.side === "usg" ? "lsg" : "usg"}/request?tab=tasks&task=${taskId}&thread=1`,
+          excludeAccountId: actorId,
+        },
+      );
+
       return NextResponse.json({ ok: true, messageId: res.messageId, side: res.side });
     }
 

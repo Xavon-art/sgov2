@@ -110,6 +110,7 @@ export async function POST(req: Request) {
     justification?: unknown;
     proposalId?: unknown;
     eventId?: unknown;
+    periodId?: unknown;
     items?: unknown;
   };
   try {
@@ -146,6 +147,17 @@ export async function POST(req: Request) {
     if (!UUID.test(eventId)) {
       return json(
         { ok: false, message: "That event reference is not valid." },
+        { status: 400 },
+      );
+    }
+  }
+
+  let periodId: string | null = null;
+  if (typeof body.periodId === "string" && body.periodId.trim()) {
+    periodId = body.periodId.trim();
+    if (!UUID.test(periodId)) {
+      return json(
+        { ok: false, message: "That budget period reference is not valid." },
         { status: 400 },
       );
     }
@@ -190,19 +202,18 @@ export async function POST(req: Request) {
   }
 
   try {
-    const rpc = eventId ? "submit_event_budget" : "submit_budget";
-    const args: Record<string, unknown> = {
+    const res = await callRpc<
+      RpcResult & { budgetId?: string; requestedTotal?: number; eventId?: string }
+    >("submit_unit_budget_request", {
       p_session_token: token,
+      p_unit_id: null,
+      p_period_id: periodId,
       p_title: title,
       p_justification: typeof body.justification === "string" ? body.justification.trim() : "",
       p_items: body.items,
-    };
-    if (eventId) args.p_event_id = eventId;
-    else args.p_proposal_id = proposalId;
-
-    const res = await callRpc<
-      RpcResult & { budgetId?: string; requestedTotal?: number; eventId?: string }
-    >(rpc, args);
+      p_event_id: eventId,
+      p_proposal_id: proposalId,
+    });
 
     if (!res.ok) {
       return json(

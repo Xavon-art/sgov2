@@ -40,13 +40,20 @@ import {
   findPosition,
   nextKey,
   normalizeDocument,
+  validEmail,
+  withSyncedHolders,
 } from "@/components/structure/document";
+
+// Re-exported so callers that already import the helper from the chart keep
+// working; document.ts is the single implementation.
+export { withSyncedHolders };
 import { holderPhotoUrl, computeChart, type ChartNode } from "@/components/structure/chart";
 import {
   ChartBands,
   ChartEdges,
   ChartNodeCard,
   chartFrameStyle,
+  invalidateStructurePhotoCache,
   THEMES,
   useChartPhotos,
 } from "@/components/structure/StructureChart";
@@ -67,7 +74,27 @@ type Props = {
 };
 
 function withDoc(doc: StructureDocument, committees: StructureCommittee[]): StructureDocument {
+  // Every mutation lands in normalizeDocument, which now syncs `holder` and
+  // `holders[0]` through the shared helper. The chart and the classic form
+  // therefore cannot drift apart.
   return normalizeDocument({ ...doc, committees });
+}
+
+/** Removes a whole branch without leaving its child seats pointing at ghosts. */
+export function withoutCommittee(doc: StructureDocument, committeeKey: string): StructureDocument {
+  const removed = doc.committees.find((committee) => committee.key === committeeKey);
+  const removedKeys = new Set(removed?.positions.map((position) => position.key) ?? []);
+  const committees = doc.committees
+    .filter((committee) => committee.key !== committeeKey)
+    .map((committee) => ({
+      ...committee,
+      positions: committee.positions.map((position) =>
+        position.parentKey && removedKeys.has(position.parentKey)
+          ? { ...position, parentKey: null }
+          : position,
+      ),
+    }));
+  return withDoc(doc, committees);
 }
 
 function patchPosition(
@@ -156,10 +183,7 @@ export function StructureChartEditor({
 
   function removeBranch() {
     if (!selected || selected.committee.isUnit) return;
-    onChange({
-      ...doc,
-      committees: doc.committees.filter((c) => c.key !== selected.committee.key),
-    });
+    onChange(withoutCommittee(doc, selected.committee.key));
     onSelect(null);
   }
 
@@ -243,12 +267,12 @@ export function StructureChartEditor({
   function duplicate(key: string) {
     const at = findPosition(doc, key);
     if (!at) return;
-    const copy: StructurePosition = {
+    const copy = withSyncedHolders({
       ...at.position,
       key: nextKey("pos"),
       title: `${at.position.title} (copy)`,
       order: tierNextOrder(doc, at.position.tier ?? 0),
-    };
+    });
     onChange(
       withDoc(
         doc,
@@ -506,9 +530,9 @@ export function StructureChartEditor({
         <OfficerWizard
           doc={doc}
           onClose={() => setWizard(false)}
-          onAdd={(committeeName, position, newCommittee) => {
+          onAdd={(committeeKey, position, newCommittee) => {
             const committee =
-              doc.committees.find((c) => c.name === committeeName) ??
+              doc.committees.find((c) => c.key === committeeKey) ??
               doc.committees[0];
             let next = doc;
             if (newCommittee) {
@@ -697,20 +721,19 @@ function Inspector({
     }
     const list = holders.slice();
     list[index] = merged;
-    patch({
-      holders: list,
-      holder: index === 0 ? list[0] : position.holder,
-    });
+    patch(withSyncedHolders(position, list));
   }
 
   function addHolder() {
     const next = [...holders, { email: "", firstName: "", lastName: "" }];
-    patch({ holders: next, holder: next[0] ?? null, maxHolders: Math.max(position.maxHolders ?? 1, next.length) });
+    patch({
+      ...withSyncedHolders(position, next),
+      maxHolders: Math.max(position.maxHolders ?? 1, next.length),
+    });
   }
 
   function removeHolder(index: number) {
-    const next = holders.filter((_, i) => i !== index);
-    patch({ holders: next, holder: next[0] ?? null });
+    patch(withSyncedHolders(position, holders.filter((_, i) => i !== index)));
   }
 
   return (
@@ -745,7 +768,9 @@ function Inspector({
             min={0}
             max={12}
             value={position.tier ?? 0}
-            onChange={(e) => patch({ tier: Math.max(0, Math.min(12, Number(e.target.value) || 0)) })}
+            onChange={(e) =>
+              patch({ tier: Math.max(0, Math.min(12, Math.round(Number(e.target.value) || 0))) })
+            }
             className="mt-1 w-full rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
           />
         </label>
@@ -756,7 +781,11 @@ function Inspector({
             min={0}
             max={20}
             value={position.maxHolders ?? 1}
-            onChange={(e) => patch({ maxHolders: Math.max(0, Math.min(20, Number(e.target.value) || 0)) })}
+            onChange={(e) =>
+              patch({
+                maxHolders: Math.max(0, Math.min(20, Math.round(Number(e.target.value) || 0))),
+              })
+            }
             className="mt-1 w-full rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
           />
         </label>
@@ -933,6 +962,7 @@ function Inspector({
                     if (file.size > MAX_PHOTO_BYTES) return;
                     const base64 = await toBase64(file);
                     patchHolder(index, { photo: base64, hasPhoto: true });
+                    invalidateStructurePhotoCache();
                   }}
                 />
                 {index === 0 && primary?.hasPhoto && !primary.photo ? (
@@ -972,10 +1002,10 @@ function OfficerWizard({
 }: {
   doc: StructureDocument;
   onClose: () => void;
-  onAdd: (committeeName: string, position: StructurePosition, newCommittee?: string) => void;
+  onAdd: (committeeKey: string, position: StructurePosition, newCommittee?: string) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [committeeChoice, setCommitteeChoice] = useState(doc.committees[0]?.name ?? "__new");
+  const [committeeChoice, setCommitteeChoice] = useState(doc.committees[0]?.key ?? "__new");
   const [newCommittee, setNewCommittee] = useState("");
   const [tier, setTier] = useState(1);
   const [parentKey, setParentKey] = useState("");
@@ -992,10 +1022,13 @@ function OfficerWizard({
 
   function submit() {
     if (!title.trim()) return setProblem("Give the seat a title.");
-    if (!email.includes("@")) return setProblem("A valid email is required.");
+    if (!validEmail(email)) return setProblem("A valid email is required.");
     if (!firstName.trim() || !lastName.trim()) return setProblem("First and last name are required.");
     if (committeeChoice === "__new" && !newCommittee.trim()) {
       return setProblem("Name the new branch.");
+    }
+    if (parentKey && !findPosition(doc, parentKey)) {
+      return setProblem("Choose a parent seat that is in this structure.");
     }
 
     const holder: StructureHolder = {
@@ -1063,7 +1096,7 @@ function OfficerWizard({
                 className="mt-1 w-full rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
               >
                 {doc.committees.map((c) => (
-                  <option key={c.key} value={c.name}>
+                  <option key={c.key} value={c.key}>
                     {c.name}
                   </option>
                 ))}
@@ -1077,7 +1110,7 @@ function OfficerWizard({
                 min={0}
                 max={12}
                 value={tier}
-                onChange={(e) => setTier(Number(e.target.value) || 0)}
+                onChange={(e) => setTier(Math.max(0, Math.min(12, Math.round(Number(e.target.value) || 0))))}
                 className="mt-1 w-full rounded-lg border border-line bg-paper px-2.5 py-1.5 text-[0.8125rem]"
               />
             </label>

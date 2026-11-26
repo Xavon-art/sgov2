@@ -1,0 +1,164 @@
+System Redesign Changelog
+
+Phase 0 - feature map and plan
+- Added SYSTEM_FEATURE_MAP.txt.
+- Added PLAN.md.
+
+Phase 1 - unified status model and LSG Submit for Review
+- Added canonical statuses: PENDING, DRAFT, UNDER REVIEW, RETURNED, APPROVED, REJECTED, OVERDUE, with LATE SUBMISSION as a separate flag.
+- Added src/lib/status.ts and shared StatusBadge UI.
+- Updated task, request, requirement, resolution, document, event, structure, review queue, and accomplishment views to use normalized statuses.
+- Added the LSG submit-for-review flow with required-item checklist, confirmation, late flag, USG review lock, and withdraw-before-review-open behavior.
+- Added task API actions submit and withdraw and task-detail review-open stamping.
+- Added supabase/migrations/20260101004700_status_model_reconcile.sql for status remaps, new task columns, RPC rewrites, and submit/withdraw/open-review functions.
+- Added supabase/migrations/20260101004800_status_consumer_repair.sql for create_event_v2_base, sweep, resubmit, monitoring, dashboard, and resolution visibility status consumers.
+- Added user-facing messages for submit/withdraw validation failures.
+
+Phase 2 - deadlines, countdowns, extensions, reminders, and auto-close/reopen
+- Added supabase/migrations/20260101004850_deadline_duration_system.sql for stored due_at, assigned_at, grace period, review SLA, auto-close/reopen fields, extension reasons with proposed due dates, canonical extension statuses, reminder dedupe tables, helper functions, deadline reminders, review SLA reminders, auto-close, reopen, and deadline-aware task RPCs.
+- Added src/lib/deadlines.ts for countdown text, tone, overdue checks, and datetime conversions.
+- Added src/components/ui/CountdownChip.tsx and used it in task lists, detail views, and requirements.
+- Added a USG overdue filter, LSG overdue banners, locked answers/responses for closed tasks, and a USG reopen action with a new deadline and required reason.
+- Added grace-period and review-SLA fields to task creation.
+- Replaced day-based extension requests with reason plus proposed due date, with USG approve/decline and a required decline remark.
+- Added /api/cron/deadline-reminders and an hourly Vercel cron entry.
+- Added user-facing messages for extension and reopen validation failures.
+
+Phase 3 - USG review queue and item review flow
+- Added supabase/migrations/20260101004900_review_queue.sql for review timelines, opened-by-USG tracking, decision audit/notification, item-result computation, review queue RPCs, timeline RPCs, and historical timeline backfill.
+- Added /api/tasks/review-queue and /api/tasks/timeline read endpoints, plus a task open-review action.
+- Added src/components/dashboard/ReviewQueuePanel.tsx with filters for status, campus, unit, due date, overdue, and late; oldest-first items; extension requests; per-requirement file/link preview; and Approve/Return/Reject decisions with required remarks.
+- Added src/components/ui/ReviewTimeline.tsx and exposed timelines to LSG task details and USG item reviews.
+- Added a USG Review queue entry to the Request section and RETURNED resubmission guidance for LSG units.
+
+Phase 4 - per-unit budgets and allocation ledgers (backend)
+- Added supabase/migrations/20260101005000_budget_model.sql for budget periods, per-unit allocations, unit expense ledgers, USG expenses, period backfill, unit backfill, canonical budget statuses, and department unit type.
+- Added supabase/migrations/20260101005010_budget_rpcs.sql for allocation set/bulk/list, filtered budget requests, CSV export, USG expense CRUD, LSG unit overview/submit/spend/list RPCs, parent roll-up, period listing, audit, and notifications.
+- Added supabase/migrations/20260101005020_budget_compat.sql to rewrite legacy budget RPCs around unit-scoped access, allocation limits, approved-spending limits, and cumulative spending receipts.
+- Added backend endpoints for budget periods, unit totals, allocation set/bulk, filtered requests, CSV export, USG expenses, unit overview, unit expenses, parent roll-up, and event budget submit/spend.
+- Updated existing budget submit/detail/spend/review APIs to use the new per-unit RPCs; client-supplied unitId is never accepted for writes.
+- Added scripts/check-budget-isolation.ts and npm run check:budget-isolation for static API/RPC isolation checks plus optional dynamic RPC probes when DATABASE_URL is configured.
+- Added user-facing messages for allocation, spending, closed-period, and invalid-status refusals.
+
+Phase 5 - per-unit budgets and allocation ledgers (UI)
+- Added supabase/migrations/20260101005030_budget_files_timeline.sql for budget attachments, receipt files, budget file visibility, upload claiming, attach/list/download RPCs, and synthesized budget timelines.
+- Added budget upload support to /api/uploads and upload-client with budget justification, receipt, and USG expense file kinds.
+- Added endpoints for budget attachment list/attach, budget timeline, authorized budget file download, and USG expense receipt attach.
+- Added src/components/dashboard/budget-ui.tsx with shared budget cards, metrics, statuses, tabs, timelines, file lists, detail modal, and review actions.
+- Added src/components/dashboard/UsgBudgetPanel.tsx with period selection, refresh, CSV export, allocation management, grouped request tables, review queue, USG expenses, receipts, and detail views.
+- Added src/components/dashboard/LsgBudgetPanel.tsx with a four-step request flow, justification and receipt uploads, grouped request tables, spending forms, receipts, timeline, and pending roll-up.
+- Replaced the shared BudgetPanel in USG and LSG manage tabs with UsgBudgetPanel and LsgBudgetPanel, and removed the old shared component.
+- Updated EventsWorkspace budget and spending dialogs to use the compact LSG budget panel.
+
+Phase 6 - request tabs, merged task views, steppers, and filters
+- Standardised Request navigation on canonical ?tab=tasks|requirements|personal|resolutions links for both USG and LSG, with legacy personal-request and new resolutions URLs redirecting to the canonical tabs.
+- Kept Tasks and Requirements as one task lifecycle with a flat Requirements view that opens the parent task; personal requests and formal resolutions remain separate because their data paths, schemas, visibility, and decision flows differ.
+- Added RequestTabs on both sides and synced tab changes to the URL.
+- Added a shared request filter bar with status, campus/unit, due-date range, and overdue filtering for task lists.
+- Replaced the old inline task creation modal with a five-step USG CreateTaskStepper covering basics, assignment, requirements, deadline, and preview/publish.
+- Added a four-step LSG task flow: Read instructions, Files & links, Review checklist, and Submit for Review, while keeping the task thread attached to the selected task.
+- Added hideSubmit support to the LSG response panel so draft saving and final submission can be separated across steps.
+- Verified ResolutionPanel, /api/resolutions, and proposal views already use the unified status vocabulary and review decisions, so no lifecycle rewrite was needed.
+
+Phase 7 - action-first USG/LSG overviews
+- Rewrote GET /api/overview to accept ?side=lsg|usg while preserving the legacy counts/breakdown contract for existing audits.
+- Added side-specific overview payloads derived from existing task, review-queue, budget, and resolution data: LSG next action, due soon, status counts, recent decisions, and unit budget; USG review count, status counts, falling-behind units, task submission progress, and university budget.
+- Replaced the saved-layout widget grid in FederatedOverview with two linear paths: LSG next action -> deadlines/decisions -> budget, and USG review queue -> behind units/task progress -> budget.
+- Added clickable status strips, countdown chips, overdue-unit drill-down, task-progress links, and budget drill-down using nav-derived Request and Manage URLs only.
+- Added RequestSection query support for status, unit, and task deep links, including pending/overdue filter options and task auto-open.
+- Replaced overview tour steps and static check assertions with the new linear-path anchors and payload checks; updated PLAN.md with the resolved no-migration approach.
+
+Phase 8 - Forms merge (item 1)
+- Added /usg/forms and /lsg/forms as one Forms surface for surveys and feedback forms, with type filters, build/responses views, shared create actions, one form list, and existing builders reused behind one entry point.
+- Added canonical public form routes /forms/survey/[key] and /forms/feedback/[key], with the survey respondent UI moved into a reusable component.
+- Added redirects from /usg/surveys, /lsg/surveys, their detail routes, /survey/[id], /feedback/f/[token], and the old singular survey aliases; legacy manage?tab=feedback remains available.
+- Updated USG/LSG nav to show Forms, mapped generated feedback public paths to the canonical route without a migration, and updated survey detail links/returns to Forms.
+- Updated static feature checks for the Forms nav, canonical feedback link, and shared survey respondent component; typecheck, targeted lint, feature/requested/unit checks, and budget-isolation checks pass.
+
+Phase 8 - Documents/Search merge (item 2)
+- Rebuilt DocumentLibraryPanel as the single Documents surface with one filter bar for full-text query, document type, canonical status, group kind, and originating unit, plus clear-filters and search-catalog actions.
+- Added initialQuery support so legacy ?tab=search&q=... links open the merged Documents panel with the query already applied.
+- USG and LSG manage pages now render only DocumentLibraryPanel for both documents and legacy search tabs, and rewrite legacy ?tab=search URLs to ?tab=documents while preserving ?q=.
+- Removed the Search child from USG and LSG navigation; DocumentSearchPanel is no longer rendered and remains only as dead code for the later cleanup item.
+- Updated interaction, e2e, tours, federated, and requested-feature checks for the merged Documents surface and canonical reviewer permissions; typecheck, targeted lint, federated/requested/interaction checks pass.
+
+Phase 8 - Monitoring removal (item 3)
+- Removed Monitoring from USG Manage navigation and the Manage panel because it was an aggregate-only status report with no drill-down or action and duplicated the action-first overview plus module-native views.
+- Legacy /usg/manage?tab=monitoring links now redirect to the USG overview; the LSG workspace was already gated away from it.
+- Updated the Manage tour and federated, e2e, tours, authority, and smoke checks so no UI surface advertises the removed tab; API/RPC boundary checks remain intact.
+- Kept the migration, parser, API, and panel files staged for the later dead-code deletion item; typecheck, targeted lint, federated, feature, requested, and interaction checks pass.
+
+Phase 8 - Accomplishment reports finish (item 4)
+- Kept accomplishment reports as the Events child surface because filing, review, uploads, resubmission, and unit visibility are already implemented and permission-gated.
+- Clarified the event picker as Reportable events and the report grouping as Open reports / Accomplished Reports so statuses no longer imply a false submission state.
+- Added a Refresh action to the report list and enforced the advertised 10-file limit before uploads begin.
+- Typecheck, targeted lint, AI checks, and federated feature checks pass.
+
+Phase 8 - People & Units merge (item 5)
+- Added /usg/manage?tab=people as the single owner-only surface for Units, Officers, Invites, and Feedback access, with internal views selected by ?view=units|officers|invites|permissions.
+- Reused UmbrellaSection, OfficersPanel, InvitesPanel, and AccountsPanel so pause, handover, purge, deactivation, invitations, unit creation, roles, and cross-unit feedback targeting keep their existing permission gates and actions.
+- Replaced the Umbrella, Invites, and Accounts Manage children with one People & Units child in the USG nav and removed the standalone Officers More link in favor of the merged People view.
+- Added a /usg/officers redirect to the Officers view and legacy ?tab=umbrella, ?tab=invites, and ?tab=accounts redirects into the matching People views.
+- Updated federated, feature, interaction, smoke, e2e, tours, and dashboard-audit checks for the merged surface; typecheck, targeted lint, and static contract checks pass.
+
+Phase 8 - Org chart doors into Structure (item 6)
+- Removed the separate Published chart child from USG navigation and kept /org-chart as the full-page published read.
+- Added a View published chart action inside Manage > Government structure on both sides; USG keeps the owner/non-central gate and LSG relies on the existing session and unit-scope redirects.
+- Updated the feature map, screenshot script, and federated/interaction checks so the published chart is documented and asserted as a structure action, not a standalone nav door.
+
+Phase 8 - Final nav and redirects (item 7)
+- Added redirects from /usg/accounts, /usg/invites, and /usg/umbrella to the matching People views, and corrected legacy Manage tabs so accounts opens Feedback access and ?tab=officers opens the Officers view.
+- Removed the LSG Unit details tab and nav child; ?tab=unit and the old ?tab=usg alias now redirect to Profile, where the unit identity fields already live.
+- Removed the classic Direct messages tab from FeedbackWorkspace; feedback forms, responses, and answer remain, while Inbox stays the canonical messages surface.
+- Retargeted legacy Survey links, More links, deep-link aliases, tours, feature-map entries, and static checks to the canonical Forms, Inbox, People, and Structure routes.
+
+Phase 8 - Dead-code cleanup (item 8)
+- Removed DocumentSearchPanel, FeedbackPanel, MyUsgPanel, SectionPlanned, MonitoringPanel, `/api/monitoring`, and `/api/dashboard` after confirming no runtime consumers.
+- Retained the monitoring migration/RPC and `src/lib/monitoring.ts` because the authority checks still cover the RPC and the compliance CSV probe uses the library; the aggregate panel and API are gone.
+- Updated feature-map entries and static checks, and changed the navigation audit to validate `/api/*` hrefs against API route files instead of reporting them as missing page routes.
+
+Phase 8 - Permission gate recheck (item 9)
+- Added an owner-scope gate to `/api/officers` GET so the People API no longer exposes the officer roster to reviewer sessions even though the underlying database function allows reviewer reads.
+- Blocked People & Units, its legacy tab aliases, and the More link in centralized/unitary USG workspaces; the default tab remains Government structure.
+- Added federated/feature static assertions for both gates; typecheck and targeted static checks pass.
+
+Phase 9 - Notifications
+- Added src/lib/notifications-server.ts for unit/owner recipient lookup, actor exclusion, deduplication, and create_notification fan-out.
+- Added task creation, task thread, personal request submission, and personal request decision notices from the API boundary.
+- Added supabase/migrations/20260101005100_notification_flow_links.sql with legacy-function wrappers for task submission, task decisions, budget requests/reviews, extensions, events/claims, event assignments, accomplishment reports/reviews, survey closure, and stale link backfill.
+- Added item-focused deep links in RequestSection, ReviewQueuePanel, UsgBudgetPanel, LsgBudgetPanel, EventsWorkspace, AccomplishmentPanel, and MessagesPanel.
+- Updated the feature map so F23 documents the completed notification flows and canonical destinations.
+- Notification workflow:
+  1. USG creates a task: assigned LSG unit officers receive task_created, opening /lsg/request?tab=tasks&task=<taskId>.
+  2. Either side posts in a task thread: the other side receives task_thread_message, opening the task with thread=1.
+  3. LSG submits a task for review: USG reviewers receive task_submitted, opening /usg/request?tab=review with the task selected.
+  4. USG approves, returns, or rejects a requirement/item: the filing LSG unit receives task_requirement_*, opening /lsg/request?tab=tasks&task=<taskId>.
+  5. LSG files or resubmits a personal request: USG receives personal_request_submitted, opening /usg/request?tab=personal&request=<requestId>.
+  6. USG decides or the LSG withdraws a personal request: the correct side receives personal_request_decided, opening /{side}/request?tab=personal&request=<requestId>.
+  7. LSG submits a budget request: USG receives budget_submitted, opening /usg/manage?tab=budget&budgetTab=review&budget=<budgetId>.
+  8. USG reviews a budget request: LSG receives budget_*, opening /lsg/manage?tab=budget&budgetTab=overview&budget=<budgetId>.
+  9. LSG requests an extension: USG receives task_extension_requested, opening /usg/request?tab=review&task=<taskId>.
+  10. USG decides an extension: LSG receives task_extension_approved or task_extension_rejected, opening /lsg/request?tab=tasks&task=<taskId>.
+  11. USG publishes an event: LSG receives event_published, opening /lsg/events?event=<eventId>&action=claim.
+  12. LSG claims an event: USG receives event_claim, opening /usg/events?event=<eventId>&action=decide.
+  13. USG honours or rejects a claim: LSG receives event_honored or event_not_honored, opening /lsg/events?event=<eventId>.
+  14. USG assigns an event reporter: LSG receives event_assigned, opening /lsg/events?tab=accomplishment&event=<eventId>&action=report.
+  15. LSG submits an accomplishment report: USG receives accomplishment_report_submitted, opening /usg/events?tab=accomplishment&report=<reportId>.
+  16. USG acknowledges or returns an accomplishment report: LSG receives accomplishment_report_acknowledged or accomplishment_report_returned, opening /lsg/events?tab=accomplishment&report=<reportId>.
+  17. A direct message is sent: every other participant receives message, opening /{side}/messages?c=<conversationId>&m=<messageId>.
+  18. A survey closes: the creator receives survey_closed, opening /{side}/forms?type=survey&id=<surveyId>.
+- Verification: npx tsc --noEmit passes; npm run check:interactions passes 55/55 checks.
+
+Phase 10 - Quality checks
+- Removed dead href fallbacks from EventsWorkspace and FederatedOverview; StructureWorkspace placeholder guidance now labels sample values accurately, and the officers tour points at the canonical Manage > People view.
+- Strengthened the navigation audit to scan nav href properties and reject dead "#" anchors; all 53 page routes, 144 API routes, and 420 source files resolve.
+- Added scripts/test-fixtures.mjs as the shared parser for the current credential fixture; updated e2e, tours, interactions, authority, feedback-forms, and dashboard-audit scripts so they no longer depend on removed President Pedro/line-number fixture shapes.
+- Updated canonical feedback-form checks to use USG/LSG Forms > Feedback forms instead of the removed Manage > Feedback tab and refreshed the public feedback link regex to /forms/feedback/[key].
+- Added supabase/migrations/20260101005110_phase10_data_isolation.sql: the parent-rollup RPC is wrapped so non-USG callers only receive their own unit branch and USG callers keep the full descendant tree; approved document visibility remains org-wide by design while pending cross-unit documents stay scoped.
+- Extended check-budget-isolation.ts with static assertions for the rollup wrapper, task and document RPC scoping, session-token APIs, parent/child budget fixtures, task_detail denial, pending document denial, approved document visibility, and over-allocation blocking.
+- Added scripts/check-phase10-e2e.mjs and npm script test:phase10:e2e covering legacy redirects, no dead anchors, canonical Forms feedback, task creation, extension request/approval, submit/approve lifecycle, LSG allocation blocking, and USG budget campus filters.
+- Verification: npx tsc --noEmit passes; targeted ESLint on Phase 10 files passes; npm run build compiles successfully with 94/94 static pages.
+- Static checks pass: check:navigation, check:tours 329/329, check:interactions 55/55, check:features 136/136, check:requested 61/61, check:federated 48/48, check:units 308/308, check:reveal 21/21, and check:compliance all pass.
+- check:budget-isolation passes 23 static checks; the dynamic probe is skipped because DATABASE_URL is not configured in this environment.
+- Browser E2E is blocked until the app is running on localhost:3000; test:phase10:e2e currently fails at page.goto with net::ERR_CONNECTION_REFUSED before reaching any fixture or UI assertion.
+- Full npm run lint remains at the pre-existing baseline of 14 errors and 26 warnings from org-chart editor files and established unused-variable/img rules; Phase 10 introduced no new lint findings.

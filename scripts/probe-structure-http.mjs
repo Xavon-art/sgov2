@@ -537,16 +537,18 @@ ok("while a reviewer looking at the same unit is not",
 // ------------------------------------------------------------------- renewal
 console.log("\n--- 6. renewal carries the structure forward");
 
-// The officer who wrote the structure renews it. Not the USG: `canEdit` is what
-// gates this, and the reviewer never had it for somebody else's council.
+// The council officer who wrote the structure renews it. An owner-scoped USG
+// account also has canEdit on all units (migration 04450), so owner renewal is
+// legitimate; this check uses the unrelated council officer who has no edit
+// rights on somebody else's council.
 r = await rpc("request_structure_renewal", {
-  p_session_token: usgTok,
+  p_session_token: otherTok,
   p_unit_id: councilId,
   p_term_label: null,
   p_starts_on: null,
   p_ends_on: null,
 });
-ok("a reviewer cannot renew somebody else's council", r.body?.reason === "forbidden", r);
+ok("an unrelated council officer cannot renew somebody else's council", r.body?.reason === "forbidden", r);
 
 r = await rpc("request_structure_renewal", {
   p_session_token: lsgTok,

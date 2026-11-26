@@ -4,146 +4,132 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Reveal } from "@/components/fx/Reveal";
 import { ButtonLink } from "@/components/ui/Button";
-import { useDashboard } from "@/components/dashboard/dashboard-context";
-import { useBudgetStore } from "@/components/dashboard/budget-store";
-import { NAV_ICONS, type NavItem } from "@/components/dashboard/AppShell";
+import { CountdownChip } from "@/components/ui/CountdownChip";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import { type NavItem } from "@/components/dashboard/AppShell";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
-import { formatMoney } from "@/lib/budgets";
-import type { ResolutionRow } from "@/lib/resolutions";
-import {
-  IconArrowRight,
-  IconCheck,
-  IconClose,
-  IconDashboard,
-  IconLayers,
-  IconPencil,
-  IconSubmission,
-} from "@/components/ui/Icons";
+import { formatDate, formatMoney } from "@/lib/budgets";
+import { STATUS_LABEL, type Status } from "@/lib/status";
+import { IconArrowRight, IconDashboard } from "@/components/ui/Icons";
 
-/**
- * The overview each workspace opens on.
- *
- * It is deliberately built from nav, not from a fixed list of cards. The two
- * workspaces (USG and LSG) share six sections but not their meaning, and the
- * cards here are simply the sections with whatever the section is waiting on.
- * Passing `nav` in means this file names no route of its own -- the same
- * arrangement that keeps `usg-nav.ts` free of LSG routes keeps this overview
- * from ever rendering a link the caller's side does not own.
- *
- * The arrangement is the account's own. A saved layout reorders the tiles and
- * may hide or widen them, but it can only refer to ids that `nav` already
- * carries: a stale row from before a section moved, or a hand-made payload, is
- * dropped on merge rather than turned into a link. That keeps the saved layout
- * a preference about presentation, never a second route table.
- */
+type ActionItem = {
+  id: string;
+  title: string;
+  dueAt: string | null;
+  status: Status;
+  tab: "tasks";
+};
 
-type Counts = {
-  tasksOpen: number;
-  tasksOverdue: number;
-  requestsOpen: number;
-  eventsPending: number;
-  surveysOpen: number;
+type DecisionItem = {
+  id: string;
+  title: string;
+  status: Status;
+  remark: string | null;
+  decidedAt: string | null;
+  tab: "personal" | "resolutions";
+};
+
+type LsgPayload = {
+  nextAction: ActionItem | null;
+  dueSoon: ActionItem[];
+  statusCounts: Record<string, number>;
+  recentDecisions: DecisionItem[];
+  budget: {
+    totalSpent: number;
+    requestCount: number;
+    approvedCount: number;
+    remaining: number;
+    periodCount: number;
+  } | null;
+};
+
+type FallingBehind = {
+  unitId: string;
+  unitName: string;
+  campusName: string;
+  departmentName: string;
+  overdueCount: number;
+};
+
+type TaskProgress = {
+  taskId: string;
+  title: string;
+  submitted: number;
+  total: number;
+  dueAt: string | null;
+  overdue: boolean;
+};
+
+type UsgPayload = {
+  needsReview: number;
+  statusCounts: Record<string, number>;
+  fallingBehind: FallingBehind[];
+  taskProgress: TaskProgress[];
+  budget: {
+    allocated: number;
+    requested: number;
+    approved: number;
+    committed: number;
+    spent: number;
+    remaining: number;
+    unitCount: number;
+  } | null;
 };
 
 type OverviewPayload = {
   ok: boolean;
-  counts?: Counts;
-  breakdown?: Record<"tasks" | "requests" | "events" | "surveys", Record<string, number>>;
+  lsg?: LsgPayload;
+  usg?: UsgPayload;
   message?: string;
 };
 
-type TileLayout = { id: string; hidden: boolean; wide: boolean };
+type Signal = { key: Status; label: string };
 
-type LayoutPayload = { ok: boolean; layout?: unknown; widgets?: unknown; message?: string };
+const SIGNALS: Signal[] = [
+  { key: "pending", label: STATUS_LABEL.pending },
+  { key: "under_review", label: STATUS_LABEL.under_review },
+  { key: "returned", label: STATUS_LABEL.returned },
+  { key: "approved", label: STATUS_LABEL.approved },
+  { key: "overdue", label: STATUS_LABEL.overdue },
+];
 
-type LetterCounts = {
-  total: number;
-  approved: number;
-  pending: number;
-  underReview: number;
-};
-
-type ResolutionsPayload = { ok: boolean; rows?: ResolutionRow[]; message?: string };
-
-function countLetters(rows: ResolutionRow[]): LetterCounts {
-  const counts: LetterCounts = {
-    total: rows.length,
-    approved: 0,
-    pending: 0,
-    underReview: 0,
-  };
-  for (const row of rows) {
-    if (row.status === "submitted") counts.pending += 1;
-    else if (row.status === "under_review") counts.underReview += 1;
-    else if (row.status === "approved" || row.status === "published") counts.approved += 1;
-  }
-  return counts;
+function hrefFor(nav: NavItem[], id: string, fallback: string): string {
+  return nav.find((item) => item.id === id)?.href ?? fallback;
 }
 
-const WIDGETS = [
-  { id: "stats", label: "At a glance" },
-  { id: "reports", label: "Report summary" },
-  { id: "task-chart", label: "Task status" },
-  { id: "request-chart", label: "Request status" },
-  { id: "flow", label: "Workflow" },
-] as const;
-
-const DEFAULT_WIDGETS: string[] = WIDGETS.map((widget) => widget.id);
-const WIDGET_IDS = new Set<string>(DEFAULT_WIDGETS);
-
-/** Which counter belongs to which nav section, so a card can badge itself. */
-function countFor(id: string, c: NonNullable<OverviewPayload["counts"]>): number | null {
-  switch (id) {
-    case "request":
-      return c.tasksOpen + c.requestsOpen;
-    case "events":
-      return c.eventsPending;
-    case "survey":
-      return c.surveysOpen;
-    default:
-      return null;
+function withParams(href: string, params: Record<string, string>): string {
+  const [path, query] = href.split("?");
+  const next = new URLSearchParams(query ?? "");
+  for (const [key, value] of Object.entries(params)) {
+    if (value) next.set(key, value);
   }
+  const encoded = next.toString();
+  return encoded ? `${path}?${encoded}` : path;
 }
 
-function isTileLayout(value: unknown): value is TileLayout {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const tile = value as Record<string, unknown>;
+function taskHref(requestHref: string, taskId: string): string {
+  return withParams(requestHref, { tab: "tasks", task: taskId });
+}
+
+function tabHref(requestHref: string, tab: string): string {
+  return withParams(requestHref, { tab });
+}
+
+function statusHref(requestHref: string, status: Status): string {
+  return withParams(requestHref, { tab: "tasks", status });
+}
+
+function countFor(counts: Record<string, number> | undefined, status: Status): number {
+  return Number(counts?.[status] ?? 0);
+}
+
+function ProgressBar({ value, total }: { value: number; total: number }) {
+  const percent = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
   return (
-    typeof tile.id === "string" &&
-    typeof tile.hidden === "boolean" &&
-    typeof tile.wide === "boolean"
+    <div className="h-2 w-full overflow-hidden rounded-full bg-canvas" aria-hidden="true">
+      <div className="h-full rounded-full bg-brass" style={{ width: `${percent}%` }} />
+    </div>
   );
-}
-
-function isWidgetList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((id) => typeof id === "string" && WIDGET_IDS.has(id));
-}
-
-function ranked(bucket: Record<string, number> | undefined): Array<[string, number]> {
-  return Object.entries(bucket ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-}
-
-/**
- * Saved order first, nav order after. Ids the nav does not know are dropped,
- * duplicates collapse to their first appearance, and every tile the nav *does*
- * know but the saved row forgot is appended visible -- so adding a section in a
- * later release shows up for people who had already arranged their desk.
- */
-function mergeLayout(nav: NavItem[], saved: TileLayout[]): TileLayout[] {
-  const known = new Set(nav.map((item) => item.id));
-  const seen = new Set<string>();
-  const merged: TileLayout[] = [];
-
-  for (const tile of saved) {
-    if (!known.has(tile.id) || seen.has(tile.id)) continue;
-    seen.add(tile.id);
-    merged.push({ id: tile.id, hidden: tile.hidden, wide: tile.wide });
-  }
-  for (const item of nav) {
-    if (seen.has(item.id)) continue;
-    merged.push({ id: item.id, hidden: false, wide: false });
-  }
-  return merged;
 }
 
 export function FederatedOverview({
@@ -153,54 +139,28 @@ export function FederatedOverview({
   nav: NavItem[];
   side: "usg" | "lsg";
 }) {
-  const { account, meta } = useDashboard();
-  const { dashboard: budgetDashboard } = useBudgetStore();
-  const [counts, setCounts] = useState<Counts | null>(null);
-  const [breakdown, setBreakdown] = useState<NonNullable<OverviewPayload["breakdown"]> | null>(null);
-  const [letterCounts, setLetterCounts] = useState<LetterCounts | null>(null);
+  const [payload, setPayload] = useState<OverviewPayload | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const [saved, setSaved] = useState<TileLayout[]>([]);
-  const [draft, setDraft] = useState<TileLayout[] | null>(null);
-  const [savedWidgets, setSavedWidgets] = useState<string[]>(DEFAULT_WIDGETS);
-  const [widgetDraft, setWidgetDraft] = useState<string[] | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [layoutNotice, setLayoutNotice] = useState("");
 
   useEffect(() => {
     let alive = true;
     void (async () => {
       try {
-        const res = await fetch("/api/overview");
+        const res = await fetch(`/api/overview?side=${side}`);
         const body = (await res.json().catch(() => ({}))) as OverviewPayload;
         if (!alive) return;
         if (res.ok && body.ok) {
-          setCounts(body.counts ?? null);
-          setBreakdown(body.breakdown ?? null);
+          setPayload(body);
           setError("");
         } else {
+          setPayload(null);
           setError(body.message ?? "We could not load your overview.");
         }
       } catch {
         if (alive) setError("We could not load your overview.");
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (side !== "lsg") return;
-    let alive = true;
-    void (async () => {
-      try {
-        const res = await fetch("/api/resolutions");
-        const body = (await res.json().catch(() => ({}))) as ResolutionsPayload;
-        if (alive && res.ok && body.ok) setLetterCounts(countLetters(body.rows ?? []));
-      } catch {
-        if (alive) setLetterCounts(null);
+      } finally {
+        if (alive) setLoading(false);
       }
     })();
     return () => {
@@ -208,601 +168,363 @@ export function FederatedOverview({
     };
   }, [side]);
 
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const res = await fetch("/api/dashboard/layout");
-        const body = (await res.json().catch(() => ({}))) as LayoutPayload;
-        if (!alive || !res.ok || !body.ok || !Array.isArray(body.layout)) return;
-        setSaved(body.layout.filter(isTileLayout));
-        if (isWidgetList(body.widgets)) setSavedWidgets(body.widgets);
-      } catch {
-        // A layout that cannot be read is not worth an alert: the nav order is
-        // a perfectly good dashboard, and the next save will repair the row.
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const requestHref = useMemo(() => hrefFor(nav, "request", `/${side}/request`), [nav, side]);
+  const manageHref = useMemo(() => hrefFor(nav, "manage", `/${side}/manage`), [nav, side]);
+  const eventsHref = useMemo(() => hrefFor(nav, "events", `/${side}/events`), [nav, side]);
+  const inboxHref = useMemo(() => hrefFor(nav, "messages", `/${side}/messages`), [nav, side]);
 
-  const tileNav = useMemo(
-    () => (side === "lsg" ? nav.filter((item) => item.id !== "manage") : nav),
-    [nav, side],
-  );
-
-  const activeLayout = useMemo(
-    () => mergeLayout(tileNav, draft ?? saved),
-    [tileNav, draft, saved],
-  );
-
-  const byId = useMemo(() => new Map(tileNav.map((item) => [item.id, item])), [tileNav]);
-
-  const visibleTiles = activeLayout.filter((tile) => editing || !tile.hidden);
-  const activeWidgetIds = widgetDraft ?? savedWidgets;
-  const visibleWidgets = WIDGETS.filter((widget) => activeWidgetIds.includes(widget.id));
-
-  function beginEditing() {
-    setDraft(mergeLayout(tileNav, saved));
-    setWidgetDraft(savedWidgets.slice());
-    setEditing(true);
-    setLayoutNotice("");
-  }
-
-  function cancelEditing() {
-    setDraft(null);
-    setWidgetDraft(null);
-    setEditing(false);
-    setLayoutNotice("");
-  }
-
-  function moveTile(index: number, delta: -1 | 1) {
-    if (!draft) return;
-    const target = index + delta;
-    if (target < 0 || target >= draft.length) return;
-    const next = draft.slice();
-    const [moved] = next.splice(index, 1);
-    next.splice(target, 0, moved);
-    setDraft(next);
-  }
-
-  function toggleTile(id: string, key: "hidden" | "wide") {
-    if (!draft) return;
-    setDraft(
-      draft.map((tile) => (tile.id === id ? { ...tile, [key]: !tile[key] } : tile)),
-    );
-  }
-
-  function toggleWidget(id: string) {
-    setWidgetDraft((current) => {
-      const base = current ?? savedWidgets;
-      return base.includes(id) ? base.filter((entry) => entry !== id) : [...base, id];
-    });
-  }
-
-  async function persist(next: TileLayout[], nextWidgets: string[]) {
-    setSaving(true);
-    setLayoutNotice("");
-    try {
-      const res = await fetch("/api/dashboard/layout", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ layout: next, widgets: nextWidgets }),
-      });
-      const body = (await res.json().catch(() => ({}))) as LayoutPayload;
-      if (!res.ok || !body.ok) {
-        setLayoutNotice(body.message ?? "We could not save your dashboard. Try again.");
-        return false;
-      }
-      setSaved(next);
-      setSavedWidgets(nextWidgets.slice());
-      return true;
-    } catch {
-      setLayoutNotice("We could not save your dashboard. Try again.");
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveEditing() {
-    if (!draft) return;
-    const ok = await persist(draft, widgetDraft ?? savedWidgets);
-    if (ok) {
-      setDraft(null);
-      setWidgetDraft(null);
-      setEditing(false);
-      setLayoutNotice("Dashboard saved.");
-    }
-  }
-
-  async function resetLayout() {
-    const defaults = mergeLayout(
-      tileNav,
-      tileNav.map((item) => ({ id: item.id, hidden: false, wide: false })),
-    );
-    const ok = await persist(defaults, DEFAULT_WIDGETS);
-    if (ok) {
-      setDraft(null);
-      setWidgetDraft(null);
-      setEditing(false);
-      setLayoutNotice("Dashboard reset to the default arrangement.");
-    }
-  }
-
-  const roleWord = account.accountScope === "owner" ? "owner" : "officer";
-  const unitName = account.campusName || account.universityName || null;
-
-  // The heading says who is looking at it. A USG owner sees the office; an LSG
-  // officer sees their own unit, because the whole point of the LSG side is
-  // that it is one unit's desk rather than the university's.
-  const heading =
+  const signals = payload?.[side]?.statusCounts;
+  const headerTitle = side === "usg" ? "What needs your decision" : "What you must do next";
+  const headerCopy =
     side === "usg"
-      ? meta.organizationName || "Student government office"
-      : unitName || "Your unit";
-
-  function barList(bucket: Record<string, number> | undefined) {
-    const rows = ranked(bucket);
-    if (rows.length === 0) {
-      return <p className="text-[0.8125rem] leading-relaxed text-muted">No data yet.</p>;
-    }
-    const max = Math.max(1, ...rows.map((row) => row[1]));
-    return (
-      <div className="flex flex-col gap-3">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-3 text-[0.75rem] font-medium text-body">
-              <span className="truncate">{label}</span>
-              <span className="shrink-0 text-muted">{value}</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-line/50">
-              <div
-                className="h-full rounded-full bg-brass-deep"
-                style={{ width: `${Math.max(4, Math.round((value / max) * 100))}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  function renderWidget(id: string) {
-    if (id === "stats") {
-      const stats = [
-        ["Open tasks", counts?.tasksOpen],
-        ["Overdue", counts?.tasksOverdue],
-        ["Open requests", counts?.requestsOpen],
-        ["Pending events", counts?.eventsPending],
-        ["Open surveys", counts?.surveysOpen],
-      ] as const;
-      return (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {stats.map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-line/70 bg-paper/60 p-3">
-              <p className="text-[0.6875rem] font-medium text-muted">{label}</p>
-              <p className="mt-1 text-[1.375rem] font-semibold leading-none text-ink">
-                {value ?? "—"}
-              </p>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    if (id === "reports") {
-      return (
-        <div className="flex flex-col gap-2 text-[0.8125rem] leading-relaxed text-body">
-          <p>
-            {counts
-              ? `${counts.tasksOpen} task${counts.tasksOpen === 1 ? "" : "s"} are open, including ${counts.tasksOverdue} overdue.`
-              : "Task totals are loading."}
-          </p>
-          <p>
-            {counts
-              ? `${counts.requestsOpen} request${counts.requestsOpen === 1 ? "" : "s"} are waiting for review, with ${counts.eventsPending} event${counts.eventsPending === 1 ? "" : "s"} and ${counts.surveysOpen} survey${counts.surveysOpen === 1 ? "" : "s"} in progress.`
-              : "Request, event, and survey totals are loading."}
-          </p>
-        </div>
-      );
-    }
-    if (id === "task-chart") return barList(breakdown?.tasks);
-    if (id === "request-chart") return barList(breakdown?.requests);
-    return (
-      <div className="flex flex-wrap items-center gap-2 text-[0.75rem] font-medium text-body">
-        {["Filed", "Triaged", "Assigned", "Reviewed"].map((step, index) => (
-          <span key={step} className="flex items-center gap-2">
-            <span className="rounded-full border border-brass/30 bg-brass-soft/25 px-3 py-1.5 text-brass-deep">
-              {step}
-            </span>
-            {index < 3 ? (
-              <IconArrowRight className="h-3.5 w-3.5 text-muted" strokeWidth={1.8} aria-hidden="true" />
-            ) : null}
-          </span>
-        ))}
-      </div>
-    );
-  }
+      ? "Start with the oldest review, then work down the status strip."
+      : "Start with the earliest deadline, then work down the status strip.";
 
   return (
-    <section className="flex flex-col gap-8">
-      <Reveal className="flex flex-col gap-3">
-        <div data-tour="workspace-header" className="flex items-center gap-3">
-          <SectionIcon>
-            <IconDashboard className="h-5 w-5" strokeWidth={1.7} />
-          </SectionIcon>
+    <div className="mx-auto flex w-full max-w-[76rem] flex-col gap-5 px-4 py-8 sm:px-6 lg:px-10">
+      <Reveal>
+        <header data-tour="workspace-header" className="flex flex-wrap items-end justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <p className="eyebrow">{side === "usg" ? "Office desk" : "Unit desk"}</p>
-            <h1 className="text-[1.875rem] leading-tight sm:text-[2.25rem]">{heading}</h1>
+            <p className="eyebrow">Overview</p>
+            <div className="flex items-center gap-3">
+              <SectionIcon>
+                <IconDashboard className="h-5 w-5" strokeWidth={1.7} />
+              </SectionIcon>
+              <h1 className="text-[clamp(1.8rem,3.4vw,2.8rem)] leading-tight">{headerTitle}</h1>
+            </div>
+            <p className="max-w-2xl text-sm text-body">{headerCopy}</p>
           </div>
-        </div>
-        <p className="max-w-2xl text-[0.9375rem] leading-relaxed text-body">
-          {side === "usg"
-            ? "You oversee every unit underneath you: their tasks, their requests back up, the events they file, and the surveys you run together. Start anywhere below."
-            : `What ${unitName ?? "your unit"} owes the student government, and what it has sent back. Start anywhere below.`}
-        </p>
-        <p className="text-[0.75rem] text-muted">
-          Signed in as {account.displayName} - {roleWord}
-        </p>
+          <ButtonLink href={tabHref(requestHref, "tasks")} variant="outline" size="sm">
+            Open Request
+            <IconArrowRight className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          </ButtonLink>
+        </header>
       </Reveal>
 
       {error ? (
-        <p role="alert" className="text-[0.9375rem] font-medium text-[#a5442c]">
+        <p role="alert" className="rounded-xl border border-[#a5442c] bg-[#a5442c]/[0.08] p-4 text-sm text-[#a5442c]">
           {error}
         </p>
       ) : null}
 
-      <Reveal delay={0.06} className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="eyebrow">Your sections</p>
-          <div className="flex flex-wrap items-center gap-2">
-            {editing ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void saveEditing()}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-ink px-4 py-2 text-[0.75rem] font-semibold text-paper transition-opacity disabled:opacity-50"
-                >
-                  <IconCheck className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                  {saving ? "Saving..." : "Save layout"}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelEditing}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-colors hover:border-line-strong disabled:opacity-50"
-                >
-                  <IconClose className="h-3.5 w-3.5" strokeWidth={2.2} aria-hidden="true" />
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void resetLayout()}
-                  disabled={saving}
-                  className="rounded-full px-3 py-2 text-[0.75rem] font-medium text-muted transition-colors hover:text-ink disabled:opacity-50"
-                >
-                  Reset
-                </button>
-              </>
-            ) : (
-              <button
-                data-tour="workspace-customize"
-                type="button"
-                onClick={beginEditing}
-                className="inline-flex items-center gap-1.5 rounded-full border border-line px-4 py-2 text-[0.75rem] font-semibold text-ink transition-[border-color,box-shadow] hover:border-line-strong hover:shadow-lift"
-              >
-                <IconPencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-                Customize
-              </button>
-            )}
-          </div>
-        </div>
+      <section data-tour="workspace-tiles" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {SIGNALS.map((signal) => (
+          <Link
+            key={signal.key}
+            href={statusHref(requestHref, signal.key)}
+            className="rounded-2xl border border-line bg-paper p-3 text-left transition hover:border-ink/25 hover:shadow-lift"
+          >
+            <div className="text-[0.7rem] uppercase tracking-[0.16em] text-muted">{signal.label}</div>
+            <div className="mt-1 text-2xl font-medium tabular-nums">{countFor(signals, signal.key)}</div>
+          </Link>
+        ))}
+      </section>
 
-        {layoutNotice ? (
-          <p role="status" className="text-[0.8125rem] leading-relaxed text-muted">
-            {layoutNotice}
-          </p>
-        ) : null}
+      {loading ? <p className="text-sm text-muted">Loading your overview...</p> : null}
 
-        {editing ? (
-          <p className="text-[0.8125rem] leading-relaxed text-muted">
-            Move a tile with the arrows, hide the ones you do not use, or let a tile
-            take two columns. Hidden tiles stay here dimmed while you edit.
-          </p>
-        ) : null}
+      {!loading && side === "lsg" && payload?.lsg ? (
+        <LsgPath data={payload.lsg} requestHref={requestHref} manageHref={manageHref} />
+      ) : null}
 
-        <div data-tour="workspace-tiles" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleTiles.map((tile) => {
-            const item = byId.get(tile.id);
-            if (!item) return null;
-            const TileIcon = NAV_ICONS[item.icon];
-            const badge = counts ? countFor(item.id, counts) : null;
-            const span = tile.wide ? " sm:col-span-2" : "";
-            const position = activeLayout.findIndex((entry) => entry.id === tile.id);
+      {!loading && side === "usg" && payload?.usg ? (
+        <UsgPath data={payload.usg} requestHref={requestHref} manageHref={manageHref} />
+      ) : null}
 
-            if (editing) {
-              return (
-                <div
-                  key={item.id}
-                  className={`flex flex-col gap-3 rounded-2xl border border-dashed border-line-strong bg-paper/50 p-5${span}${
-                    tile.hidden ? " opacity-55" : ""
-                  }`}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <TileIcon className="h-4 w-4 shrink-0 text-brass-deep" strokeWidth={1.7} aria-hidden="true" />
-                      <span className="text-[1.0625rem] leading-snug font-medium text-ink">
-                        {item.label}
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-2">
-                      {tile.hidden ? (
-                        <span className="rounded-full bg-line/60 px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">
-                          Hidden
-                        </span>
-                      ) : null}
-                      {tile.wide ? (
-                        <span className="rounded-full bg-brass-soft/50 px-2 py-0.5 text-[0.6875rem] font-semibold text-brass-deep">
-                          Wide
-                        </span>
-                      ) : null}
-                    </span>
-                  </span>
-                  <span className="text-[0.8125rem] leading-relaxed text-muted">{item.hint}</span>
-                  <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => moveTile(position, -1)}
-                      disabled={position <= 0}
-                      aria-label={`Move ${item.label} up`}
-                      className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:border-line-strong disabled:opacity-40"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveTile(position, 1)}
-                      disabled={position < 0 || position >= activeLayout.length - 1}
-                      aria-label={`Move ${item.label} down`}
-                      className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:border-line-strong disabled:opacity-40"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleTile(item.id, "wide")}
-                      aria-pressed={tile.wide}
-                      className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:border-line-strong"
-                    >
-                      {tile.wide ? "Normal width" : "Wide"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleTile(item.id, "hidden")}
-                      aria-pressed={tile.hidden}
-                      className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:border-line-strong"
-                    >
-                      {tile.hidden ? "Show" : "Hide"}
-                    </button>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`group flex flex-col gap-2 rounded-2xl border border-line bg-paper/70 p-5 transition-[border-color,box-shadow,transform] duration-300 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lift${span}`}
-              >
-                <span className="flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-3">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brass/25 bg-brass-soft/20 text-brass-deep">
-                      <TileIcon className="h-5 w-5" strokeWidth={1.7} aria-hidden="true" />
-                    </span>
-                    <span className="text-[1.0625rem] leading-snug font-medium text-ink">
-                      {item.label}
-                    </span>
-                  </span>
-                  {badge && badge > 0 ? (
-                    <span className="shrink-0 rounded-full bg-brass-soft/50 px-2.5 py-1 text-[0.6875rem] font-semibold text-brass-deep">
-                      {badge}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-[0.8125rem] leading-relaxed text-muted">{item.hint}</span>
-              </Link>
-            );
-          })}
-        </div>
-
-        {!editing && visibleTiles.length === 0 ? (
-          <p className="rounded-2xl border border-line bg-paper/70 p-6 text-[0.875rem] leading-relaxed text-muted">
-            Every tile is hidden. Choose Customize to bring one back.
-          </p>
-        ) : null}
-      </Reveal>
-
-      {side === "lsg" && (
-        <Reveal delay={0.06}>
-          <div data-tour="budget-overview" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-            <p className="eyebrow">Budget overview</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <p className="text-xs text-muted">Total spent</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  ₱{formatMoney(budgetDashboard?.totalSpent)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Requests</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  {budgetDashboard?.requestCount ?? 0}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Approved</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  {budgetDashboard?.approvedCount ?? 0}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Remaining</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  ₱{formatMoney(budgetDashboard?.remaining)}
-                </p>
-              </div>
-            </div>
-            {(budgetDashboard?.periods?.length ?? 0) > 0 && (
-              <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {budgetDashboard?.periods.map((period) => (
-                  <div key={period.label} className="rounded-xl border border-line p-3">
-                    <p className="text-xs text-muted">{period.label}</p>
-                    <p className="mt-1 text-sm text-ink">
-                      Approved ₱{formatMoney(period.approved)} of ₱{formatMoney(period.requested)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {!budgetDashboard && (
-              <p className="mt-4 text-sm text-muted">Budget figures are not available right now.</p>
-            )}
-          </div>
-        </Reveal>
-      )}
-
-      {side === "lsg" && (
-        <Reveal delay={0.07}>
-          <div data-tour="letter-dashboard" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-            <p className="eyebrow">Letter dashboard</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <p className="text-xs text-muted">Letters submitted</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  {letterCounts?.total ?? 0}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Approved</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  {letterCounts?.approved ?? 0}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Pending</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  {letterCounts?.pending ?? 0}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-muted">Under review</p>
-                <p className="mt-1 text-xl font-semibold text-ink">
-                  {letterCounts?.underReview ?? 0}
-                </p>
-              </div>
-            </div>
-            {!letterCounts && (
-              <p className="mt-4 text-sm text-muted">Letter figures are not available right now.</p>
-            )}
-          </div>
-        </Reveal>
-      )}
-
-      <Reveal delay={0.08}>
-        <div data-tour="workspace-widgets" className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div className="flex flex-col gap-1">
-              <p className="eyebrow">Reports and signals</p>
-              <p className="text-[0.8125rem] leading-relaxed text-muted">
-                {editing
-                  ? "Choose which summaries stay on your desk."
-                  : "A quick read of the work moving through the office."}
-              </p>
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {editing
-              ? WIDGETS.map((widget) => {
-                  const shown = activeWidgetIds.includes(widget.id);
-                  return (
-                    <div
-                      key={widget.id}
-                      data-widget={widget.id}
-                      className={`flex flex-col gap-3 rounded-2xl border border-dashed border-line-strong bg-paper/50 p-5${
-                        shown ? "" : " opacity-55"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[1.0625rem] leading-snug font-medium text-ink">
-                          {widget.label}
-                        </span>
-                        {shown ? (
-                          <span className="rounded-full bg-brass-soft/50 px-2 py-0.5 text-[0.6875rem] font-semibold text-brass-deep">
-                            Shown
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-line/60 px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">
-                            Hidden
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-auto flex justify-end pt-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleWidget(widget.id)}
-                          aria-pressed={shown}
-                          className="rounded-full border border-line px-3 py-1.5 text-[0.75rem] font-medium text-ink transition-colors hover:border-line-strong"
-                        >
-                          {shown ? "Hide" : "Show"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              : visibleWidgets.map((widget) => (
-                  <div
-                    key={widget.id}
-                    data-widget={widget.id}
-                    className={`rounded-2xl border border-line bg-paper/70 p-5 sm:p-6${
-                      widget.id === "flow" ? " sm:col-span-2" : ""
-                    }`}
-                  >
-                    <p className="mb-4 text-[0.9375rem] font-semibold text-ink">{widget.label}</p>
-                    {renderWidget(widget.id)}
-                  </div>
-                ))}
-          </div>
-          {!editing && visibleWidgets.length === 0 ? (
-            <p className="rounded-2xl border border-line bg-paper/70 p-6 text-[0.875rem] leading-relaxed text-muted">
-              Every widget is hidden. Choose Customize to bring one back.
-            </p>
-          ) : null}
-        </div>
-      </Reveal>
-
-      <Reveal delay={0.1}>
-        <div data-tour="workspace-shortcuts" className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-          <p className="eyebrow">{side === "usg" ? "Your umbrella" : "Your standing"}</p>
-          <p className="mt-2 text-[0.9375rem] leading-relaxed text-body">
-            {side === "usg"
-              ? "Manage holds the units under you, the invitations you send, and your own profile and look. Request is where you push a task down and read what comes back."
-              : "Manage holds your own profile and government structure. Request is where the USG's tasks land, and where you send a request of your own back up."}
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <ButtonLink href={nav[1]?.href ?? nav[0].href} variant="primary" size="sm">
-              <IconLayers className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-              Open Manage
+      {!loading && !error ? (
+        <div data-tour="workspace-shortcuts" className="flex flex-wrap gap-2 rounded-2xl border border-line bg-paper p-4">
+          {side === "usg" ? (
+            <ButtonLink href={tabHref(requestHref, "tasks")} size="sm" variant="brass">
+              Create Task
             </ButtonLink>
-            <ButtonLink href={nav[2]?.href ?? nav[0].href} variant="paper" size="sm">
-              <IconSubmission className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-              Go to Request
+          ) : (
+            <ButtonLink href={tabHref(requestHref, "tasks")} size="sm" variant="brass">
+              Request
+            </ButtonLink>
+          )}
+          <ButtonLink href={eventsHref} size="sm" variant="outline">
+            Events
+          </ButtonLink>
+          <ButtonLink href={inboxHref} size="sm" variant="outline">
+            Inbox
+          </ButtonLink>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function LsgPath({
+  data,
+  requestHref,
+  manageHref,
+}: {
+  data: LsgPayload;
+  requestHref: string;
+  manageHref: string;
+}) {
+  return (
+    <div className="grid gap-5">
+      <section
+        data-tour="workspace-overview-action"
+        className="rounded-2xl border border-line bg-paper p-5 sm:p-6"
+      >
+        <p className="eyebrow">Next action</p>
+        {data.nextAction ? (
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+            <div className="grid gap-2">
+              <div className="text-xl font-medium">{data.nextAction.title}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={data.nextAction.status} />
+                <CountdownChip dueAt={data.nextAction.dueAt} />
+              </div>
+            </div>
+            <ButtonLink href={taskHref(requestHref, data.nextAction.id)}>
+              Open item
               <IconArrowRight className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
             </ButtonLink>
           </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+            <p className="text-sm text-muted">Nothing urgent is waiting right now.</p>
+            <ButtonLink href={tabHref(requestHref, "tasks")} variant="outline" size="sm">
+              Review all tasks
+            </ButtonLink>
+          </div>
+        )}
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+        <section data-tour="workspace-overview-list" className="rounded-2xl border border-line bg-paper p-5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <p className="eyebrow">Deadlines</p>
+              <h2 className="text-lg font-medium">Due soon</h2>
+            </div>
+            <Link href={statusHref(requestHref, "overdue")} className="text-sm underline">
+              See overdue
+            </Link>
+          </div>
+          <div className="grid gap-2">
+            {data.dueSoon.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
+                No open deadlines.
+              </p>
+            ) : null}
+            {data.dueSoon.map((item) => (
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3">
+                <div className="grid gap-1">
+                  <Link href={taskHref(requestHref, item.id)} className="text-sm font-medium hover:underline">
+                    {item.title}
+                  </Link>
+                  <StatusBadge status={item.status} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <CountdownChip dueAt={item.dueAt} />
+                  <ButtonLink href={taskHref(requestHref, item.id)} size="sm" variant="ghost">
+                    Open
+                  </ButtonLink>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-line bg-paper p-5">
+          <p className="eyebrow">Feedback</p>
+          <h2 className="text-lg font-medium">Recent USG decisions</h2>
+          <div className="mt-3 grid gap-2">
+            {data.recentDecisions.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
+                No decisions yet.
+              </p>
+            ) : null}
+            {data.recentDecisions.map((item) => (
+              <div key={`${item.tab}:${item.id}`} className="rounded-xl border border-line p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link
+                    href={tabHref(requestHref, item.tab)}
+                    className="text-sm font-medium hover:underline"
+                  >
+                    {item.title}
+                  </Link>
+                  <StatusBadge status={item.status} />
+                </div>
+                <p className="mt-1 text-sm text-body">{item.remark || "No remark recorded."}</p>
+                <p className="mt-1 text-xs text-muted">{formatDate(item.decidedAt)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section data-tour="workspace-overview-budget" className="rounded-2xl border border-line bg-paper p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Budget</p>
+            <h2 className="text-lg font-medium">Your unit budget</h2>
+          </div>
+          <ButtonLink href={withParams(manageHref, { tab: "budget" })} size="sm" variant="outline">
+            Open budget
+          </ButtonLink>
         </div>
-      </Reveal>
-    </section>
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Remaining</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{formatMoney(data.budget?.remaining ?? 0)}</div>
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Spent</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{formatMoney(data.budget?.totalSpent ?? 0)}</div>
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Requests</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{data.budget?.requestCount ?? 0}</div>
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Approved</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{data.budget?.approvedCount ?? 0}</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function UsgPath({
+  data,
+  requestHref,
+  manageHref,
+}: {
+  data: UsgPayload;
+  requestHref: string;
+  manageHref: string;
+}) {
+  const reviewHref = tabHref(requestHref, "review");
+
+  return (
+    <div className="grid gap-5">
+      <section
+        data-tour="workspace-overview-action"
+        className="rounded-2xl border border-line bg-paper p-5 sm:p-6"
+      >
+        <p className="eyebrow">Needs review now</p>
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-end gap-3">
+            <span className="text-4xl font-medium tabular-nums">{data.needsReview}</span>
+            <span className="pb-1 text-sm text-muted">submissions waiting on a decision</span>
+          </div>
+          <ButtonLink href={reviewHref}>
+            Open Review Queue
+            <IconArrowRight className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          </ButtonLink>
+        </div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+        <section data-tour="workspace-overview-list" className="rounded-2xl border border-line bg-paper p-5">
+          <p className="eyebrow">Risk</p>
+          <h2 className="text-lg font-medium">LSGs falling behind</h2>
+          <div className="mt-3 grid gap-2">
+            {data.fallingBehind.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
+                No overdue units right now.
+              </p>
+            ) : null}
+            {data.fallingBehind.map((unit) => (
+              <div key={unit.unitId || unit.unitName} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3">
+                <div className="grid gap-1">
+                  <Link
+                    href={withParams(requestHref, {
+                      tab: "tasks",
+                      status: "overdue",
+                      unit: unit.unitId,
+                    })}
+                    className="text-sm font-medium hover:underline"
+                  >
+                    {unit.unitName}
+                  </Link>
+                  <span className="text-xs text-muted">
+                    {[unit.departmentName, unit.campusName].filter(Boolean).join(" · ") || "Unit"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium tabular-nums">{unit.overdueCount} overdue</span>
+                  <ButtonLink
+                    href={withParams(requestHref, {
+                      tab: "tasks",
+                      status: "overdue",
+                      unit: unit.unitId,
+                    })}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    Open
+                  </ButtonLink>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-line bg-paper p-5">
+          <p className="eyebrow">Progress</p>
+          <h2 className="text-lg font-medium">Per-task submissions</h2>
+          <div className="mt-3 grid gap-3">
+            {data.taskProgress.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-line p-4 text-sm text-muted">
+                No task progress yet.
+              </p>
+            ) : null}
+            {data.taskProgress.map((task) => (
+              <div key={task.taskId} className="grid gap-2 rounded-xl border border-line p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Link href={taskHref(requestHref, task.taskId)} className="text-sm font-medium hover:underline">
+                    {task.title}
+                  </Link>
+                  <span className="text-sm tabular-nums">
+                    {task.submitted}/{task.total} LSGs submitted
+                  </span>
+                </div>
+                <ProgressBar value={task.submitted} total={task.total} />
+                {task.overdue ? <span className="text-xs text-[#a5442c]">Past due</span> : null}
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section data-tour="workspace-overview-budget" className="rounded-2xl border border-line bg-paper p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="eyebrow">Budget</p>
+            <h2 className="text-lg font-medium">University budget</h2>
+          </div>
+          <ButtonLink href={withParams(manageHref, { tab: "budget" })} size="sm" variant="outline">
+            Open unit budget table
+          </ButtonLink>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Allocated</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{formatMoney(data.budget?.allocated ?? 0)}</div>
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Requested</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{formatMoney(data.budget?.requested ?? 0)}</div>
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Approved</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{formatMoney(data.budget?.approved ?? 0)}</div>
+          </div>
+          <div className="rounded-xl border border-line p-3">
+            <div className="text-xs text-muted">Remaining</div>
+            <div className="mt-1 text-lg font-medium tabular-nums">{formatMoney(data.budget?.remaining ?? 0)}</div>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted">
+          {data.budget?.unitCount ?? 0} units · {formatMoney(data.budget?.committed ?? 0)} committed
+        </p>
+      </section>
+    </div>
   );
 }

@@ -1,19 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { FeedbackPanel } from "@/components/dashboard/FeedbackPanel";
 import { FeedbackFormsPanel } from "@/components/dashboard/FeedbackFormsPanel";
 import { FeedbackResponsesPanel } from "@/components/dashboard/FeedbackResponsesPanel";
 import { FeedbackAnswerPanel } from "@/components/dashboard/FeedbackAnswerPanel";
 
-const TABS = ["forms", "responses", "answer", "messages"] as const;
+const TABS = ["forms", "responses", "answer"] as const;
 type Tab = (typeof TABS)[number];
 
 const LABELS: Record<Tab, string> = {
   forms: "Forms",
   responses: "Responses",
   answer: "Answer",
-  messages: "Direct messages",
 };
 
 export function FeedbackWorkspace({ side }: { side: "usg" | "lsg" }) {
@@ -43,9 +41,6 @@ export function FeedbackWorkspace({ side }: { side: "usg" | "lsg" }) {
       {tab === "forms" ? <FeedbackFormsPanel side={side} /> : null}
       {tab === "responses" ? <FeedbackResponsesPanel /> : null}
       {tab === "answer" ? <FeedbackAnswerPanel /> : null}
-      {tab === "messages" ? (
-        <FeedbackPanel mode={side === "usg" ? "review" : "submit"} />
-      ) : null}
     </section>
   );
 }

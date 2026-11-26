@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { readTestAccounts } from "./test-fixtures.mjs";
 
 const BASE = process.env.INTERACTIONS_BASE_URL ?? "http://localhost:3000";
-const CREDENTIALS = "C:/Users/Julius M. Matro/Desktop/sir tonie projects/credentials/smartgov-test-accounts.txt";
 
 let checks = 0;
 let failures = 0;
@@ -18,20 +17,7 @@ function check(label, condition, detail = "") {
 }
 
 function fixture() {
-  const text = readFileSync(CREDENTIALS, "utf8");
-  const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
-  const emails = {};
-  for (const line of text.split(/\r?\n/)) {
-    const email = line.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
-    if (!email) continue;
-    if (/^\s*Owner\s*\/\s*Founder/i.test(line)) emails.usg = email;
-    else if (/^\s*President\s+Juan/i.test(line)) emails.reviewer = email;
-    else if (/^\s*President\s+Pedro/i.test(line)) emails.lsg = email;
-  }
-  if (!password || !emails.usg || !emails.lsg || !emails.reviewer) {
-    throw new Error("Fixture credentials are missing expected accounts.");
-  }
-  return { password, emails };
+  return readTestAccounts();
 }
 
 async function signIn(page, email, password) {
@@ -207,7 +193,7 @@ async function surveyDuplicateFailureProbe(page, email, password) {
     }),
   );
 
-  await nav(page, "Survey", /\/lsg\/surveys/);
+  await nav(page, "Forms", /\/lsg\/forms/);
   await page.getByRole("button", { name: "Duplicate" }).click();
   await page.getByRole("alert").filter({ hasText: "blocked by question copy" }).waitFor();
   check("failed survey question copy shows the server error", true);
@@ -337,18 +323,15 @@ async function documentReviewProbe(page, email, password) {
   await nav(page, "Manage", /\/usg\/manage/);
 
   const documentsTab = page.getByRole("tab", { name: "Documents", exact: true });
-  const searchTab = page.getByRole("tab", { name: "Search", exact: true });
   check(
-    "non-owner USG reviewer sees the Documents and Search tabs",
-    (await documentsTab.count()) === 1 && (await searchTab.count()) === 1,
+    "non-owner USG reviewer sees the merged Documents tab",
+    (await documentsTab.count()) === 1 &&
+      (await page.getByRole("tab", { name: "Search", exact: true }).count()) === 0,
   );
   check(
     "non-owner USG reviewer does not see owner-only management tabs",
     (await page.getByRole("tab", { name: "Umbrella", exact: true }).count()) === 0 &&
-      (await page.getByRole("tab", { name: "Invites", exact: true }).count()) === 0 &&
-      (await page
-        .getByRole("tab", { name: "Government structure", exact: true })
-        .count()) === 0,
+      (await page.getByRole("tab", { name: "Invites", exact: true }).count()) === 0,
   );
 
   await documentsTab.click();
@@ -476,11 +459,11 @@ async function feedbackWorkspaceInteractionProbes(page, email, password) {
   await page.getByTestId("feedback-workspace").waitFor({ timeout: 20000 });
 
   const workspace = page.getByTestId("feedback-workspace");
-  const labels = ["Forms", "Responses", "Answer", "Direct messages"];
+  const labels = ["Forms", "Responses", "Answer"];
   const tabsVisible = await Promise.all(
     labels.map(async (label) => (await workspace.getByRole("tab", { name: label, exact: true }).count()) === 1),
   );
-  check("feedback workspace exposes Forms, Responses, Answer, and Direct messages", tabsVisible.every(Boolean));
+  check("feedback workspace exposes Forms, Responses, and Answer", tabsVisible.every(Boolean));
 
   await workspace.getByRole("tab", { name: "Responses", exact: true }).click();
   await page.getByTestId("feedback-responses-panel").waitFor({ timeout: 20000 });
@@ -511,10 +494,6 @@ async function feedbackWorkspaceInteractionProbes(page, email, password) {
   await workspace.getByRole("tab", { name: "Answer", exact: true }).click();
   await page.getByTestId("feedback-answer-panel").waitFor({ timeout: 20000 });
   check("feedback Answer tab opens its panel", true);
-
-  await workspace.getByRole("tab", { name: "Direct messages", exact: true }).click();
-  await page.getByText("Feedback from your units", { exact: true }).first().waitFor({ timeout: 20000 });
-  check("feedback Direct messages tab opens its panel", true);
 
   await workspace.getByRole("tab", { name: "Forms", exact: true }).click();
   await page.getByText("QA Feedback Form", { exact: true }).waitFor({ timeout: 20000 });

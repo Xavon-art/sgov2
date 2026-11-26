@@ -146,6 +146,17 @@ export function buildAccomplishmentStoragePath(args: {
   return `${organizationId}/accomplishments/${eventId}/${nonce}/${fileName}`;
 }
 
+export function buildBudgetStoragePath(args: {
+  organizationId: string;
+  kind: "justification" | "receipt" | "usg_expense";
+  scopeId: string;
+  nonce: string;
+  fileName: string;
+}): string {
+  const { organizationId, kind, scopeId, nonce, fileName } = args;
+  return `${organizationId}/budgets/${kind}/${scopeId}/${nonce}/${fileName}`;
+}
+
 export type UploadAction = "claim" | "chunk" | "commit" | "abort";
 
 export type ClaimResponse = {

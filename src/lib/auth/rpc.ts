@@ -28,10 +28,28 @@ type RpcSignature = {
 const globalForRpc = globalThis as unknown as {
   __smartgovRpcPool?: Pool;
   __smartgovRpcSignatures?: Map<string, RpcSignature[]>;
+  __smartgovRpcDirectUnavailable?: boolean;
 };
 
 function databaseUrl(): string | null {
   return process.env.DATABASE_URL || process.env.POSTGRES_URL || null;
+}
+
+/**
+ * A direct Postgres URL is a speed optimisation, not the only way to reach the
+ * functions. If its TLS chain cannot be verified (or the host is unreachable),
+ * fall through to the configured Supabase REST path instead of weakening the
+ * certificate check just to keep the fast path alive.
+ */
+function isDirectTransportFailure(error: unknown): boolean {
+  const code = typeof (error as { code?: unknown })?.code === "string"
+    ? (error as { code: string }).code
+    : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /^(ERR_TLS|SELF_SIGNED|UNABLE_TO_VERIFY|CERT_|DEPTH_ZERO|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|EPIPE|EAI_AGAIN)/.test(code) ||
+    /self[- ]signed|certificate|TLS|SSL|connection (?:timed out|refused)|getaddrinfo/i.test(message)
+  );
 }
 
 function pool(): Pool {
@@ -43,7 +61,10 @@ function pool(): Pool {
       max: 3,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: url.includes("localhost") || url.includes("127.0.0.1") ? false : { rejectUnauthorized: false },
+      // `true` keeps Node's default certificate verification. Local development
+      // URLs are the only plain-text exception; a bad remote chain falls back
+      // to Supabase rather than being silently accepted here.
+      ssl: url.includes("localhost") || url.includes("127.0.0.1") ? false : true,
       application_name: "smartgov_rpc",
     });
     next.on("error", (error: Error) => {
@@ -135,10 +156,17 @@ export async function callRpc<T>(
   args: Record<string, unknown>,
 ): Promise<T> {
   try {
-    if (databaseUrl()) return await callDirect<T>(fn, args);
+    if (databaseUrl() && !globalForRpc.__smartgovRpcDirectUnavailable) {
+      return await callDirect<T>(fn, args);
+    }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`RPC "${fn}" failed: ${message}`);
+    if (!isDirectTransportFailure(error)) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`RPC "${fn}" failed: ${message}`);
+    }
+    // Remember the unusable transport for this server process; every call would
+    // otherwise pay the same TLS/connection timeout before falling back.
+    globalForRpc.__smartgovRpcDirectUnavailable = true;
   }
 
   if (!isSupabaseConfigured || !supabase) {

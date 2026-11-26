@@ -79,7 +79,7 @@ export async function reviewAccomplishmentReport(
     {
       p_session_token: sessionToken,
       p_report_id: reportId,
-      p_decision: decision,
+      p_decision: decision === "approved" ? "acknowledged" : "returned",
       p_remark: remark || null,
     },
   );

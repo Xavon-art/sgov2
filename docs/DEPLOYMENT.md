@@ -54,6 +54,10 @@ Rules:
   for Preview than for Production so test data cannot touch live data.
 - Apply `supabase/migrations/*` to each environment deliberately; do not run
   production migrations from a local machine against the test database by accident.
+- `20260101004400_structure_realtime.sql` is intentionally unapplied on
+  `smartgov-xavon`: `20260101004500_structure_hardening.sql` supersedes its
+  row-based realtime trigger with broadcast signals and removes the
+  `realtime_events` SELECT grants. Re-applying 04400 would restore the old rows.
 
 ## CI
 

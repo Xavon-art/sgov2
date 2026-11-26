@@ -343,7 +343,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
         setActionError(data.message ?? "We could not delete this survey.");
         return;
       }
-      const base = isUsg ? "/usg/surveys" : "/lsg/surveys";
+      const base = isUsg ? "/usg/forms?type=survey" : "/lsg/forms?type=survey";
       router.replace(base);
     } catch {
       setActionError("We could not reach the server. Check your connection.");
@@ -378,7 +378,7 @@ export function SurveyDetailEditor({ id, isUsg }: { id: string; isUsg: boolean }
   if (error) return <p className="text-[0.875rem] text-[#a5442c]">{error}</p>;
   if (!survey) return null;
 
-  const publicUrl = typeof window !== "undefined" ? `${window.location.origin}/survey/${survey.id}` : "";
+  const publicUrl = typeof window !== "undefined" ? `${window.location.origin}/forms/survey/${survey.id}` : "";
 
   return (
     <div className="flex flex-col gap-8">

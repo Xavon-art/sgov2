@@ -62,6 +62,139 @@ check(
     !appShell.includes("window.location.href = n.link"),
 );
 
+const messageNotifications = src("supabase/migrations/20260101003900_message_sender_details.sql");
+check(
+  "message notifications open the exact direct-chat message in Inbox",
+  messageNotifications.includes("conversation_participants") &&
+    messageNotifications.includes("cp.account_id <> v_account.id") &&
+    messageNotifications.includes("'/lsg/messages'") &&
+    messageNotifications.includes("'/usg/messages'") &&
+    messageNotifications.includes("'&m=' || v_id::text"),
+);
+
+const tasksApi = src("src/app/api/tasks/route.ts");
+check(
+  "task creation notifies assigned units with a task deep link",
+  tasksApi.includes("loadUnitRecipientIds(token, unitIds)") &&
+    tasksApi.includes("await notifyAccounts(") &&
+    tasksApi.includes('kind: "task_created"') &&
+    tasksApi.includes("/lsg/request?tab=tasks&task="),
+);
+
+const threadApi = src("src/app/api/tasks/thread/route.ts");
+check(
+  "task thread posts notify the other side with a thread deep link",
+  threadApi.includes("loadUnitRecipientIds(token, unitIds)") &&
+    threadApi.includes("loadUsgRecipientIds(token)") &&
+    threadApi.includes('kind: "task_thread_message"') &&
+    threadApi.includes("&thread=1"),
+);
+
+const requestSection = src("src/components/dashboard/RequestSection.tsx");
+const reviewQueuePanel = src("src/components/dashboard/ReviewQueuePanel.tsx");
+check(
+  "task notification deep links focus the thread or review item",
+  requestSection.includes('searchParams.get("thread")') &&
+    requestSection.includes("threadRef.current?.scrollIntoView") &&
+    reviewQueuePanel.includes('searchParams.get("task")') &&
+    reviewQueuePanel.includes("data-review-task-id"),
+);
+check(
+  "personal request notification deep links focus the request",
+  requestSection.includes('searchParams.get("request")') &&
+    requestSection.includes("data-personal-request-id"),
+);
+const usgBudget = src("src/components/dashboard/UsgBudgetPanel.tsx");
+const lsgBudget = src("src/components/dashboard/LsgBudgetPanel.tsx");
+check(
+  "budget notification deep links open the requested tab and item",
+  usgBudget.includes('searchParams.get("budgetTab")') &&
+    usgBudget.includes('searchParams.get("budget")') &&
+    lsgBudget.includes('searchParams.get("budgetTab")') &&
+    lsgBudget.includes('searchParams.get("budget")'),
+);
+const eventsWorkspace = src("src/components/dashboard/EventsWorkspace.tsx");
+const accomplishmentPanel = src("src/components/dashboard/AccomplishmentPanel.tsx");
+check(
+  "event and report notification deep links open the right event or report",
+  eventsWorkspace.includes('searchParams.get("event")') &&
+    eventsWorkspace.includes('searchParams.get("action")') &&
+    eventsWorkspace.includes("data-event-id") &&
+    accomplishmentPanel.includes('searchParams.get("report")') &&
+    accomplishmentPanel.includes("void open(reportId)"),
+);
+const messagesPanel = src("src/components/dashboard/MessagesPanel.tsx");
+check(
+  "message notification deep links open the exact conversation and message",
+  messagesPanel.includes('readDeepLinkedParam("c")') &&
+    messagesPanel.includes('readDeepLinkedParam("m")') &&
+    messagesPanel.includes("data-message-id") &&
+    messagesPanel.includes("smartgov:open-conversation"),
+);
+
+const notificationLinks = src("supabase/migrations/20260101005100_notification_flow_links.sql");
+check(
+  "task submission notifications open the review queue with the task selected",
+  notificationLinks.includes("submit_assignment_for_review_legacy") &&
+    notificationLinks.includes("/usg/request?tab=review&task="),
+);
+check(
+  "task decision notifications open the assigned task with its detail selected",
+  notificationLinks.includes("review_requirement_answer_legacy") &&
+    notificationLinks.includes("/lsg/request?tab=tasks&task="),
+);
+
+const requestsApi = src("src/app/api/requests/route.ts");
+check(
+  "personal request submissions notify USG with a request deep link",
+  count(requestsApi, "await notifyPersonalRequestSubmitted(") >= 2 &&
+    requestsApi.includes('kind: "personal_request_submitted"') &&
+    requestsApi.includes("/usg/request?tab=personal&request="),
+);
+check(
+  "personal request decisions notify the filing unit with a request deep link",
+  requestsApi.includes("await notifyPersonalRequestDecision(token, requestId, decision, note)") &&
+    requestsApi.includes('kind: "personal_request_decided"') &&
+    requestsApi.includes("/${side}/request?tab=personal&request="),
+);
+check(
+  "budget notifications open the canonical budget tabs",
+  notificationLinks.includes("submit_unit_budget_request_legacy") &&
+    notificationLinks.includes("review_budget_legacy") &&
+    notificationLinks.includes("/usg/manage?tab=budget&budgetTab=review&budget=") &&
+    notificationLinks.includes("/lsg/manage?tab=budget&budgetTab=overview&budget="),
+);
+check(
+  "extension notifications open the task on the correct side",
+  notificationLinks.includes("request_task_extension_legacy") &&
+    notificationLinks.includes("decide_task_extension_legacy") &&
+    notificationLinks.includes("/usg/request?tab=review&task=") &&
+    notificationLinks.includes("/lsg/request?tab=tasks&task="),
+);
+check(
+  "event and claim notifications open the event with the right action",
+  notificationLinks.includes("create_event_v2_notifications_base") &&
+    notificationLinks.includes("decide_event_notifications_base") &&
+    notificationLinks.includes("/lsg/events?event=") &&
+    notificationLinks.includes("&action=claim") &&
+    notificationLinks.includes("&action=decide"),
+);
+check(
+  "accomplishment notifications open the report or reporting task",
+  notificationLinks.includes("set_event_assignees_notifications_base") &&
+    notificationLinks.includes("submit_accomplishment_report_v2_notifications_base") &&
+    notificationLinks.includes("review_accomplishment_report_notifications_base") &&
+    notificationLinks.includes("&action=report") &&
+    notificationLinks.includes("/usg/events?tab=accomplishment&report=") &&
+    notificationLinks.includes("/lsg/events?tab=accomplishment&report="),
+);
+check(
+  "stale survey notifications are rewritten to canonical Forms links",
+  notificationLinks.includes("sweep_notifications_base") &&
+    notificationLinks.includes("/usg/forms?type=survey&id=") &&
+    notificationLinks.includes("/lsg/forms?type=survey&id="),
+);
+
 const survey = src("src/components/dashboard/SurveyDetailEditor.tsx");
 const moveQuestion = between(survey, "const moveQuestion = async", "const startEdit =");
 check(
@@ -222,18 +355,18 @@ check(
   "USG nav gives document tabs to the server-resolved reviewer side",
   usgNav.includes('const canReviewDocuments = role.side === "usg";') &&
     usgNavChildren.includes('{ label: "Documents", href: "/usg/manage?tab=documents" }') &&
-    usgNavChildren.includes('{ label: "Search", href: "/usg/manage?tab=search" }') &&
-    usgNav.includes("canReviewDocuments && (index === 4 || index === 5)"),
+    !usgNavChildren.includes('{ label: "Search", href: "/usg/manage?tab=search" }') &&
+    usgNav.includes("canReviewDocuments && (index === 1 || index === 3 || index === 4)"),
 );
 check(
   "USG nav keeps owner-only children owner-only",
-  usgNavChildren.indexOf('label: "Your Umbrella"') <
+  usgNavChildren.indexOf('label: "People & Units"') <
     usgNavChildren.indexOf('label: "Profile and Customization"') &&
     usgNavChildren.indexOf('label: "Profile and Customization"') <
       usgNavChildren.indexOf('label: "Documents"') &&
     usgNavChildren.indexOf('label: "Documents"') <
-      usgNavChildren.indexOf('label: "Search"') &&
-    usgNav.includes("canManage || index === 3"),
+      usgNavChildren.indexOf('label: "Budget"') &&
+    usgNav.includes("canManage || index === 2"),
 );
 
 const usgManage = src("src/app/usg/manage/ManageClient.tsx");
@@ -242,16 +375,31 @@ check(
   usgManage.includes('const { account, role } = useDashboard();') &&
     usgManage.includes('const canReviewDocuments = role.side === "usg";') &&
     usgManage.includes('documents: "reviewer"') &&
-    usgManage.includes('search: "reviewer"') &&
     usgManage.includes('tab === "documents" && canReviewDocuments') &&
-    usgManage.includes('tab === "search" && canReviewDocuments'),
+    usgManage.includes('requestedTab !== "search"') &&
+    usgManage.includes('tab === "documents"'),
 );
 check(
-  "USG manage keeps umbrella, invites, and structure owner-only",
-  ['umbrella', 'invites', 'structure'].every((id) =>
-    usgManage.includes(`${id}: "owner"`),
-  ) &&
+  "USG manage keeps People & Units owner-only",
+  usgManage.includes('people: "owner"') &&
+    usgManage.includes('tab === "people"') &&
+    usgManage.includes("PeoplePanel") &&
+    usgManage.includes('structure: "reviewer"') &&
     usgManage.includes('access === "owner" ? canManage : canReviewDocuments'),
+);
+check(
+  "USG structure exposes the published chart as a gated action",
+  usgManage.includes('href="/org-chart"') &&
+    usgManage.includes("View published chart") &&
+    usgManage.includes("!centralized ? ("),
+);
+
+const lsgManage = src("src/app/lsg/manage/page.tsx");
+check(
+  "LSG structure exposes the published chart read",
+  lsgManage.includes('tab === "structure"') &&
+    lsgManage.includes('href="/org-chart"') &&
+    lsgManage.includes("View published chart"),
 );
 
 const documentLibrary = src("src/components/dashboard/DocumentLibraryPanel.tsx");
@@ -311,10 +459,9 @@ check(
   requests.includes("const { role } = useDashboard();") &&
     requests.includes("const ownUnitId = role.unitId;") &&
     requests.includes("ownUnitId={ownUnitId}") &&
-    requests.includes("unitId: resolvedTargetUnitId") &&
+    requests.includes("unitId: ownUnitId") &&
     !requests.includes("myUnitIds[0]") &&
-    requests.includes("Target unit") &&
-    requests.includes("Own unit"),
+    requests.includes("Proposed due date and time"),
 );
 check(
   "replacement characters are not left in request UI strings",

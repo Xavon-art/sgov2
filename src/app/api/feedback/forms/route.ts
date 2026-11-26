@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
 import {
+  canonicalFormsPublicPath,
   createFeedbackForm,
   feedbackFormInputMessage,
   feedbackHttpStatus,
@@ -28,7 +29,13 @@ export async function GET() {
         { status: feedbackHttpStatus(res.reason) },
       );
     }
-    return NextResponse.json({ ok: true, rows: res.rows ?? [] });
+    return NextResponse.json({
+      ok: true,
+      rows: (res.rows ?? []).map((row) => ({
+        ...row,
+        publicPath: canonicalFormsPublicPath(row.publicPath),
+      })),
+    });
   } catch (error) {
     console.error("[feedback-forms:list]", error);
     return NextResponse.json(

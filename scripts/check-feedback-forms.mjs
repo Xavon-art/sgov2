@@ -2,11 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { readTestAccounts } from "./test-fixtures.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const BASE = process.env.FEEDBACK_BASE_URL ?? "http://localhost:3000";
-const CREDENTIALS =
-  "C:/Users/Julius M. Matro/Desktop/sir tonie projects/credentials/smartgov-test-accounts.txt";
 
 let checks = 0;
 let failures = 0;
@@ -163,18 +162,11 @@ function parseEnv() {
 }
 
 function parseCredentials() {
-  if (!existsSync(CREDENTIALS)) return null;
-  const text = readFileSync(CREDENTIALS, "utf8");
-  const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
-  const emails = {};
-  for (const line of text.split(/\r?\n/)) {
-    const email = line.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
-    if (!email) continue;
-    if (/^\s*Owner\s*\/\s*Founder/i.test(line)) emails.owner = email;
-    else if (/^\s*President\s+Pedro/i.test(line)) emails.pedro = email;
-  }
-  if (!password || !emails.owner || !emails.pedro) return null;
-  return { password, emails };
+  const fixture = readTestAccounts();
+  return {
+    password: fixture.password,
+    emails: { owner: fixture.emails.usg, pedro: fixture.emails.pedro },
+  };
 }
 
 async function login(email, password) {
@@ -580,10 +572,11 @@ async function main() {
   ]);
 
   assertFile("src/lib/feedback.ts");
+  assertFile("src/lib/feedback-server.ts");
   assertFile("src/app/api/feedback/route.ts");
   assertFile("src/app/api/feedback/[id]/route.ts");
   assertFile("src/app/api/feedback/[id]/acknowledge/route.ts");
-  assertIncludes("src/lib/feedback.ts", [
+  assertIncludes("src/lib/feedback-server.ts", [
     "createFeedback",
     "listFeedback",
     "getFeedback",
@@ -649,11 +642,9 @@ async function main() {
     "FeedbackFormsPanel",
     "FeedbackResponsesPanel",
     "FeedbackAnswerPanel",
-    "FeedbackPanel",
     "Forms",
     "Responses",
     "Answer",
-    "Direct messages",
     'data-testid="feedback-workspace"',
   ]);
   assertIncludes("src/components/dashboard/FeedbackFormsPanel.tsx", [

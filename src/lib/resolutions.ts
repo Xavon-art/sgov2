@@ -1,17 +1,17 @@
 /**
  * The vocabulary both resolution screens share.
  *
- * The statuses are the five the database knows. `published` and `approved` both
- * read as "Approved" to a person -- they are the same display family -- but they
- * stay distinct on the wire because only one of them has been released to the
- * whole organisation.
+ * Resolution statuses use the unified status model
+ * (see {@link src/lib/status}); older rows that still carry a legacy value are
+ * mapped on read through {@link normalizeStatus}. The labels and classes below
+ * are re-exported from the unified module so the whole product renders the same
+ * status the same way.
  */
-export type ResolutionStatus =
-  | "submitted"
-  | "under_review"
-  | "approved"
-  | "returned"
-  | "published";
+
+import { STATUS_LABEL as RESOLUTION_LABEL, STATUS_CLASS as RESOLUTION_CLASS } from "@/lib/status";
+import type { Status } from "@/lib/status";
+
+export type ResolutionStatus = Status;
 
 export type ResolutionScope = "unit" | "org";
 
@@ -49,27 +49,10 @@ export type ResolutionDetail = ResolutionRow & {
 };
 
 /** Only USG reviewers may move a resolution through these. */
-export type ResolutionDecision =
-  | "under_review"
-  | "approved"
-  | "returned"
-  | "published";
+export type ResolutionDecision = "under_review" | "approved" | "rejected" | "returned";
 
-export const STATUS_LABEL: Record<ResolutionStatus, string> = {
-  submitted: "Pending",
-  under_review: "Under review",
-  approved: "Approved",
-  returned: "Returned",
-  published: "Approved",
-};
-
-export const STATUS_CLASS: Record<ResolutionStatus, string> = {
-  submitted: "border-line bg-canvas text-muted",
-  under_review: "border-brass/40 bg-brass-soft/30 text-brass-deep",
-  approved: "border-ink/20 bg-ink/[0.06] text-ink",
-  returned: "border-[#d9a99c] bg-[#a5442c]/[0.08] text-[#a5442c]",
-  published: "border-ink/20 bg-ink/[0.06] text-ink",
-};
+export { RESOLUTION_LABEL, RESOLUTION_CLASS };
+export type { Status };
 
 export const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -3,7 +3,7 @@ import type { PageTour } from "../types";
 export const usgOfficersTour: PageTour = {
   id: "usg-officers",
   version: "1",
-  route: "/usg/officers",
+  route: "/usg/manage?tab=people&view=officers",
   label: "Council officers",
   roles: ["usg"],
   steps: [

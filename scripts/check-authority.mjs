@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import pg from "pg";
 import { createClient } from "@supabase/supabase-js";
+import { readTestAccounts } from "./test-fixtures.mjs";
 
 const ROOT = process.cwd();
 const BASE = process.env.AUTH_BASE_URL ?? "http://localhost:3000";
-const CREDENTIALS = "C:/Users/Julius M. Matro/Desktop/sir tonie projects/credentials/smartgov-test-accounts.txt";
 
 let checks = 0;
 let failures = 0;
@@ -32,22 +32,17 @@ function parseEnv() {
 }
 
 function parseCredentials() {
-  const text = readFileSync(CREDENTIALS, "utf8");
-  const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
-  const emails = {};
-  for (const line of text.split(/\r?\n/)) {
-    const email = line.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
-    if (!email) continue;
-    if (/^\s*Owner\s*\/\s*Founder/i.test(line)) emails.owner = email;
-    else if (/^\s*President\s+Pedro/i.test(line)) emails.pedro = email;
-    else if (/^\s*President\s+Carlo/i.test(line)) emails.carlo = email;
-    else if (/^\s*President\s+Juan/i.test(line)) emails.reviewer = email;
-    else if (/^\s*Member\s+Bea/i.test(line)) emails.member = email;
-  }
-  if (!password || Object.keys(emails).length < 5) {
-    throw new Error("Fixture credentials are missing expected accounts.");
-  }
-  return { password, emails };
+  const fixture = readTestAccounts();
+  return {
+    password: fixture.password,
+    emails: {
+      owner: fixture.emails.usg,
+      pedro: fixture.emails.pedro,
+      carlo: fixture.emails.carlo,
+      reviewer: fixture.emails.reviewer,
+      member: fixture.emails.member,
+    },
+  };
 }
 
 async function login(email, password) {
@@ -1101,11 +1096,6 @@ async function main() {
     JSON.stringify(lsgMonitorRpc.data ?? lsgMonitorRpc.error),
   );
 
-  const anonMonitor = await get("/api/monitoring");
-  check("anonymous monitoring API is denied", anonMonitor.status === 401, `got ${anonMonitor.status}`);
-  const lsgMonitor = await get("/api/monitoring", pedro);
-  check("LSG monitoring API is denied", lsgMonitor.status === 403, `got ${lsgMonitor.status}`);
-
   const monitorClient = new pg.Client({ connectionString: env.DATABASE_URL });
   await monitorClient.connect();
   const monitorProposals = [];
@@ -1324,21 +1314,12 @@ async function main() {
       JSON.stringify({ engDocumentDelta, allCampusDocumentDelta }),
     );
 
-    const ownerMonitor = await get("/api/monitoring", owner);
-    const ownerMonitorJson = await ownerMonitor.json().catch(() => ({}));
-    check("USG monitoring API succeeds", ownerMonitor.status === 200 && ownerMonitorJson.ok === true, `got ${ownerMonitor.status}`);
-    check(
-      "monitoring API returns the same scoped payload",
-      Array.isArray(ownerMonitorJson.campuses) && ownerMonitorJson.campuses.some((campus) => campus.unitId === engineering),
-      `campuses=${ownerMonitorJson.campuses?.length ?? 0}`,
-    );
-
     const ownerManagePage = await get("/usg/manage", owner);
     const ownerManageHtml = await ownerManagePage.text();
     const ownerManageSource = ownerManageHtml.split(`${String.fromCharCode(92)}"`).join('"');
     check(
-      "USG Manage exposes the Monitoring tab",
-      ownerManagePage.status === 200 && ownerManageSource.includes('"label":"Monitoring","href":"/usg/manage?tab=monitoring"'),
+      "USG Manage no longer exposes the Monitoring tab",
+      ownerManagePage.status === 200 && !ownerManageSource.includes('"label":"Monitoring","href":"/usg/manage?tab=monitoring"'),
       `status=${ownerManagePage.status} raw=${ownerManageHtml.includes("tab=monitoring")} normalized=${ownerManageSource.includes('"label":"Monitoring","href":"/usg/manage?tab=monitoring"')}`,
     );
 
@@ -1800,8 +1781,8 @@ async function main() {
       JSON.stringify(rpcInvalid.data ?? rpcInvalid.error),
     );
 
-    const lsgPage = await get("/lsg/manage?tab=feedback", pedro);
-    const usgPage = await get("/usg/manage?tab=feedback", owner);
+    const lsgPage = await get("/lsg/forms", pedro);
+    const usgPage = await get("/usg/forms", owner);
     const lsgHtml = await lsgPage.text();
     const usgHtml = await usgPage.text();
     const feedbackHtml = `${lsgHtml}${usgHtml}`;
@@ -1997,7 +1978,6 @@ async function main() {
     ["documents", "/api/documents"],
     ["budgets", "/api/budgets"],
     ["feed", "/api/feed"],
-    ["monitoring", "/api/monitoring"],
     ["accomplishment reports", `/api/accomplishment-reports?eventId=${forgedId}`],
     ["feedback", "/api/feedback"],
     ["officer profile", "/api/profile/officer"],
@@ -2041,7 +2021,6 @@ async function main() {
   check("anonymous API cannot edit an officer profile", anonProfilePatch.status === 401, `got ${anonProfilePatch.status}`);
 
   const wrongSide = [
-    ["monitoring", await get("/api/monitoring", pedro), 403],
     ["the officer roster", await get("/api/profile/officer?scope=all", pedro), 403],
     ["resolution review", await post(`/api/resolutions/${forgedId}/review`, pedro, { decision: "under_review" }), 403],
     ["document approval", await post(`/api/documents/${forgedId}/approve`, pedro, { decision: "approved" }), 403],

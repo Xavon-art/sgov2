@@ -131,6 +131,24 @@ export function isUnitScopeChart(chart: UnitChart): chart is UnitChart & { scope
 }
 
 /**
+ * Picks the unit whose structure the caller should edit/read as "their own".
+ * Unit-scope charts already contain only the caller's council and its parent;
+ * non-owner callers must never fall back to the root USG unit.
+ */
+export function resolveOwnStructureUnit(
+  chart: Pick<UnitChart, "root" | "units" | "scope">,
+  isOwner: boolean,
+): ChartUnit | ChartRoot | null {
+  const root = chart.root;
+  const belowRoot = root ? chart.units.filter((u) => u.id !== root.id) : chart.units;
+
+  if (isOwner) return root ?? belowRoot[0] ?? null;
+  if (chart.scope === "unit") return belowRoot[0] ?? null;
+
+  return belowRoot.find((u) => u.unitType === "lsg") ?? belowRoot[0] ?? root ?? null;
+}
+
+/**
  * Reads the organization roster for the seat-assignment picker, or null when
  * it could not be read.
  *

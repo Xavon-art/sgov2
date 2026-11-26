@@ -86,6 +86,7 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
   const [accent, setAccent] = useState("#16324f");
   const [themeMode, setThemeMode] = useState("light");
   const [logoData, setLogoData] = useState<string | undefined>(undefined);
+  const [logoError, setLogoError] = useState<string | null>(null);
 
   const [busy, setBusy] = useState<"name" | "identity" | "email" | "password" | "look" | null>(null);
   const [nameNote, setNameNote] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -222,6 +223,7 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
     e.preventDefault();
     setBusy("look");
     setLookNote(null);
+    setLogoError(null);
     try {
       const payload: Record<string, unknown> = { accent, themeMode };
       if (logoData !== undefined) payload.logoData = logoData;
@@ -504,13 +506,27 @@ export function ProfileSection({ allowCustomisation }: { allowCustomisation: boo
                         const file = e.target.files?.[0];
                         if (!file) return;
                         const reader = new FileReader();
-                        reader.onload = () =>
-                          setLogoData(typeof reader.result === "string" ? reader.result : "");
+                        reader.onload = () => {
+                          const result = typeof reader.result === "string" ? reader.result : "";
+                          // `update_customisation` refuses logo data longer than 200,000 chars.
+                          if (result.length > 200_000) {
+                            setLogoError("Logo is too large. Use a smaller image (about 150 KB or less).");
+                            return;
+                          }
+                          setLogoError(null);
+                          setLogoData(result);
+                        };
+                        reader.onerror = () => {
+                          setLogoError("Could not read the logo file.");
+                        };
                         reader.readAsDataURL(file);
                         e.target.value = "";
                       }}
                     />
                   </label>
+                  {logoError ? (
+                    <p className="animate-float-in text-[0.75rem] font-medium text-[#a5442c]">{logoError}</p>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setLogoData("")}

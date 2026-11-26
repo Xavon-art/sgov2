@@ -3,6 +3,7 @@ import { messageFor } from "@/lib/auth/messages";
 import { readSessionToken } from "@/lib/auth/session";
 import { UUID_RE } from "@/lib/feedback";
 import {
+  canonicalFormsPublicPath,
   feedbackHttpStatus,
   setFeedbackFormStatus,
 } from "@/lib/feedback-forms";
@@ -58,7 +59,7 @@ export async function POST(request: Request, context: RouteContext) {
     return NextResponse.json({
       ok: true,
       status: res.status,
-      publicPath: res.publicPath ?? null,
+      publicPath: canonicalFormsPublicPath(res.publicPath),
     });
   } catch (error) {
     console.error("[feedback-forms:status]", error);

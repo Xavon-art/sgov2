@@ -36,7 +36,7 @@
  *      gate, the author/ancestor scopes, photo write-only reads, and the fact
  *      that a departed author nulls rather than blocks an organization.
  *
- * Run: node scripts/check-units.mjs (15 items, 264 assertions)
+ * Run: node scripts/check-units.mjs
  *
  * These assertions are only worth their green if they can go red, so the
  * load-bearing ones were mutation-tested against the exact regressions they
@@ -1680,10 +1680,9 @@ check(
 // mark one done at the database. The one live surface left is the route's
 // vocabulary, kept below.
 check(
-  "the task route checks the status vocabulary before the database",
-  /STATUSES = new Set\(\["assigned", "in_progress", "done"\]\)/.test(
-    tasksRoute.replace(/\s+/g, " "),
-  ),
+  "the task route delegates status filtering to the scoped database function",
+  /p_status: status && status !== "all" \? status : null/.test(tasksRoute.replace(/\s+/g, " ")) &&
+    !/STATUSES = new Set/.test(tasksRoute),
   "the status vocabulary widened on the client side",
 );
 
@@ -2057,7 +2056,6 @@ check(
 // source-level ones now pin the new IA: one shared overview, two side-pure navs.
 
 const m28 = readPendingMigration("20260101002800_unified_dashboard.sql");
-const dashboardRoute = readPendingSource("src/app/api/dashboard/route.ts");
 const lsgPage = readPendingSource("src/app/lsg/page.tsx");
 const usgPage = readPendingSource("src/app/usg/page.tsx");
 
@@ -2143,14 +2141,6 @@ check(
   !/\/lsg\//.test(readPendingSource("src/components/dashboard/usg-nav.ts")) &&
     !/\/usg\//.test(readPendingSource("src/components/dashboard/lsg-nav.ts")),
   "a nav file holds the other side's route, so its links would land on a guard",
-);
-
-check(
-  "the dashboard route takes no query parameters to widen its own scope",
-  /export async function GET\(\)/.test(dashboardRoute) &&
-    !/searchParams/.test(dashboardRoute) &&
-    !/req: Request/.test(dashboardRoute),
-  "the dashboard route can be asked a question about scope or status",
 );
 
 check(
@@ -2386,8 +2376,8 @@ check(
 check(
   "the editor is not rendered on an assumption, but on the database's capability",
   /fetchStructureForSession\(token, own\.id\)/.test(councilStructurePage) &&
-    /capability=\{structure\.capability\}/.test(councilStructurePage) &&
-    /!structure\.capability\?\.canRead/.test(councilStructurePage),
+    /!structure\?\.ok \|\| !structure\.capability\?\.canRead/.test(councilStructurePage) &&
+    /redirect\(`\/structure\/editor\?unitId=/.test(councilStructurePage),
   "the builder assumes it may edit instead of asking who may",
 );
 
@@ -2608,7 +2598,7 @@ const surveyListRoute = readPendingSource("src/app/api/surveys/[id]/route.ts");
 const surveyResponsesRoute = readPendingSource("src/app/api/surveys/[id]/responses/route.ts");
 const otpSendRoute = readPendingSource("src/app/api/surveys/[id]/otp/send/route.ts");
 const otpVerifyRoute = readPendingSource("src/app/api/surveys/[id]/otp/verify/route.ts");
-const publicSurveyPage = readPendingSource("src/app/survey/[id]/page.tsx");
+const publicSurveyPage = readPendingSource("src/components/forms/SurveyPublicForm.tsx");
 
 check(
   "03192 list_requirement_answer_versions authenticates and scopes by caller",
@@ -2748,6 +2738,131 @@ check(
     /status: 400/.test(resolutionDetailRoute) &&
     /status: 400/.test(resolutionReviewRoute),
   "a malformed id reaches Postgres and becomes a 500",
+);
+
+// --- Phase 3 structure hardening (04500) ---
+// These assertions read the code paths, not the comments: a route that parses
+// but never tests an id, a validator with a commented-out duplicate check, or a
+// realtime client still on postgres_changes must each turn this section red.
+const m45 = readPendingMigration("20260101004500_structure_hardening.sql");
+const m45Flat = flat(m45);
+const structurePostRoute = readPendingSource("src/app/api/structures/route.ts");
+const photoPostRoute = readPendingSource("src/app/api/structures/photos/route.ts");
+const realtimeClient = readPendingSource("src/lib/realtime.ts");
+
+check(
+  "04500 structure POST routes validate the ids they forward with UUID_RE",
+  /import \{ UUID_RE \} from "@\/lib\/document-search"/.test(structurePostRoute) &&
+    /UUID_RE\.test\(value\)/.test(structurePostRoute) &&
+    /if \(!isUuid\(unitId\)\) return invalidReference\("unit"\)/.test(structurePostRoute) &&
+    (structurePostRoute.match(/if \(!isUuid\(structureId\)\) return invalidReference\("structure"\)/g) ?? [])
+      .length >= 2,
+  "a malformed unit or structure id reaches Postgres and becomes a 500",
+);
+
+check(
+  "04500 the photo POST refuses a malformed unit id like the GET does",
+  (photoPostRoute.match(/UUID_RE\.test\(unitId\)/g) ?? []).length >= 2,
+  "the photo write path forwards an id the read path already refuses",
+);
+
+check(
+  "04500 holders[0] is mirrored into holder, and an explicit vacancy stays vacant",
+  /function smartgov\.gov_sync_position_holders/.test(m45Flat) &&
+    /jsonb_typeof\(p_position->'holder'\) = 'null'/.test(m45Flat) &&
+    /coalesce\(s\.holders->0, 'null'::jsonb\)/.test(m45Flat),
+  "a stale holders array can resurrect a seat the officer cleared",
+);
+
+check(
+  "04500 one person may hold only one seat, with validator and writer photo sizes in step",
+  /v_seen_h := array_append\(v_seen_h, v_email\)/.test(m45Flat) &&
+    /'duplicate_holder'/.test(m45Flat) &&
+    /decode\(v_h->>'photo', 'base64'\)/.test(m45Flat) &&
+    /524288/.test(m45Flat) &&
+    !/1048576/.test(m45Flat),
+  "the same photo can pass validation and fail persistence, or sit in two seats",
+);
+
+check(
+  "04500 a custom template cannot claim a built-in key",
+  /p_template_key text/.test(m45Flat) &&
+    /t\.is_builtin\s+and lower\(btrim\(t\.key\)\) = v_key/.test(m45Flat) &&
+    /gov_document_valid\(p_document, false, btrim\(p_key\)\)/.test(m45Flat),
+  "the gallery can shadow a built-in template the next list cannot distinguish",
+);
+
+check(
+  "04500 draft and photo writes stay inside the caller's people scope",
+  /smartgov\.gov_people_unit_ids\(p_account\)/.test(m45Flat) &&
+    /gov_holder_in_people_scope\(v_account, v_email\)/.test(m45Flat) &&
+    /gov_persist_holder_photos_scoped\(v_account, v_document\)/.test(m45Flat) &&
+    /lo_get\(v_old_oid\) = v_photo/.test(m45Flat),
+  "naming an email in a draft can overwrite a photo outside the officer's scope",
+);
+
+check(
+  "04500 an omitted submission note keeps the draft note",
+  /coalesce\( nullif\(left\(btrim\(coalesce\(p_note, ''\)\), 1000\), ''\), s\.note\)/.test(
+    m45Flat,
+  ),
+  "submitting without a note erases the note saved with the draft",
+);
+
+check(
+  "04500 renewal hydrates the copy without rewriting the approved row",
+  /smartgov\.gov_document_upgrade\(v_live\.document\)/.test(m45Flat) &&
+    /smartgov\.gov_mark_existing_photos\([\s\S]{0,240}smartgov\.gov_document_upgrade\(v_live\.document\)\)/
+      .test(m45Flat) &&
+    !/update smartgov\.gov_structures[\s\S]{0,240}set[\s\S]{0,240}status = 'approved'/.test(
+      m45Flat,
+    ),
+  "a new term starts from a stale document, or approval history is rewritten in bulk",
+);
+
+check(
+  "04500 realtime signals are broadcasts and the event table is no longer readable",
+  /realtime\.send\(/.test(m45Flat) &&
+    /topic => 'sgov-signals-' \|\| p_account::text/.test(m45Flat) &&
+    /alter table public\.realtime_events enable row level security/.test(m45Flat) &&
+    /revoke select, insert, update, delete on public\.realtime_events from anon, authenticated/
+      .test(m45Flat) &&
+    /alter publication supabase_realtime drop table public\.realtime_events/.test(m45Flat),
+  "the signal table is still a public read or the trigger still publishes rows",
+);
+
+check(
+  "04500 the browser listens to the same broadcast topic and keeps one channel per account",
+  /\.on\("broadcast", \{ event: kind \}/.test(realtimeClient) &&
+    /topic = `sgov-signals-\$\{accountId\}`/.test(realtimeClient) &&
+    /new Map<string, SharedChannel>\(\)/.test(realtimeClient) &&
+    !/postgres_changes/.test(realtimeClient),
+  "the trigger broadcasts a signal no mounted panel listens for",
+);
+
+check(
+  "04600 all status-bearing tables use the unified status model",
+  (() => {
+    const m = readPendingMigration("20260101004600_unified_status_model.sql");
+    const flattened = flat(m);
+    const statusTables = [
+      "smartgov.gov_structures",
+      "smartgov.budget_requests",
+      "smartgov.resolutions",
+      "smartgov.events",
+      "smartgov.document_catalog:approval",
+      "smartgov.feedback_forms",
+      "smartgov.feedback_entries",
+      "smartgov.accomplishment_reports",
+      "smartgov.task_requirement_submissions:review",
+    ];
+    return statusTables.every((entry) => {
+      const [table, suffix] = entry.split(":");
+      const checkName = `${table.replace("smartgov.", "")}${suffix ? `_${suffix}` : ""}_status_check`;
+      return flattened.includes(`add constraint ${checkName}`);
+    });
+  })(),
+  "migration 04600 applies the unified status check constraint to all status-bearing tables",
 );
 
 console.log(

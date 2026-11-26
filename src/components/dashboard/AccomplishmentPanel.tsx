@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { DraftWithAiButton } from "@/components/ai/DraftWithAiButton";
 import { Reveal } from "@/components/fx/Reveal";
@@ -63,10 +64,11 @@ function formatBytes(bytes: number): string {
 }
 
 function isAccomplished(status: AccomplishmentReportStatus): boolean {
-  return status === "acknowledged";
+  return status === "approved";
 }
 
 export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
+  const searchParams = useSearchParams();
   const [events, setEvents] = useState<EventOption[]>([]);
   const [eventId, setEventId] = useState("");
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
@@ -81,6 +83,8 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
+  const [handledLink, setHandledLink] = useState<string | null>(null);
 
   const loadOptions = useCallback(async () => {
     const [eventRes, documentRes] = await Promise.all([
@@ -114,6 +118,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
     if (documentJson.ok && Array.isArray(documentJson.rows)) {
       setDocuments(documentJson.rows as DocumentRow[]);
     }
+    setOptionsLoaded(true);
   }, []);
 
   const loadReports = useCallback(async () => {
@@ -158,6 +163,29 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!optionsLoaded || state !== "ready") return;
+    const reportId = searchParams.get("report");
+    const eventParam = searchParams.get("event");
+    const action = searchParams.get("action");
+    if (reportId && handledLink !== `report:${reportId}`) {
+      queueMicrotask(() => {
+        setHandledLink(`report:${reportId}`);
+        void open(reportId);
+      });
+      return;
+    }
+    if (eventParam && action === "report" && handledLink !== `event:${eventParam}`) {
+      const event = events.find((option) => option.id === eventParam);
+      if (!event || !event.canReport) return;
+      queueMicrotask(() => {
+        setHandledLink(`event:${eventParam}`);
+        setEventId(eventParam);
+        setShowCreate(true);
+      });
+    }
+  }, [searchParams, optionsLoaded, state, events, handledLink, open]);
+
   const closeDetail = useCallback(() => {
     setSelected(null);
     setDetailState("idle");
@@ -170,6 +198,11 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
       return;
     }
     setActionError(null);
+
+    if (pendingFiles.length > 10) {
+      setActionError("Choose at most 10 files.");
+      return;
+    }
 
     const tooLarge = pendingFiles.find((file) => file.size > MAX_FILE_BYTES);
     if (tooLarge) {
@@ -224,7 +257,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
     if (reportable !== 0) return reportable;
     return (a.eventDate ?? "").localeCompare(b.eventDate ?? "");
   });
-  const needsSubmission = rows.filter((row) => !isAccomplished(row.status));
+  const openReports = rows.filter((row) => !isAccomplished(row.status));
   const accomplished = rows.filter((row) => isAccomplished(row.status));
 
   const renderReportRow = (row: AccomplishmentReportRow, i: number) => (
@@ -251,7 +284,7 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
       {!selected && (
         <section>
           <div className="mb-3">
-            <h2 className="text-lg font-medium">Events</h2>
+            <h2 className="text-lg font-medium">Reportable events</h2>
             <p className="text-sm text-muted">
               Tap an event to file its accomplishment report.
             </p>
@@ -326,6 +359,14 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
               <h2 className="text-lg font-medium">Accomplishment reports</h2>
               <p className="text-sm text-muted">Reports you can view and review.</p>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void loadReports()}
+              disabled={state === "loading"}
+            >
+              Refresh
+            </Button>
           </div>
           {state === "loading" && <div className="text-muted">Loading...</div>}
           {state === "error" && (
@@ -341,11 +382,11 @@ export function AccomplishmentPanel({ isUsg }: { isUsg: boolean }) {
           {state === "ready" && rows.length > 0 && (
             <div className="grid gap-6">
               <section>
-                <h3 className="mb-2 text-base font-medium">Needs Submission</h3>
-                {needsSubmission.length === 0 ? (
-                  <p className="text-sm text-muted">No reports need submission.</p>
+                <h3 className="mb-2 text-base font-medium">Open reports</h3>
+                {openReports.length === 0 ? (
+                  <p className="text-sm text-muted">No reports are still open.</p>
                 ) : (
-                  <div className="grid gap-3">{needsSubmission.map(renderReportRow)}</div>
+                  <div className="grid gap-3">{openReports.map(renderReportRow)}</div>
                 )}
               </section>
               <section>
@@ -589,7 +630,7 @@ function ReviewActions({
         className={`${selectClass} w-full`}
       />
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button size="sm" disabled={busy} onClick={() => void review("acknowledged")}>
+        <Button size="sm" disabled={busy} onClick={() => void review("approved")}>
           Approve
         </Button>
         <Button size="sm" disabled={busy || !remark.trim()} onClick={() => void review("returned")}>

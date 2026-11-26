@@ -107,6 +107,7 @@ const governanceModelPage = readFileSync(
 );
 const unitsPage = readFileSync(join(ROOT, "src/app/create/units/page.tsx"), "utf8");
 const usgNav = readFileSync(join(ROOT, "src/components/dashboard/usg-nav.ts"), "utf8");
+const usgManage = readFileSync(join(ROOT, "src/app/usg/manage/ManageClient.tsx"), "utf8");
 const lsgNav = readFileSync(join(ROOT, "src/components/dashboard/lsg-nav.ts"), "utf8");
 const usgLayout = readFileSync(join(ROOT, "src/app/usg/layout.tsx"), "utf8");
 const lsgLayout = readFileSync(join(ROOT, "src/app/lsg/layout.tsx"), "utf8");
@@ -320,23 +321,34 @@ check(
   "the USG nav has no shared-contract centralized predicate",
 );
 check(
-  "USG nav hides Umbrella and Invites when centralized",
-  /!centralized \|\| \(index !== 0 && index !== 1\)/.test(usgNav),
-  "centralized owners still see the federated umbrella links",
+  "USG nav hides People & Units when centralized",
+  /!centralized \|\| index !== 0/.test(usgNav),
+  "centralized owners still see the federated people links",
 );
 check(
-  "USG nav hides Monitoring when centralized",
-  /if \(!centralized && canReviewDocuments\)[\s\S]{0,160}Monitoring/.test(usgNav),
-  "the centralized nav still exposes cross-unit monitoring",
+  "USG manage hides People & Units when centralized",
+  usgManage.includes("canManage && !centralized") &&
+    usgManage.includes('!(centralized && requestedTab === "people")') &&
+    usgManage.includes('tab === "people" && canManage && !centralized'),
+  "centralized owners can still open the federated people panel by URL",
 );
 check(
-  "USG nav hides the published chart and Accounts when centralized",
-  /if \(!centralized && canManage\)[\s\S]{0,280}Accounts/.test(usgNav),
-  "the centralized nav still exposes owner-only federated links",
+  "USG nav has no Monitoring link",
+  !usgNav.includes('label: "Monitoring"') && !usgNav.includes("?tab=monitoring"),
+  "the merged Manage nav still exposes the removed aggregate view",
+);
+check(
+  "USG structure keeps the published chart owner-only when federated",
+  !usgNav.includes('label: "Published chart"') &&
+    usgManage.includes('tab === "structure"') &&
+    usgManage.includes("!centralized ? (") &&
+    usgManage.includes('href="/org-chart"') &&
+    usgManage.includes("View published chart"),
+  "the federated owner lost the published-chart action in Government structure",
 );
 check(
   "USG nav keeps the non-federated sections",
-  ["Government structure", "Profile and Customization", "Documents", "Search", "Budget"].every(
+  ["Government structure", "Profile and Customization", "Documents", "Budget"].every(
     (label) => usgNav.includes(`label: "${label}"`),
   ),
   "a required centralized section disappeared from the USG nav",
@@ -347,14 +359,14 @@ check(
   "the LSG nav has no shared-contract centralized predicate",
 );
 check(
-  "LSG nav hides the cross-unit USG details and resolution gates when centralized",
-  /centralized \? \[\] : \[\{ label: "Unit details"/.test(lsgNav) &&
-    /centralized \? \[\] : \[\{ label: "Resolutions"/.test(lsgNav),
+  "LSG nav hides the cross-unit resolution gate when centralized",
+  /centralized \? \[\] : \[\{ label: "Resolutions"/.test(lsgNav) &&
+    !lsgNav.includes('label: "Unit details"'),
   "centralized LSG nav still exposes cross-unit approval links",
 );
 check(
   "LSG nav keeps its working sections",
-  ["Government structure", "Profile and Customization", "Documents", "Search", "Budget"].every(
+  ["Government structure", "Profile and Customization", "Documents", "Budget"].every(
     (label) => lsgNav.includes(`label: "${label}"`),
   ),
   "a required centralized section disappeared from the LSG nav",

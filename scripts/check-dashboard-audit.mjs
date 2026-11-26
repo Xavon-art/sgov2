@@ -2,15 +2,18 @@ import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import pg from "pg";
 import { assertNavIdsStable, LSG_STABLE_NAV_IDS, STABLE_NAV_IDS } from "./check-federated-features.mjs";
+import { readTestAccounts } from "./test-fixtures.mjs";
 
 export const DASHBOARD_AUDIT_TARGET = 30;
 
 const BASE = process.env.DASHBOARD_AUDIT_BASE_URL ?? "http://localhost:3000";
-const CREDENTIALS =
-  "C:/Users/Julius M. Matro/Desktop/sir tonie projects/credentials/smartgov-test-accounts.txt";
-const text = readFileSync(CREDENTIALS, "utf8");
-const lines = text.split(/\r?\n/);
-const password = text.match(/Password for every account:\s*(\S+)/i)?.[1] ?? "";
+const fixture = readTestAccounts();
+const password = fixture.password;
+const ACCOUNTS = {
+  owner: fixture.emails.usg,
+  nonOwner: fixture.emails.reviewer ?? fixture.emails.lsg2,
+  lsg: fixture.emails.lsg,
+};
 
 let checks = 0;
 let failures = 0;
@@ -25,8 +28,8 @@ function check(label, condition, detail = "") {
   }
 }
 
-function account(lineNumber) {
-  const email = lines[lineNumber - 1].match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/)?.[0];
+function account(role) {
+  const email = ACCOUNTS[role];
   if (!email || !password) throw new Error("Fixture credentials are missing expected accounts.");
   return email;
 }
@@ -173,39 +176,37 @@ async function visit(page, href) {
 }
 
 async function ownerNavCheck(page) {
-  await signIn(page, account(14));
+  await signIn(page, account("owner"));
   await visit(page, "/usg/manage");
-  check("owner keeps the Umbrella child link", (await page.locator('a[href="/usg/manage?tab=umbrella"]').count()) > 0);
-  check("owner keeps the Invites child link", (await page.locator('a[href="/usg/manage?tab=invites"]').count()) > 0);
+  check("owner keeps the People & Units child link", (await page.locator('a[href="/usg/manage?tab=people&view=units"]').count()) > 0);
   check("owner keeps the Structure child link", (await page.locator('a[href="/usg/manage?tab=structure"]').count()) > 0);
 }
 
 async function officerNavAndApiCheck(page) {
-  await signIn(page, account(9));
+  await signIn(page, account("nonOwner"));
   await visit(page, "/usg/manage");
-  check("USG officer does not see the owner-only Umbrella link", (await page.locator('a[href="/usg/manage?tab=umbrella"]').count()) === 0);
-  check("USG officer does not see the owner-only Invites link", (await page.locator('a[href="/usg/manage?tab=invites"]').count()) === 0);
-  check("USG officer does not see the owner-only Structure link", (await page.locator('a[href="/usg/manage?tab=structure"]').count()) === 0);
+  check("non-owner account does not see the owner-only People & Units link", (await page.locator('a[href="/usg/manage?tab=people&view=units"]').count()) === 0);
+  check("non-owner account does not see the owner-only Structure link", (await page.locator('a[href="/usg/manage?tab=structure"]').count()) === 0);
 
   const units = await page.evaluate(async () => {
     const res = await fetch("/api/units");
     const body = await res.json().catch(() => ({}));
     return { status: res.status, ok: body.ok, count: Array.isArray(body.units) ? body.units.length : -1 };
   });
-  check("USG officer can read assignable units", units.status === 200 && units.ok && units.count > 0, JSON.stringify(units));
+  check("non-owner account can read assignable units", units.status === 200 && units.ok && units.count > 0, JSON.stringify(units));
 
   const requestErrors = await visit(page, "/usg/request");
-  check("USG officer Request page has no forbidden API response", requestErrors.length === 0, requestErrors.join(" | "));
+  check("non-owner Request page has no forbidden API response", requestErrors.length === 0, requestErrors.join(" | "));
   const eventErrors = await visit(page, "/usg/events");
-  check("USG officer Events page has no forbidden API response", eventErrors.length === 0, eventErrors.join(" | "));
+  check("non-owner Events page has no forbidden API response", eventErrors.length === 0, eventErrors.join(" | "));
 }
 
 async function overviewCheck(page) {
-  await signIn(page, account(17));
+  await signIn(page, account("lsg"));
   const data = await page.evaluate(async () => {
     const get = async (url) => (await fetch(url)).json().catch(() => ({}));
     const [overview, tasks, requests] = await Promise.all([
-      get("/api/overview"),
+      get("/api/overview?side=lsg"),
       get("/api/tasks"),
       get("/api/requests"),
     ]);
@@ -221,57 +222,32 @@ async function overviewCheck(page) {
     check(`overview exposes ${key} report breakdown`, Boolean(breakdown[key] && typeof breakdown[key] === "object"));
   }
 
-  await page.getByRole("button", { name: /^customize/i }).first().click();
-  await page.getByRole("button", { name: /^reset$/i }).click();
-  await page.waitForTimeout(700);
-
-  const widgets = page.locator('[data-tour="workspace-widgets"]');
-  check("overview renders the widget area", (await widgets.count()) === 1);
-  for (const label of ["At a glance", "Report summary", "Task status", "Request status", "Workflow"]) {
-    check(`overview renders the ${label} widget`, (await widgets.getByText(label, { exact: false }).count()) > 0);
-  }
-
-  await page.getByRole("button", { name: /^customize/i }).first().click();
-  const reportCard = page.locator('[data-widget="reports"]');
-  if ((await reportCard.getByRole("button", { name: /^show$/i }).count()) > 0) {
-    await reportCard.getByRole("button", { name: /^show$/i }).click();
-    await page.getByRole("button", { name: /^save layout$/i }).click();
-    await page.waitForTimeout(500);
-    await page.getByRole("button", { name: /^customize/i }).first().click();
-  }
-  await reportCard.getByRole("button", { name: /^hide$/i }).click();
-  await page.getByRole("button", { name: /^save layout$/i }).click();
-  await page.waitForTimeout(800);
-  await visit(page, "/lsg/manage");
-  await visit(page, "/lsg");
-  await page
-    .waitForFunction(
-      () => {
-        if (!document.querySelector('[data-tour="workspace-widgets"]')) return false;
-        return !document.querySelector('[data-widget="reports"]');
-      },
-      null,
-      { timeout: 8000 },
-    )
-    .catch(() => {});
-  const hiddenState = await page.evaluate(async () => ({
-    prefs: await (await fetch("/api/dashboard/layout")).json(),
-    cards: document.querySelectorAll('[data-widget="reports"]').length,
-  }));
+  const statusCounts = data.overview.lsg?.statusCounts ?? {};
   check(
-    "hidden overview widget stays hidden after navigation",
-    hiddenState.cards === 0,
-    JSON.stringify(hiddenState),
+    "overview returns the LSG linear path payload",
+    Boolean(data.overview.lsg),
+    JSON.stringify(data.overview.lsg ?? null),
+  );
+  check(
+    "LSG status strip exposes all five statuses",
+    ["pending", "under_review", "returned", "approved", "overdue"].every(
+      (key) => typeof statusCounts[key] === "number",
+    ),
+    JSON.stringify(statusCounts),
   );
 
-  await page.getByRole("button", { name: /^customize/i }).first().click();
-  await page.getByRole("button", { name: /^reset$/i }).click();
-  await page.waitForTimeout(600);
-  check("reset restores hidden overview widgets", (await page.locator('[data-widget="reports"]').count()) > 0);
+  await visit(page, "/lsg");
+  check("overview renders the status strip", (await page.locator('[data-tour="workspace-tiles"]').count()) === 1);
+  check("overview renders the next action panel", (await page.locator('[data-tour="workspace-overview-action"]').count()) === 1);
+  check("overview renders the due soon panel", (await page.locator('[data-tour="workspace-overview-list"]').count()) === 1);
+  check("overview renders recent USG decisions", (await page.getByText("Recent USG decisions", { exact: false }).count()) > 0);
+  check("overview renders the unit budget panel", (await page.locator('[data-tour="workspace-overview-budget"]').count()) === 1);
+  check("overview renders shortcuts", (await page.locator('[data-tour="workspace-shortcuts"]').count()) === 1);
+  check("overview no longer exposes saved-layout customization", (await page.getByRole("button", { name: /^customize/i }).count()) === 0);
 }
 
 async function lsgRequestTourCheck(page) {
-  await signIn(page, account(17));
+  await signIn(page, account("lsg"));
   await page.evaluate(() => window.next.router.push("/lsg/request"));
   await page.locator('[data-tour="request-file-personal"]').first().waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
   await dismissTour(page);

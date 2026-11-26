@@ -1,41 +1,17 @@
-"use client";
+﻿"use client";
 
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { StructureSummary } from "@/lib/structure";
+import type { Status } from "@/lib/status";
 
-const STATUS: Record<
-  StructureSummary["status"],
-  { label: string; tone: string; blurb: string }
-> = {
-  draft: {
-    label: "Draft",
-    tone: "border-line bg-paper/60 text-ink-soft",
-    blurb: "This structure has not been submitted yet. Save it as a draft, then send it to USG when ready.",
-  },
-  submitted: {
-    label: "Under review",
-    tone: "border-brass/45 bg-brass-soft/30 text-ink",
-    blurb: "USG has this revision. It can approve it, return it for changes, or reject it.",
-  },
-  returned: {
-    label: "Returned",
-    tone: "border-[#a3702a]/35 bg-[#a3702a]/[0.08] text-[#8a5f22]",
-    blurb: "USG sent this revision back for changes. Read the remark, update the structure, and submit it again.",
-  },
-  approved: {
-    label: "Approved",
-    tone: "border-[#2f6d4f]/35 bg-[#2f6d4f]/[0.08] text-[#255639]",
-    blurb: "USG approved this revision. It is the published structure for its term.",
-  },
-  rejected: {
-    label: "Rejected",
-    tone: "border-[#a33a2e]/35 bg-[#a33a2e]/[0.07] text-[#8c3126]",
-    blurb: "USG rejected this revision. It will not be published; start a new revision when you are ready.",
-  },
-  superseded: {
-    label: "Superseded",
-    tone: "border-line bg-paper/60 text-muted",
-    blurb: "A newer approved structure replaced this revision.",
-  },
+const BLURB: Record<Status, string> = {
+  draft: "This structure has not been submitted yet. Save it as a draft, then send it to USG when ready.",
+  pending: "This structure is waiting for USG to open it.",
+  under_review: "USG has this revision. It can approve it, return it for changes, or reject it.",
+  returned: "USG returned this revision for changes. Update it and send it back when ready.",
+  approved: "USG approved this revision. It is the published structure for its term.",
+  rejected: "USG rejected this revision. It will not be published; start a new revision when you are ready.",
+  overdue: "The review deadline for this revision has passed.",
 };
 
 const DATE = new Intl.DateTimeFormat("en-PH", {
@@ -54,17 +30,6 @@ function when(value: string | null | undefined) {
 
 function sortKey(entry: StructureSummary) {
   return entry.decidedAt ?? entry.submittedAt ?? entry.updatedAt ?? entry.createdAt ?? "";
-}
-
-function StatusPill({ status }: { status: StructureSummary["status"] }) {
-  const meta = STATUS[status] ?? STATUS.superseded;
-  return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-[0.625rem] font-semibold tracking-[0.12em] uppercase ${meta.tone}`}
-    >
-      {meta.label}
-    </span>
-  );
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
@@ -109,9 +74,8 @@ export function StructureStatusTracker({
     );
   }
 
-  const meta = STATUS[latest.status] ?? STATUS.superseded;
-  const open =
-    latest.status === "draft" || latest.status === "submitted" || latest.status === "returned";
+  const blurb = BLURB[latest.status] ?? BLURB.pending;
+  const open = latest.status !== "approved" && latest.status !== "rejected";
   const submittedAt = latest.status === "draft" ? null : latest.submittedAt;
   const decidedAt = latest.status === "draft" ? null : latest.decidedAt;
   const reviewer = latest.status === "draft" ? null : latest.decidedBy;
@@ -123,9 +87,9 @@ export function StructureStatusTracker({
         <div className="min-w-0">
           <p className="eyebrow">Submission status</p>
           <h3 className="mt-1 text-[1.25rem] leading-tight">{latest.termLabel}</h3>
-          <p className="mt-2 max-w-2xl text-[0.875rem] leading-relaxed text-body">{meta.blurb}</p>
+          <p className="mt-2 max-w-2xl text-[0.875rem] leading-relaxed text-body">{blurb}</p>
         </div>
-        <StatusPill status={latest.status} />
+        <StatusBadge status={latest.status} />
       </div>
 
       <dl className="mt-5 grid gap-4 border-t border-line/70 pt-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -134,7 +98,7 @@ export function StructureStatusTracker({
         <Detail label="Decision" value={when(decidedAt) ?? "Pending"} />
         <Detail
           label="Reviewer"
-          value={reviewer ?? (latest.status === "submitted" ? "Waiting for USG" : "Not decided")}
+          value={reviewer ?? (latest.status === "under_review" ? "Waiting for USG" : "Not decided")}
         />
       </dl>
 
@@ -174,7 +138,7 @@ export function StructureStatusTracker({
                   <p className="text-[0.8125rem] font-medium text-ink-deep">
                     {entry.termLabel} &middot; revision {entry.revision}
                   </p>
-                  <StatusPill status={entry.status} />
+                  <StatusBadge status={entry.status} />
                 </div>
                 <p className="mt-1 text-[0.75rem] text-muted">
                   {when(entry.decidedAt) ?? when(entry.submittedAt) ?? when(entry.updatedAt) ?? "No date"}

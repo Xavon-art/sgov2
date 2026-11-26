@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { messageFor } from "@/lib/auth/messages";
-import { readSessionToken } from "@/lib/auth/session";
+import { currentAccount, readSessionToken } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
@@ -41,6 +41,14 @@ export async function GET() {
   }
 
   try {
+    const account = await currentAccount();
+    if (!account || account.accountScope !== "owner" || !account.organizationId) {
+      return NextResponse.json(
+        { ok: false, message: messageFor("forbidden"), reason: "forbidden" },
+        { status: 403 },
+      );
+    }
+
     const res = await callRpc<ListPayload>("list_officers", { p_session_token: token });
     if (!res.ok) {
       return NextResponse.json(

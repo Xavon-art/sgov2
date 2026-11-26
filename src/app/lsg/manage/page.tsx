@@ -4,12 +4,10 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDashboard } from "@/components/dashboard/dashboard-context";
-import { MyUsgPanel } from "@/components/dashboard/MyUsgPanel";
 import { ProfileSection } from "@/components/dashboard/ProfileSection";
 import { StructureEditorPanel } from "@/components/dashboard/StructureEditorPanel";
 import { DocumentLibraryPanel } from "@/components/dashboard/DocumentLibraryPanel";
-import { DocumentSearchPanel } from "@/components/dashboard/DocumentSearchPanel";
-import { BudgetPanel } from "@/components/dashboard/BudgetPanel";
+import { LsgBudgetPanel } from "@/components/dashboard/LsgBudgetPanel";
 import { FeedbackWorkspace } from "@/components/dashboard/FeedbackWorkspace";
 import { SectionIcon } from "@/components/dashboard/workspace-shared";
 import { IconLayers } from "@/components/ui/Icons";
@@ -49,12 +47,21 @@ export default function LsgManagePage() {
   // The sidebar owns navigation. The query param only picks which panel renders.
   const centralized = role.isCentral || role.governanceModel === "unitary";
   const requested = searchParams.get("tab");
-  const tab: Tab = isTab(requested) ? requested : centralized ? "structure" : "unit";
+  const selectedTab: Tab = isTab(requested) ? requested : centralized ? "structure" : "profile";
+  const tab: Tab = selectedTab === "search" ? "documents" : selectedTab;
+  const initialQuery = searchParams.get("q") ?? "";
 
   // Old links used the USG-facing tab name; rewrite them so the LSG URL stays clean.
   useEffect(() => {
-    if (requested === "usg") router.replace("/lsg/manage?tab=unit", { scroll: false });
-  }, [requested, router]);
+    if (requested === "usg" || requested === "unit") router.replace("/lsg/manage?tab=profile", { scroll: false });
+    if (requested === "search") {
+      const query = searchParams.get("q");
+      router.replace(
+        query ? `/lsg/manage?tab=documents&q=${encodeURIComponent(query)}` : "/lsg/manage?tab=documents",
+        { scroll: false },
+      );
+    }
+  }, [requested, router, searchParams]);
 
   const unitName = account.campusName || account.universityName || "your unit";
 
@@ -75,17 +82,10 @@ export default function LsgManagePage() {
         </p>
       </header>
 
-      {tab === "unit" ? (
-        <div data-tour="manage-unit">
-          <MyUsgPanel />
-        </div>
-      ) : null}
+      {tab === "profile" ? <ProfileSection allowCustomisation={true} /> : null}
 
-      {tab === "profile" ? <ProfileSection allowCustomisation={false} /> : null}
-
-      {tab === "documents" ? <DocumentLibraryPanel /> : null}
-      {tab === "search" ? <DocumentSearchPanel /> : null}
-      {tab === "budget" ? <BudgetPanel /> : null}
+      {tab === "documents" ? <DocumentLibraryPanel initialQuery={initialQuery} /> : null}
+      {tab === "budget" ? <LsgBudgetPanel /> : null}
       {tab === "feedback" ? <FeedbackWorkspace side="lsg" /> : null}
 
       {tab === "structure" ? (
@@ -97,6 +97,14 @@ export default function LsgManagePage() {
             LSG beneath it keeps its own. Build and maintain this unit&rsquo;s officers, positions,
             and committees directly below; choose a matching sample format or start from scratch.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/org-chart"
+              className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]"
+            >
+              View published chart
+            </Link>
+          </div>
           <div className="mt-4">
             <StructureEditorPanel />
           </div>
@@ -107,10 +115,10 @@ export default function LsgManagePage() {
         <p className="eyebrow">More</p>
         <h2 className="mt-1 text-[1.25rem] leading-tight">Other management tools</h2>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Link href="/lsg/surveys" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Surveys</Link>
-          <Link href="/lsg/personal-requests" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Personal requests</Link>
+          <Link href="/lsg/forms?type=survey" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Surveys</Link>
+          <Link href="/lsg/request?tab=personal" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Personal requests</Link>
           <Link href="/lsg/events" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Events</Link>
-          <Link href="/lsg/messages" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Messages</Link>
+          <Link href="/lsg/messages" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Inbox</Link>
         </div>
       </div>
     </section>

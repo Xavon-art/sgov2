@@ -66,6 +66,13 @@ export async function GET(req: Request) {
       p_task_id: taskId,
     });
 
+    if (res.isUsg) {
+      await callRpc<RpcResult>("open_task_review", {
+        p_session_token: token,
+        p_task_id: taskId,
+      }).catch(() => undefined);
+    }
+
     return NextResponse.json({
       ok: true,
       task: res.task ?? null,
@@ -155,6 +162,77 @@ export async function PATCH(req: Request) {
         );
       }
       return NextResponse.json({ ok: true });
+    }
+
+    // The explicit hand-off. The RPC checks every required answer first, so the
+    // client cannot turn a draft into a review by skipping the checklist.
+    if (action === "submit") {
+      const res = await callRpc<RpcResult>("submit_assignment_for_review", {
+        p_session_token: token,
+        p_task_id: taskId,
+        p_unit_id: typeof body.unitId === "string" ? body.unitId : "",
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: statusForReason(res.reason) },
+        );
+      }
+      return NextResponse.json({ ok: true, status: res.status, late: res.late });
+    }
+
+    if (action === "open-review") {
+      const res = await callRpc<RpcResult>("open_assignment_review", {
+        p_session_token: token,
+        p_task_id: taskId,
+        p_unit_id: typeof body.unitId === "string" ? body.unitId : "",
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: statusForReason(res.reason) },
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // A unit pulling back its own submission while the office has not opened it.
+    if (action === "withdraw") {
+      const res = await callRpc<RpcResult>("withdraw_assignment_submission", {
+        p_session_token: token,
+        p_task_id: taskId,
+        p_unit_id: typeof body.unitId === "string" ? body.unitId : "",
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: statusForReason(res.reason) },
+        );
+      }
+      return NextResponse.json({ ok: true, status: res.status });
+    }
+
+    if (action === "reopen") {
+      const newDueAt = typeof body.newDueAt === "string" ? body.newDueAt : "";
+      if (!newDueAt) {
+        return NextResponse.json(
+          { ok: false, reason: "past_deadline", message: messageFor("past_deadline") },
+          { status: 400 },
+        );
+      }
+      const res = await callRpc<RpcResult>("reopen_task", {
+        p_session_token: token,
+        p_task_id: taskId,
+        p_new_due_at: newDueAt,
+        p_note: typeof body.note === "string" ? body.note : "",
+      });
+      if (!res.ok) {
+        return NextResponse.json(
+          { ok: false, reason: res.reason, message: messageFor(res.reason) },
+          { status: statusForReason(res.reason) },
+        );
+      }
+      return NextResponse.json({ ok: true, dueAt: res.dueAt });
     }
 
     // A unit moving its own assignment along the ladder.

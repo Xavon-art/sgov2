@@ -101,8 +101,8 @@ includes("supabase/migrations/20260101003430_fix_lsg_budget_dashboard_unit_scope
 includes("src/lib/budgets.ts", ["BudgetDashboard"]);
 includes("src/app/api/budgets/route.ts", ["dashboard"]);
 includes("src/components/dashboard/FederatedOverview.tsx", [
-  "Budget overview",
-  "Total spent",
+  "Your unit budget",
+  "Spent",
   "Requests",
   "Approved",
   "Remaining",
@@ -130,7 +130,7 @@ includes("src/lib/feedback-forms-schema.ts", [
 includes("src/app/api/feedback/public/route.ts", ["listPublicFeedbackForms"]);
 includes("src/components/landing/PublishedFeedbackForms.tsx", [
   "PublishedFeedbackForms",
-  "/feedback/f/",
+  "/forms/feedback/",
 ]);
 includes("src/app/page.tsx", ["PublishedFeedbackForms"]);
 includes("src/components/dashboard/PublicFeedbackForm.tsx", [
@@ -149,10 +149,10 @@ includes("src/components/dashboard/lsg-nav.ts", [
 ]);
 
 includes("src/components/dashboard/FederatedOverview.tsx", [
-  "owes the student government",
-  "Letter dashboard",
-  "Letters submitted",
-  "Under review",
+  "Recent USG decisions",
+  "USG decisions",
+  "No remark recorded.",
+  "under_review",
 ]);
 
 includes("src/components/dashboard/ProfileSection.tsx", [
@@ -169,7 +169,7 @@ includes("src/components/structure/StructureWorkspace.tsx", [
 includes("src/components/dashboard/RequestSection.tsx", [
   "Tasks from USG",
   "Requirements from USG",
-  "Submit your requirement response",
+  "Submit for Review",
 ]);
 
 includes("src/components/dashboard/ResolutionPanel.tsx", [
@@ -195,7 +195,7 @@ includes("supabase/migrations/20260101003440_lsg_workspace_fixes.sql", [
 includes("src/components/dashboard/EventsWorkspace.tsx", [
   ">EDIT<",
   ">DELETE<",
-  "Overall budget request",
+  "Approved budget",
   "Record spending",
   "Remaining budget",
 ]);
@@ -251,8 +251,7 @@ includes("supabase/migrations/20260101003450_personal_request_decision_states.sq
 
 includes("src/components/dashboard/RequestSection.tsx", [
   "DecisionSection",
-  "Need revision",
-  "Require submission",
+  "Return for revision",
   "Resubmit",
 ]);
 
@@ -284,9 +283,10 @@ includes("src/components/dashboard/EventsWorkspace.tsx", [
 excludes("src/components/dashboard/EventsWorkspace.tsx", [">Assign<"]);
 
 includes("src/components/dashboard/AccomplishmentPanel.tsx", [
-  "Needs Submission",
+  "Reportable events",
+  "Open reports",
   "Accomplished Reports",
-  'status === "acknowledged"',
+  'status === "approved"',
 ]);
 
 includes("supabase/migrations/20260101003470_lsg_budget_propagation.sql", [
@@ -303,9 +303,9 @@ includes("src/components/dashboard/budget-store.tsx", [
   "setInterval",
 ]);
 
-includes("src/components/dashboard/BudgetPanel.tsx", [
-  "BudgetReviewActions",
-  "refreshBudgetStore",
+includes("src/components/dashboard/UsgBudgetPanel.tsx", [
+  "Allocation manager",
+  "Export CSV",
   "actualSpent",
 ]);
 
@@ -316,7 +316,10 @@ includes("src/components/dashboard/LsgRequestBudgetPanel.tsx", [
 ]);
 
 includes("src/app/lsg/request/page.tsx", ["LsgRequestBudgetPanel"]);
-includes("src/components/dashboard/FederatedOverview.tsx", ["useBudgetStore"]);
+includes("src/components/dashboard/FederatedOverview.tsx", [
+  "/api/overview?side=",
+  "statusHref",
+]);
 
 includes("supabase/migrations/20260101003480_unified_submission_catalog.sql", [
   "filed_document_catalog",
@@ -333,7 +336,7 @@ includes("src/components/dashboard/DocumentLibraryPanel.tsx", [
   "row.downloadUrl",
   "Event",
 ]);
-includes("src/components/dashboard/DocumentSearchPanel.tsx", [
+includes("src/components/dashboard/DocumentLibraryPanel.tsx", [
   "groupKind",
   "originUnitId",
   "row.downloadUrl",

@@ -114,7 +114,9 @@ await withAccount("owner@demo.smartgov.test", async ({ page, settle, shot }) => 
     await manage.click();
     await page.waitForTimeout(400);
   }
-  await page.getByRole("link", { name: /^Published chart$/ }).first().click();
+  await page.getByRole("link", { name: /^Government structure$/ }).first().click();
+  await settle('[data-tour="manage-structure"]', 120_000);
+  await page.getByRole("link", { name: /^View published chart$/ }).first().click();
   await settle('[data-tour="org-chart-published"]', 120_000);
   await shot("org-chart");
 });

@@ -18,6 +18,7 @@
  */
 
 import type { RpcResult } from "@/lib/auth/rpc";
+import { normalizeStatus, type Status } from "@/lib/status";
 import { messageFor } from "@/lib/auth/messages";
 
 /** One officer, as the builder holds them while editing. */
@@ -141,7 +142,7 @@ export type StructureSummary = {
   id: string;
   unitId: string;
   authorKind: "lsg" | "usg";
-  status: "draft" | "submitted" | "returned" | "approved" | "rejected" | "superseded";
+  status: Status;
   revision: number;
   templateKey: string | null;
   termLabel: string;
@@ -163,6 +164,10 @@ export type StructureSummary = {
   unitType?: string;
   reviewable?: boolean;
 };
+
+function normalizeSummary(structure: StructureSummary): StructureSummary {
+  return { ...structure, status: normalizeStatus(structure.status) };
+}
 
 export type StructureCapability = {
   canRead: boolean;
@@ -379,19 +384,35 @@ export async function fetchTemplates(): Promise<TemplatesPayload> {
 }
 
 export async function fetchQueue(): Promise<QueuePayload> {
-  const res = await fetch("/api/structures?view=queue");
-  return (await res.json()) as QueuePayload;
+  const res = await fetch("/api/structures?view=queue", { cache: "no-store" });
+  const payload = (await res.json()) as QueuePayload;
+  return {
+    ...payload,
+    pending: payload.pending?.map(normalizeSummary),
+    decided: payload.decided?.map(normalizeSummary),
+    drafts: payload.drafts?.map(normalizeSummary),
+  };
 }
 
 /** The organization's published root structure, for any member. */
 export async function fetchOrgStructure(): Promise<OrgStructurePayload> {
-  const res = await fetch("/api/structures?view=org");
-  return (await res.json()) as OrgStructurePayload;
+  const res = await fetch("/api/structures?view=org", { cache: "no-store" });
+  const payload = (await res.json()) as OrgStructurePayload;
+  return {
+    ...payload,
+    structure: payload.structure ? normalizeSummary(payload.structure) : payload.structure,
+  };
 }
 
 export async function fetchStructure(unitId: string): Promise<StructureReadPayload> {
-  const res = await fetch(`/api/structures/${encodeURIComponent(unitId)}`);
-  return (await res.json()) as StructureReadPayload;
+  const res = await fetch(`/api/structures/${encodeURIComponent(unitId)}`, { cache: "no-store" });
+  const payload = (await res.json()) as StructureReadPayload;
+  return {
+    ...payload,
+    draft: payload.draft ? normalizeSummary(payload.draft) : payload.draft,
+    approved: payload.approved ? normalizeSummary(payload.approved) : payload.approved,
+    history: payload.history?.map(normalizeSummary),
+  };
 }
 
 export async function fetchRoster(unitId: string): Promise<RosterPayload> {

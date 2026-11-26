@@ -1,18 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Reveal } from "@/components/fx/Reveal";
 import { ActionError, selectClass, ROW_STAGGER_MS } from "@/components/dashboard/workspace-shared";
 import { IconPencil } from "@/components/ui/Icons";
 import {
-  DOCUMENT_STATUS_CLASS,
-  DOCUMENT_STATUS_LABEL,
   GROUP_KIND_LABEL,
   formatDocumentDate,
   type DocumentGroupKind,
   type DocumentRow,
 } from "@/lib/document-search";
+import { STATUS_LABEL, type Status } from "@/lib/status";
 
 async function mutate(url: string, init: RequestInit): Promise<Record<string, unknown>> {
   const res = await fetch(url, init);
@@ -33,31 +33,44 @@ function actionMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
 }
 
-type LibraryRow = DocumentRow & { canApprove?: boolean };
-
-function StatusBadge({ status }: { status: DocumentRow["status"] }) {
-  return (
-    <span className={`rounded-full border px-2 py-0.5 text-xs ${DOCUMENT_STATUS_CLASS[status]}`}>
-      {DOCUMENT_STATUS_LABEL[status]}
-    </span>
-  );
+function originsFromRows(rows: DocumentRow[]) {
+  const seen = new Map<string, string>();
+  for (const row of rows) {
+    if (row.originUnitId && row.unitName) seen.set(row.originUnitId, row.unitName);
+  }
+  return [...seen.entries()]
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function DocumentLibraryPanel() {
+type LibraryRow = DocumentRow & { canApprove?: boolean };
+
+export function DocumentLibraryPanel({ initialQuery = "" }: { initialQuery?: string }) {
   const [rows, setRows] = useState<LibraryRow[]>([]);
   const [catalogCanApprove, setCanApprove] = useState(false);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [actionError, setActionError] = useState<string | null>(null);
   const [editing, setEditing] = useState<DocumentRow | null>(null);
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const [q, setQ] = useState(initialQuery);
+  const [type, setType] = useState("");
+  const [status, setStatus] = useState("");
+  const [groupKind, setGroupKind] = useState("");
+  const [originUnitId, setOriginUnitId] = useState("");
+  const [origins, setOrigins] = useState<{ id: string; name: string }[]>([]);
+  const [queried, setQueried] = useState(Boolean(initialQuery));
+  const didInit = useRef(false);
 
   const load = useCallback(async () => {
     setState("loading");
+    setQueried(false);
     try {
       const res = await fetch("/api/documents?limit=100");
       const json = await res.json();
       if (!json.ok) throw new Error(json.message);
-      setRows((json.rows as LibraryRow[]) ?? []);
+      const nextRows = (json.rows as LibraryRow[]) ?? [];
+      setRows(nextRows);
+      setOrigins(originsFromRows(nextRows));
       setCanApprove(json.canApprove === true);
       setState("ready");
     } catch {
@@ -65,10 +78,47 @@ export function DocumentLibraryPanel() {
     }
   }, []);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  const search = useCallback(async () => {
+    setState("loading");
+    setQueried(true);
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (type.trim()) params.set("type", type.trim());
+    if (status) params.set("status", status);
+    if (groupKind) params.set("groupKind", groupKind);
+    if (originUnitId) params.set("originUnitId", originUnitId);
+    params.set("limit", "100");
+    try {
+      const res = await fetch(`/api/documents?${params.toString()}`);
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.message);
+      const nextRows = (json.rows as LibraryRow[]) ?? [];
+      setRows(nextRows);
+      setOrigins(originsFromRows(nextRows));
+      setCanApprove(json.canApprove === true);
+      setState("ready");
+    } catch {
+      setState("error");
+    }
+  }, [groupKind, originUnitId, q, status, type]);
+
+  const clearFilters = () => {
+    setQ("");
+    setType("");
+    setStatus("");
+    setGroupKind("");
+    setOriginUnitId("");
     void load();
-  }, [load]);
+  };
+
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    queueMicrotask(() => {
+      if (initialQuery) void search();
+      else void load();
+    });
+  }, [initialQuery, load, search]);
 
   return (
     <div className="grid gap-6">
@@ -82,6 +132,104 @@ export function DocumentLibraryPanel() {
         </Button>
       </div>
 
+      <form
+        data-tour="documents-filters"
+        className="grid gap-3 rounded-2xl border border-line bg-paper/70 p-4 sm:p-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void search();
+        }}
+      >
+        <div>
+          <label className="mb-1 block text-sm text-muted" htmlFor="documents-filter-q">
+            Search
+          </label>
+          <input
+            id="documents-filter-q"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Title, description, keyword, or requirement"
+            className={selectClass}
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="mb-1 block text-sm text-muted" htmlFor="documents-filter-type">
+              Type
+            </label>
+            <input
+              id="documents-filter-type"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="PDF, DOCX, XLSX"
+              className={selectClass}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-muted" htmlFor="documents-filter-status">
+              Status
+            </label>
+            <select
+              id="documents-filter-status"
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Any status</option>
+              {(Object.keys(STATUS_LABEL) as Status[]).map((value) => (
+                <option key={value} value={value}>
+                  {STATUS_LABEL[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-muted" htmlFor="documents-filter-group">
+              Group
+            </label>
+            <select
+              id="documents-filter-group"
+              value={groupKind}
+              onChange={(e) => setGroupKind(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Any group</option>
+              {(Object.keys(GROUP_KIND_LABEL) as DocumentGroupKind[]).map((kind) => (
+                <option key={kind} value={kind}>
+                  {GROUP_KIND_LABEL[kind]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm text-muted" htmlFor="documents-filter-origin">
+              Originating LSG
+            </label>
+            <select
+              id="documents-filter-origin"
+              value={originUnitId}
+              onChange={(e) => setOriginUnitId(e.target.value)}
+              className={selectClass}
+            >
+              <option value="">Any LSG</option>
+              {origins.map((origin) => (
+                <option key={origin.id} value={origin.id}>
+                  {origin.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={clearFilters}>
+            Clear filters
+          </Button>
+          <Button type="submit" size="sm" disabled={state === "loading"}>
+            Search catalog
+          </Button>
+        </div>
+      </form>
+
       <ActionError message={actionError} />
 
       {state === "loading" && <div className="text-muted">Loading...</div>}
@@ -93,8 +241,9 @@ export function DocumentLibraryPanel() {
 
       {state === "ready" && rows.length === 0 && (
         <div className="rounded-2xl border border-line bg-paper p-6 text-sm text-muted">
-          No documents have been filed yet. Documents appear here once an LSG files a supported
-          upload, link, resolution, request or event.
+          {queried
+            ? "No documents match these filters. Try a broader term or clear the filters."
+            : "No documents have been filed yet. Documents appear here once an LSG files a supported upload, link, resolution, request or event."}
         </div>
       )}
 

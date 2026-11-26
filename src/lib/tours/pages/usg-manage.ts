@@ -16,20 +16,14 @@ export const usgManageTour: PageTour = {
     {
       target: "workspace-nav",
       title: "Everything under Manage",
-      body: "Documents, Search, Budget, Monitoring, Feedback, and Accounts are sidebar links here — no duplicate tabs on the page.",
+      body: "Documents, Budget, and Feedback are sidebar links here — no duplicate tabs on the page.",
       placement: "right",
     },
     {
-      target: "manage-umbrella",
-      title: "Umbrella organization",
-      body: "This section shows the larger organization your council belongs to.",
+      target: "manage-people",
+      title: "People and units",
+      body: "Units, officers, invitations, and feedback access live in one owner-only view.",
       placement: "bottom",
-    },
-    {
-      target: "manage-invites",
-      title: "Invitations",
-      body: "Invite new officers here and track who has accepted their invitation.",
-      placement: "right",
     },
     {
       target: "manage-structure",

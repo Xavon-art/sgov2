@@ -17,8 +17,8 @@ function walk(dir) {
   return out;
 }
 
-function routeFromPage(file) {
-  let route = relative(appDir, file).replace(/\\/g, "/").replace(/(^|\/)page\.tsx$/, "");
+function routeFromFile(file, suffix) {
+  let route = relative(appDir, file).replace(/\\/g, "/").replace(new RegExp(`(^|\/)${suffix}$`), "");
   if (route === "" || route === "index") return "/";
   route = `/${route}`;
   // Route groups do not appear in the URL.
@@ -39,8 +39,11 @@ function routePattern(route) {
 
 const routes = walk(appDir)
   .filter((file) => file.endsWith(`${sep}page.tsx`))
-  .map(routeFromPage);
-const patterns = [...new Set(routes)].map((route) => ({ route, re: routePattern(route) }));
+  .map((file) => routeFromFile(file, "page\\.tsx"));
+const apiRoutes = walk(appDir)
+  .filter((file) => file.endsWith(`${sep}route.ts`))
+  .map((file) => routeFromFile(file, "route\\.ts"));
+const patterns = [...new Set([...routes, ...apiRoutes])].map((route) => ({ route, re: routePattern(route) }));
 
 function matchesRoute(path) {
   return patterns.some(({ re }) => re.test(path));
@@ -72,20 +75,25 @@ function globMatches(path) {
 }
 
 const patternsToCheck = [
-  { label: "href", re: /\bhref\s*=\s*(?:"([^"]+)"|\{"([^"]+)"\}|\{`([^`]+)`\})/g },
-  { label: "router", re: /\brouter\.(?:push|replace)\(\s*(?:"([^"]+)"|`([^`]+)`)/g },
-  { label: "redirect", re: /\bredirect\(\s*(?:"([^"]+)"|`([^`]+)`)/g },
-  { label: "location", re: /\bwindow\.location(?:\.href)?\s*=\s*(?:"([^"]+)"|`([^`]+)`)/g },
+  { label: "href", re: /\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|\{"([^"]+)"\}|\{'([^']+)'\}|\{`([^`]+)`\})/g },
+  { label: "nav href", re: /\bhref\s*:\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g },
+  { label: "router", re: /\brouter\.(?:push|replace)\(\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g },
+  { label: "redirect", re: /\bredirect\(\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g },
+  { label: "location", re: /\bwindow\.location(?:\.href)?\s*=\s*(?:"([^"]+)"|'([^']+)'|`([^`]+)`)/g },
 ];
 
 const findings = [];
 const unsafeBack = [];
+const deadHrefs = [];
 const files = walk(srcDir).filter((file) => /\.(ts|tsx)$/.test(file));
 
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const rel = relative(root, file).replace(/\\/g, "/");
   if (/\b(?:router|history|window\.history)\.back\s*\(/.test(text)) unsafeBack.push(rel);
+  for (const match of text.matchAll(/\bhref\s*[:=]\s*(?:"#"|'#'|`(?:\s*)`|\{\s*["']#["']\s*\})/g)) {
+    deadHrefs.push({ file: rel, raw: match[0].trim() });
+  }
   for (const { label, re } of patternsToCheck) {
     for (const match of text.matchAll(re)) {
       const raw = match.slice(1).find((value) => typeof value === "string");
@@ -95,20 +103,23 @@ for (const file of files) {
       if (isGlobbed(path)) {
         if (!globMatches(path)) findings.push({ file: rel, label, raw, problem: "dynamic path has no matching route" });
       } else if (!matchesRoute(path)) {
-        findings.push({ file: rel, label, raw, problem: "no matching page route" });
+        findings.push({ file: rel, label, raw, problem: "no matching route" });
       }
     }
   }
 }
 
-console.log(`navigation audit: ${routes.length} routes, ${files.length} source files`);
+console.log(`navigation audit: ${routes.length} page routes, ${apiRoutes.length} API routes, ${files.length} source files`);
 if (unsafeBack.length) {
   for (const file of unsafeBack) console.log(`FAIL  ${file} uses history back navigation`);
+}
+for (const finding of deadHrefs) {
+  console.log(`FAIL  ${finding.file} uses a dead href: ${finding.raw}`);
 }
 for (const finding of findings) {
   console.log(`FAIL  ${finding.file} [${finding.label}] ${finding.raw}: ${finding.problem}`);
 }
-const failures = unsafeBack.length + findings.length;
+const failures = unsafeBack.length + deadHrefs.length + findings.length;
 if (failures > 0) {
   console.log(`navigation audit: ${failures} problem(s)`);
   process.exit(1);

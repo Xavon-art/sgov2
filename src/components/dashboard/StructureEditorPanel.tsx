@@ -1,28 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { StructureWorkspace } from "@/components/structure/StructureWorkspace";
+import { ChartViewer } from "@/components/structure/ChartViewer";
 import { ReviewQueue } from "@/components/structure/ReviewQueue";
+import { ButtonLink } from "@/components/ui/Button";
 import { structureFormat, type StructureReadPayload, type StructureSummary } from "@/lib/structure";
 
 /**
- * The structure editor, embedded in Manage.
+ * The structure panel embedded in Manage.
  *
- * The first version embedded `/usg/structure` in an iframe. That looked right
- * and was wrong twice over: the iframe is a fresh browsing context, so
- * `SessionGuard` saw no boot flag and tore the session down, and the editor
- * inside started from a blank chart rather than the saved one. This component
- * reads the caller's own unit from `/api/structures?view=own` and hands the
- * saved document to the editor as its initial state, so "edit" actually edits.
- *
- * A `unitId` query parameter overrides the own-unit lookup. That is how a
- * template preview returns to the exact council it prepared, including when a
- * USG owner is maintaining an LSG beneath the umbrella. The server still
- * resolves the id inside the caller's organization and applies its own
- * read/edit gate.
- *
- * Both sides get the same builder: the USG edits its root chart here, and an
- * LSG edits its council chart through the same component.
+ * It no longer embeds the legacy form builder. It shows a read-only chart
+ * preview of the current draft/published structure and links to the dedicated
+ * OrgChart editor page for editing.
  */
 export function StructureEditorPanel({
   showQueue = false,
@@ -35,8 +24,6 @@ export function StructureEditorPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setMessage(null);
     const requestedUnitId = new URLSearchParams(window.location.search).get("unitId");
     void (async () => {
       try {
@@ -66,7 +53,7 @@ export function StructureEditorPanel({
     return <p className="text-[0.875rem] text-muted">Loading your structure…</p>;
   }
 
-  if (message || !data?.ok || !data.unit || !data.capability?.canRead) {
+  if (message || !data?.ok || !data.unit || !data.capability) {
     return (
       <div className="rounded-xl border border-line bg-paper px-4 py-3">
         <p className="text-[0.875rem] font-medium text-ink">We could not load your structure</p>
@@ -77,29 +64,97 @@ export function StructureEditorPanel({
     );
   }
 
+  const { canRead, canEdit, isReviewer } = data.capability;
+  const unit = data.unit;
+  const managePath = unit.isRoot || unit.unitType === "usg"
+    ? "/usg/manage?tab=structure"
+    : "/lsg/manage?tab=structure";
+
+  if (!canRead) {
+    return (
+      <div className="rounded-xl border border-line bg-paper px-4 py-3">
+        <p className="text-[0.875rem] font-medium text-ink">Read-only structure</p>
+        <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
+          You do not have access to this council&apos;s structure. Access is decided by the database,
+          not by this page.
+        </p>
+      </div>
+    );
+  }
+
   const current: StructureSummary | null = data.draft ?? data.approved ?? null;
+  const doc = current?.document ?? null;
 
   return (
     <div data-tour="manage-structure" className="flex flex-col gap-6">
-      {current ? (
-        <p className="text-[0.8125rem] text-muted">
-          {current.status === "draft"
-            ? "Editing your saved draft."
-            : current.status === "approved"
-              ? "Editing an approved structure creates a new draft revision."
-              : `Current revision: ${current.status}.`}
+      {!canEdit ? (
+        <p className="text-[0.8125rem] leading-relaxed text-muted">
+          You have read-only access to this structure. Ask this council&apos;s officer to change it.
         </p>
       ) : null}
 
-      <StructureWorkspace
-        unitId={data.unit.id}
-        unitName={data.unit.name}
-        scope={data.unit.isRoot || data.unit.unitType === "usg" ? "usg" : "lsg"}
-        format={structureFormat({ isRoot: data.unit.isRoot, unitType: data.unit.unitType })}
-        capability={data.capability}
-      />
+      {current ? (
+        <>
+          <p className="text-[0.8125rem] text-muted">
+              {current.status === "draft"
+              ? "Editing your saved draft."
+              : current.status === "pending"
+                ? "Submitted for review. Edits are locked until a reviewer decides."
+                : current.status === "approved"
+                ? "Editing an approved structure creates a new draft revision."
+                : `Current revision: ${current.status}.`}
+          </p>
 
-      {showQueue && data.capability.isReviewer ? (
+          {doc && (
+            <div className="mt-4 rounded-2xl border border-line bg-paper/80 p-5 shadow-lift sm:p-6">
+              <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
+                <div>
+                  <p className="eyebrow">Published officer chart</p>
+                  <p className="mt-1 text-[0.875rem] text-body">
+                    {current.termLabel} &middot; revision {current.revision}
+                  </p>
+                </div>
+                <ButtonLink
+                  href={`/structure/editor?unitId=${encodeURIComponent(unit.id)}&returnTo=${encodeURIComponent(managePath)}`}
+                  variant="brass"
+                  size="sm"
+                >
+                  Open org chart editor
+                </ButtonLink>
+              </div>
+              <ChartViewer
+                doc={doc}
+                title={`${unit.name} officers`}
+                subtitle={`${current.termLabel} · revision ${current.revision}`}
+                filename={`${unit.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-officers`}
+                maxHeight={560}
+              />
+            </div>
+          )}
+
+          {!canEdit && (
+            <p className="mt-3 text-[0.8125rem] text-muted">
+              You have read-only access to this structure. Ask this council&apos;s officer to change it.
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="rounded-xl border border-line bg-paper px-4 py-3 text-center">
+          <p className="text-[0.875rem] font-medium text-ink">No structure yet</p>
+          <p className="mt-1 text-[0.8125rem] leading-relaxed text-muted">
+            Create your council&apos;s org chart in the editor.
+          </p>
+          <ButtonLink
+            href={`/structure/editor?unitId=${encodeURIComponent(unit.id)}&returnTo=${encodeURIComponent(managePath)}`}
+            variant="brass"
+            size="sm"
+          >
+            Open org chart editor
+          </ButtonLink>
+        </div>
+      )}
+
+      {showQueue && isReviewer ? (
         <div className="border-t border-line pt-8">
           <p className="eyebrow">Review queue</p>
           <h3 className="mt-1 text-[1.25rem] leading-tight">Council structures</h3>

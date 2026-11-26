@@ -30,22 +30,32 @@ export async function POST(req: Request) {
   const action = body.action;
   try {
     if (action === "request") {
+      const requestedDueAt = typeof body.requestedDueAt === "string" ? body.requestedDueAt : "";
+      if (!requestedDueAt) {
+        return NextResponse.json({ ok: false, reason: "past_deadline", message: messageFor("past_deadline") }, { status: 400 });
+      }
       const res = await callRpc<RpcResult>("request_task_extension", {
         p_session_token: token,
         p_task_id: String(body.taskId ?? ""),
         p_unit_id: String(body.unitId ?? ""),
-        p_days: Number(body.days ?? 0),
+        p_requested_due_at: requestedDueAt,
         p_reason: String(body.reason ?? ""),
       });
       if (!res.ok) return NextResponse.json({ ok: false, message: messageFor(res.reason) }, { status: 400 });
       return NextResponse.json({ ok: true });
     }
     if (action === "decide") {
+      const rawDecision = String(body.decision ?? "").toLowerCase();
+      const decision = rawDecision === "granted" ? "approved" : rawDecision === "denied" ? "rejected" : rawDecision;
+      const note = String(body.note ?? "");
+      if (decision === "rejected" && note.trim().length < 2) {
+        return NextResponse.json({ ok: false, reason: "remark_required", message: messageFor("remark_required") }, { status: 400 });
+      }
       const res = await callRpc<RpcResult>("decide_task_extension", {
         p_session_token: token,
         p_extension_id: String(body.extensionId ?? ""),
-        p_decision: String(body.decision ?? ""),
-        p_note: String(body.note ?? ""),
+        p_decision: decision,
+        p_note: note,
       });
       if (!res.ok) return NextResponse.json({ ok: false, message: messageFor(res.reason) }, { status: 400 });
       return NextResponse.json({ ok: true });

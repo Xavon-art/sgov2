@@ -3,6 +3,12 @@ import { NextResponse } from "next/server";
 import { messageFor } from "@/lib/auth/messages";
 import { callRpc, type RpcResult } from "@/lib/auth/rpc";
 import { readSessionToken } from "@/lib/auth/session";
+import {
+  loadCurrentAccountId,
+  loadUnitRecipientIds,
+  loadUsgRecipientIds,
+  notifyAccounts,
+} from "@/lib/notifications-server";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -27,13 +33,7 @@ type RequestPayload = RpcResult & {
   status?: string;
 };
 
-const DECISIONS = new Set([
-  "granted",
-  "declined",
-  "needs_revision",
-  "submission_required",
-  "withdrawn",
-]);
+const DECISIONS = new Set(["approved", "rejected", "returned", "withdrawn"]);
 
 const ACTIONS = new Set(["resubmit"]);
 
@@ -43,6 +43,65 @@ function statusForReason(reason?: string): number {
   if (reason === "forbidden") return 403;
   if (reason === "not_found") return 404;
   return 400;
+}
+
+async function notifyPersonalRequestSubmitted(
+  token: string,
+  requestId: string,
+  subject: string,
+): Promise<void> {
+  const [recipientIds, actorId] = await Promise.all([
+    loadUsgRecipientIds(token),
+    loadCurrentAccountId(token),
+  ]);
+  await notifyAccounts(
+    token,
+    recipientIds.map((id) => ({ id })),
+    {
+      kind: "personal_request_submitted",
+      title: "Personal request submitted",
+      body: subject || "A personal request is waiting for review.",
+      link: `/usg/request?tab=personal&request=${requestId}`,
+      excludeAccountId: actorId,
+    },
+  );
+}
+
+async function notifyPersonalRequestDecision(
+  token: string,
+  requestId: string,
+  decision: string,
+  note: string,
+): Promise<void> {
+  const [listing, actorId] = await Promise.all([
+    callRpc<RequestPayload>("list_personal_requests", {
+      p_session_token: token,
+      p_status: null,
+    }),
+    loadCurrentAccountId(token),
+  ]);
+  const target = (listing.requests ?? []).find((item) => item.id === requestId);
+  if (!target) return;
+
+  const unitId = typeof target.unitId === "string" ? target.unitId : "";
+  const subject = typeof target.subject === "string" ? target.subject : "Personal request";
+  const status = decision === "withdrawn" ? "withdrawn" : typeof target.status === "string" ? target.status : decision;
+  const recipientIds = decision === "withdrawn"
+    ? await loadUsgRecipientIds(token)
+    : await loadUnitRecipientIds(token, unitId ? [unitId] : []);
+  const side = decision === "withdrawn" ? "usg" : "lsg";
+
+  await notifyAccounts(
+    token,
+    recipientIds.map((id) => ({ id })),
+    {
+      kind: "personal_request_decided",
+      title: "Personal request decided",
+      body: `${subject} was ${status}.${note ? ` ${note}` : ""}`,
+      link: `/${side}/request?tab=personal&request=${requestId}`,
+      excludeAccountId: actorId,
+    },
+  );
 }
 
 export async function GET(req: Request) {
@@ -127,6 +186,14 @@ export async function POST(req: Request) {
       );
     }
 
+    if (res.requestId) {
+      await notifyPersonalRequestSubmitted(
+        token,
+        res.requestId,
+        typeof body.subject === "string" ? body.subject.trim() : "",
+      );
+    }
+
     return NextResponse.json({ ok: true, requestId: res.requestId });
   } catch (error) {
     console.error("[requests:write]", error);
@@ -180,6 +247,8 @@ export async function PATCH(req: Request) {
         );
       }
 
+      await notifyPersonalRequestSubmitted(token, requestId, "Personal request resubmitted");
+
       return NextResponse.json({ ok: true, status: res.status });
     } catch (error) {
       console.error("[requests:resubmit]", error);
@@ -212,6 +281,8 @@ export async function PATCH(req: Request) {
         { status: statusForReason(res.reason) },
       );
     }
+
+    await notifyPersonalRequestDecision(token, requestId, decision, note);
 
     return NextResponse.json({ ok: true, status: res.status });
   } catch (error) {

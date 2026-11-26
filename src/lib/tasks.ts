@@ -1,15 +1,31 @@
-type Assignment = {
+/**
+ * One task and its per-unit assignments, shared by the task board on both
+ * sides of the federation.
+ *
+ * The unified status model lives in {@link src/lib/status}. Every assignment
+ * status is stored as one of the unified values; older rows that still carry a
+ * legacy value are mapped on read through {@link normalizeStatus}.
+ */
+
+import type { Status, STATUS_LABEL as ASSIGNMENT_LABEL, STATUS_CLASS as ASSIGNMENT_CLASS } from "@/lib/status";
+import { countdownText } from "@/lib/deadlines";
+
+export type Assignment = {
   unitId: string;
   unitName: string;
-  status: "assigned" | "in_progress" | "submitted" | "done";
+  status: Status;
   note: string;
 };
 
-type Task = {
+export type Task = {
   id: string;
   title: string;
   details: string;
   dueDate: string | null;
+  dueAt?: string | null;
+  gracePeriodMinutes?: number | null;
+  autoClose?: boolean;
+  closed?: boolean;
   priority: "low" | "normal" | "high";
   overdue: boolean;
   daysLeft: number | null;
@@ -18,26 +34,12 @@ type Task = {
   totalUnits: number;
 };
 
-type LoadState =
+export type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "ready"; tasks: Task[] };
 
-const ASSIGNMENT_LABEL: Record<Assignment["status"], string> = {
-  assigned: "Not started",
-  in_progress: "In progress",
-  submitted: "Submitted",
-  done: "Done",
-};
-
-const ASSIGNMENT_CLASS: Record<Assignment["status"], string> = {
-  assigned: "border-line bg-canvas text-muted",
-  in_progress: "border-brass/40 bg-brass-soft/30 text-brass-deep",
-  submitted: "border-ink/20 bg-ink/[0.06] text-ink",
-  done: "border-ink/20 bg-ink/[0.06] text-ink",
-};
-
-const PRIORITY_CLASS: Record<Task["priority"], string> = {
+export const PRIORITY_CLASS: Record<Task["priority"], string> = {
   low: "text-muted",
   normal: "text-muted",
   high: "text-[#a5442c]",
@@ -45,10 +47,17 @@ const PRIORITY_CLASS: Record<Task["priority"], string> = {
 
 /**
  * How a deadline reads to a person, which is the whole reason `daysLeft` is
- * computed on the server: "in 3 days" and "6 days late" cannot drift apart between
- * the two workspaces if they come from one place.
+ * computed on the server: "in 3 days" and "6 days late" cannot drift apart
+ * between the two workspaces if they come from one place.
  */
-function dueLabel(task: Task): { text: string; late: boolean } {
+export function dueLabel(task: Task): { text: string; late: boolean } {
+  if (task.dueAt) {
+    const text = countdownText(task.dueAt, task.gracePeriodMinutes ?? 0, task.closed);
+    return {
+      text,
+      late: text.startsWith("Overdue") || task.overdue === true,
+    };
+  }
   if (!task.dueDate || task.daysLeft === null) {
     return { text: "No deadline", late: false };
   }
@@ -80,5 +89,4 @@ export function todayIso(): string {
   return local.toISOString().slice(0, 10);
 }
 
-export { dueLabel, ASSIGNMENT_LABEL, ASSIGNMENT_CLASS, PRIORITY_CLASS };
-export type { Task, Assignment, LoadState };
+export { ASSIGNMENT_LABEL, ASSIGNMENT_CLASS };

@@ -3,12 +3,12 @@ import type { PageTour } from "../types";
 export const usgStructureTour: PageTour = {
   id: "usg-structure",
   version: "2",
-  route: "/usg/structure",
+  route: "/structure/editor",
   label: "Council structure",
   roles: ["usg"],
   steps: [
     {
-      target: "usg-structure-header",
+      target: "workspace-main",
       title: "Structure page",
       body: "This page shows how your student government is organized into units and positions.",
       placement: "bottom",
@@ -26,13 +26,13 @@ export const usgStructureTour: PageTour = {
       placement: "top",
     },
     {
-      target: "usg-structure-editor",
+      target: "manage-structure",
       title: "Structure editor",
       body: "Use the editor to add, rename, or reorder units and leadership positions.",
       placement: "right",
     },
     {
-      target: "usg-structure-queue",
+      target: "structure-chart",
       title: "Change queue",
       body: "Changes wait here until they are reviewed and published to the council.",
       placement: "left",

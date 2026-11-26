@@ -76,7 +76,7 @@ export function PublishedFeedbackForms() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {forms.map((form) => {
-              const href = form.publicPath || "/feedback/f/";
+              const href = form.publicPath || "/forms/feedback/";
               const submitted = submittedSlugs.has(slugFromPath(href));
               return (
                 <Link

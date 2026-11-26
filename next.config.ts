@@ -24,10 +24,51 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["127.0.0.1"],
   // Emitted by send-payload on every server-rendered response. Prerendered
   // pages are served from the CDN cache and never reach that code, so this
   // strips the fingerprint from /dashboard and the API routes.
   poweredByHeader: false,
+  async redirects() {
+    return [
+      { source: "/usg/survey", destination: "/usg/forms?type=survey", permanent: false },
+      { source: "/lsg/survey", destination: "/lsg/forms?type=survey", permanent: false },
+      { source: "/usg/surveys", destination: "/usg/forms?type=survey", permanent: false },
+      { source: "/lsg/surveys", destination: "/lsg/forms?type=survey", permanent: false },
+      {
+        source: "/usg/surveys/:id",
+        destination: "/usg/forms?type=survey&id=:id",
+        permanent: false,
+      },
+      {
+        source: "/lsg/surveys/:id",
+        destination: "/lsg/forms?type=survey&id=:id",
+        permanent: false,
+      },
+      { source: "/survey/:id", destination: "/forms/survey/:id", permanent: false },
+      { source: "/feedback/f/:token", destination: "/forms/feedback/:token", permanent: false },
+      {
+        source: "/usg/officers",
+        destination: "/usg/manage?tab=people&view=officers",
+        permanent: false,
+      },
+      {
+        source: "/usg/accounts",
+        destination: "/usg/manage?tab=people&view=permissions",
+        permanent: false,
+      },
+      {
+        source: "/usg/invites",
+        destination: "/usg/manage?tab=people&view=invites",
+        permanent: false,
+      },
+      {
+        source: "/usg/umbrella",
+        destination: "/usg/manage?tab=people&view=units",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

@@ -11,12 +11,15 @@ import {
   emptyPosition,
   normalizeDocument,
   normalizeLayout,
+  syncDocumentHolders,
+  validEmail,
+  withSyncedHolders,
 } from "@/components/structure/document";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Reveal } from "@/components/fx/Reveal";
 import { RowReorder } from "@/components/structure/RowReorder";
 import { useReorder, type ReorderRow } from "@/components/structure/reorder";
-import { StructureChartEditor } from "@/components/structure/StructureChartEditor";
+import { StructureChartEditor, withoutCommittee } from "@/components/structure/StructureChartEditor";
 import { invalidateStructurePhotoCache } from "@/components/structure/StructureChart";
 import { ChartViewer } from "@/components/structure/ChartViewer";
 import { StructureStatusTracker } from "@/components/structure/StructureStatusTracker";
@@ -138,7 +141,94 @@ function bytes(n: number): string {
   return n < 1024 ? `${n} B` : `${Math.round(n / 1024)} KB`;
 }
 
+/** The document half of the save checks, shared by drafts and templates. */
+function documentProblem(doc: StructureDocument): string | null {
+  if (doc.committees.length < 1 || doc.committees.length > 30) {
+    return "A structure needs between 1 and 30 committees.";
+  }
+
+  const found = checkDocument(doc);
+  if (found) return found.message;
+
+  for (const committee of doc.committees) {
+    const key = committee.key.trim();
+    if (!key || key.length > 60) return "Every committee needs a key of 1 to 60 characters.";
+    if (committee.name.trim().length < 1 || committee.name.trim().length > 120) {
+      return "Every committee needs a name of 1 to 120 characters.";
+    }
+    if ((committee.description ?? "").length > 400) return "Keep each description to 400 characters.";
+    if (committee.positions.length < 1 || committee.positions.length > 40) {
+      return "Every committee needs between 1 and 40 seats.";
+    }
+
+    for (const position of committee.positions) {
+      const positionKey = position.key.trim();
+      if (!positionKey || positionKey.length > 60) return "Every seat needs a key of 1 to 60 characters.";
+      const title = position.title.trim();
+      if (title.length < 1 || title.length > 80) return "Every seat needs a title of 1 to 80 characters.";
+      const tier = position.tier ?? 0;
+      const order = position.order ?? 0;
+      const maxHolders = position.maxHolders ?? 1;
+      if (!Number.isInteger(tier) || tier < 0 || tier > 12) {
+        return `${title} is on a tier the chart cannot draw.`;
+      }
+      if (!Number.isInteger(order) || order < 0 || order > 999) {
+        return `${title} has an invalid position in its tier.`;
+      }
+      if (!Number.isInteger(maxHolders) || maxHolders < 0 || maxHolders > 20) {
+        return `${title} cannot allow more than 20 holders.`;
+      }
+      if ([position.x ?? 0, position.y ?? 0].some((value) => !Number.isFinite(value))) {
+        return `${title} has an invalid canvas position.`;
+      }
+      if ((position.group ?? "").length > 60) return `Keep the group for ${position.title} to 60 characters.`;
+
+      const holders =
+        position.holders?.length ? position.holders : position.holder ? [position.holder] : [];
+      for (const holder of holders) {
+        if (!validEmail(holder.email)) return `${position.title} needs a valid email address.`;
+        if ((holder.fullName ?? "").length > 200 || (holder.nickname ?? "").length > 60 ||
+            (holder.suffix ?? "").length > 20 || (holder.termNote ?? "").length > 120) {
+          return `${position.title} has a holder field that is too long.`;
+        }
+        if (holder.birthdate && !/^\d{4}-\d{2}-\d{2}$/.test(holder.birthdate)) {
+          return `${position.title} has a malformed birthdate.`;
+        }
+        if (holder.gender && !["female", "male", "other", "prefer_not_to_say"].includes(holder.gender)) {
+          return `${position.title} has an unrecognised gender value.`;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The checks `save_structure_draft_v2` performs before it sees a document, plus
+ * `documentProblem`. Autosave stays quiet while a row is half typed; Save and
+ * Submit show the first problem here instead of spending a round trip to learn
+ * the same thing.
+ */
+function validationProblem(
+  doc: StructureDocument,
+  termLabel: string,
+  startsOn: string,
+  endsOn: string,
+): string | null {
+  const label = termLabel.trim() || DEFAULT_TERM_LABEL;
+  if (label.length > 80) return "Keep the term label to 80 characters or fewer.";
+  if (!startsOn || !endsOn) return "A term needs both a start and an end date.";
+  if (endsOn <= startsOn) return "The end date has to be after the start date.";
+  return documentProblem(doc);
+}
+
+const DRAFT_STORAGE_VERSION = 2;
+const DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PENDING_TEMPLATE_TTL_MS = 10 * 60 * 1000;
+
 type StoredStructureDraft = {
+  version: number;
   document: StructureDocument;
   termLabel: string;
   startsOn: string;
@@ -148,6 +238,7 @@ type StoredStructureDraft = {
   structureId: string | null;
   serverUpdatedAt: string | null;
   localUpdatedAt: number;
+  expiresAt: number;
   dirty: boolean;
 };
 
@@ -300,13 +391,40 @@ function queuePhotoPersists(prev: StructureDocument, next: StructureDocument, un
   }
 }
 
-function readStructureDraft(unitId: string): StoredStructureDraft | null {
+function draftStorageKey(unitId: string): string {
+  return `smartgov:structure-draft:${unitId}`;
+}
+
+function clearStructureDraft(unitId: string): void {
   try {
-    const raw = localStorage.getItem(`smartgov:structure-draft:${unitId}`);
+    localStorage.removeItem(draftStorageKey(unitId));
+  } catch {
+    return;
+  }
+}
+
+function readStructureDraft(unitId: string): StoredStructureDraft | null {
+  const key = draftStorageKey(unitId);
+  try {
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredStructureDraft;
-    if (!parsed || !parsed.document || !Array.isArray(parsed.document.committees)) return null;
-    return parsed;
+    const parsed = JSON.parse(raw) as Partial<StoredStructureDraft>;
+    const valid =
+      parsed.version === DRAFT_STORAGE_VERSION &&
+      typeof parsed.expiresAt === "number" &&
+      Number.isFinite(parsed.expiresAt) &&
+      parsed.expiresAt > Date.now() &&
+      typeof parsed.dirty === "boolean" &&
+      typeof parsed.localUpdatedAt === "number" &&
+      Number.isFinite(parsed.localUpdatedAt) &&
+      (parsed.structureId === null || typeof parsed.structureId === "string") &&
+      !!parsed.document &&
+      Array.isArray(parsed.document.committees);
+    if (!valid) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return parsed as StoredStructureDraft;
   } catch {
     return null;
   }
@@ -320,26 +438,89 @@ type PendingTemplate = {
   category?: string;
   document: StructureDocument;
   appliedAt: number;
+  /** Optional forward compatibility for a preview page that stamps the nonce itself. */
+  nonce?: string;
+};
+
+type PendingNonce = {
+  nonce: string;
+  createdAt: number;
 };
 
 function pendingTemplateKey(unitId: string): string {
   return `smartgov:pending-template:${unitId}`;
 }
 
-function readPendingTemplate(unitId: string, expectedScope: StructureScope): PendingTemplate | null {
+function pendingNonceKey(unitId: string): string {
+  return `smartgov:pending-template-nonce:${unitId}`;
+}
+
+function newPendingNonce(): string {
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * The gallery arms a one-time nonce before opening the preview. The handoff is
+ * only honoured if that marker is still present and fresh, so an old payload in
+ * localStorage cannot reappear as a new edit days later.
+ */
+function armPendingTemplate(unitId: string): void {
   try {
-    const raw = localStorage.getItem(pendingTemplateKey(unitId));
+    const next: PendingNonce = { nonce: newPendingNonce(), createdAt: Date.now() };
+    sessionStorage.setItem(pendingNonceKey(unitId), JSON.stringify(next));
+  } catch {
+    return;
+  }
+}
+
+function readPendingNonce(unitId: string): string | null {
+  try {
+    const raw = sessionStorage.getItem(pendingNonceKey(unitId));
     if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PendingNonce>;
+    if (
+      typeof parsed.nonce !== "string" ||
+      typeof parsed.createdAt !== "number" ||
+      !Number.isFinite(parsed.createdAt) ||
+      Date.now() - parsed.createdAt > PENDING_TEMPLATE_TTL_MS ||
+      parsed.createdAt > Date.now() + 60_000
+    ) {
+      sessionStorage.removeItem(pendingNonceKey(unitId));
+      return null;
+    }
+    return parsed.nonce;
+  } catch {
+    return null;
+  }
+}
+
+function readPendingTemplate(unitId: string, expectedScope: StructureScope): PendingTemplate | null {
+  const key = pendingTemplateKey(unitId);
+  const nonce = readPendingNonce(unitId);
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw || !nonce) return null;
     const parsed = JSON.parse(raw) as Partial<PendingTemplate>;
     if (
       typeof parsed.templateKey !== "string" ||
       (parsed.scope !== "usg" && parsed.scope !== "lsg") ||
+      typeof parsed.appliedAt !== "number" ||
+      !Number.isFinite(parsed.appliedAt) ||
+      Date.now() - parsed.appliedAt > PENDING_TEMPLATE_TTL_MS ||
+      parsed.appliedAt > Date.now() + 60_000 ||
+      (typeof parsed.nonce === "string" && parsed.nonce !== nonce) ||
       !parsed.document ||
       !Array.isArray(parsed.document.committees)
     ) {
+      clearPendingTemplate(unitId);
       return null;
     }
-    if (parsed.scope !== expectedScope) return null;
+    if (parsed.scope !== expectedScope) {
+      clearPendingTemplate(unitId);
+      return null;
+    }
     return parsed as PendingTemplate;
   } catch {
     return null;
@@ -349,6 +530,11 @@ function readPendingTemplate(unitId: string, expectedScope: StructureScope): Pen
 function clearPendingTemplate(unitId: string): void {
   try {
     localStorage.removeItem(pendingTemplateKey(unitId));
+  } catch {
+    return;
+  }
+  try {
+    sessionStorage.removeItem(pendingNonceKey(unitId));
   } catch {
     return;
   }
@@ -491,6 +677,7 @@ function HolderEditor({
                 setPhotoUrl(`data:${file.type};base64,${base64}`);
                 setNote("");
                 onChange({ ...holder, photo: base64, hasPhoto: true });
+                invalidateStructurePhotoCache();
                 void persistPhoto(unitId, holder.email, base64);
               }}
             />
@@ -560,7 +747,7 @@ function PositionRow({
           <Field
             label="Position"
             value={position.title}
-            onChange={(v) => onChange({ ...position, title: v })}
+            onChange={(v) => onChange(withSyncedHolders({ ...position, title: v }))}
             placeholder="President"
           />
         </div>
@@ -570,10 +757,12 @@ function PositionRow({
             variant={holder ? "ghost" : "paper"}
             size="sm"
             onClick={() =>
-              onChange({
-                ...position,
-                holder: holder ? null : { email: "", firstName: "", lastName: "", hasPhoto: false },
-              })
+              onChange(
+                withSyncedHolders(
+                  position,
+                  holder ? null : { email: "", firstName: "", lastName: "", hasPhoto: false },
+                ),
+              )
             }
           >
             {holder ? "Remove holder" : "Assign holder"}
@@ -590,8 +779,10 @@ function PositionRow({
         <HolderEditor
           unitId={unitId}
           holder={holder}
-          onChange={(next) => onChange({ ...position, holder: next })}
-          onVacate={() => onChange({ ...position, holder: null })}
+          onChange={(next) =>
+            onChange(withSyncedHolders(position, [next, ...(position.holders?.slice(1) ?? [])]))
+          }
+          onVacate={() => onChange(withSyncedHolders(position, null))}
         />
       ) : null}
     </li>
@@ -1318,7 +1509,7 @@ function TemplateGallery({
             ? "this is the umbrella chart."
             : "campus, college, department and local council formats are all available."} Your own
           format opens first. Preview the full chart, then apply it to this unit&rsquo;s live draft.
-          Names and NEUST emails are placeholders — replace them before saving.
+          Names and NEUST emails are sample values — replace them before saving.
         </p>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1339,6 +1530,7 @@ function TemplateGallery({
                 href={`/structure/preview?${customParams.toString()}`}
                 variant="paper"
                 size="sm"
+                onClick={() => armPendingTemplate(unitId)}
               >
                 Preview full structure
               </ButtonLink>
@@ -1369,6 +1561,7 @@ function TemplateGallery({
                     href={`/structure/preview?${params.toString()}`}
                     variant="paper"
                     size="sm"
+                    onClick={() => armPendingTemplate(unitId)}
                   >
                     Preview full structure
                   </ButtonLink>
@@ -1535,10 +1728,13 @@ export function StructureWorkspace({
   const [save, setSave] = useState<SaveState>({ kind: "idle" });
   const [problem, setProblem] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Incremented on every local edit. A save that started at version N may not
+  // clear dirty or publish its token if the officer has typed version N+1.
+  const [saveVersion, setSaveVersion] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [readyUnitId, setReadyUnitId] = useState<string | null>(null);
-  const draftKey = `smartgov:structure-draft:${unitId}`;
+  const draftKey = draftStorageKey(unitId);
 
   // Chart builder state. The document stays the source of truth; `selected` is
   // only which seat the inspector shows.
@@ -1550,10 +1746,14 @@ export function StructureWorkspace({
   const [conflict, setConflict] = useState<{ updatedAt: string } | null>(null);
   const [autosave, setAutosave] = useState<"idle" | "saving" | "saved" | "off">("idle");
   const savingRef = useRef(false);
+  const saveTailRef = useRef<Promise<void>>(Promise.resolve());
+  const autosaveCancelledRef = useRef(false);
   const hydratedPhotos = useRef(new Set<string>());
   const dirtyRef = useRef(dirty);
   const conflictRef = useRef(conflict);
   const updatedAtRef = useRef(updatedAt);
+  const saveVersionRef = useRef(saveVersion);
+  const serverEpochRef = useRef(0);
   dirtyRef.current = dirty;
   conflictRef.current = conflict;
   updatedAtRef.current = updatedAt;
@@ -1563,6 +1763,60 @@ export function StructureWorkspace({
   }, []);
 
   const layout = useMemo(() => normalizeLayout(doc.layout), [doc.layout]);
+
+  function bumpVersion(): number {
+    const next = saveVersionRef.current + 1;
+    saveVersionRef.current = next;
+    setSaveVersion(next);
+    return next;
+  }
+
+  function withSaveLock<T>(work: () => Promise<T>): Promise<T> {
+    const run = saveTailRef.current.then(async () => {
+      savingRef.current = true;
+      try {
+        return await work();
+      } finally {
+        savingRef.current = false;
+      }
+    });
+    saveTailRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  function markDirty() {
+    bumpVersion();
+    setDirty(true);
+    setSave({ kind: "idle" });
+    setConflict(null);
+  }
+
+  /**
+   * One hydration path for renew, submit, realtime and conflict reloads. Every
+   * server field the next save needs is copied back, not just the document.
+   */
+  function applyServerSummary(summary: StructureSummary | null | undefined, fallbackDoc?: StructureDocument) {
+    bumpVersion();
+    serverEpochRef.current += 1;
+    setStructureId(summary?.id ?? null);
+    setDoc(syncDocumentHolders(normalizeDocument(summary?.document ?? fallbackDoc ?? emptyDocument())));
+    setTemplateKey(summary?.templateKey ?? null);
+    setTermLabel(summary?.termLabel ?? "");
+    setStartsOn(summary?.startsOn ?? "");
+    setEndsOn(summary?.endsOn ?? "");
+    setNote(summary?.note ?? "");
+    setUpdatedAt(summary?.updatedAt ?? null);
+    setDraft(summary ?? null);
+    setDirty(false);
+    setPast([]);
+    setFuture([]);
+    setAutosave("idle");
+    setSelected(null);
+    setConflict(null);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1577,6 +1831,7 @@ export function StructureWorkspace({
       setApproved(res.approved ?? null);
       setRenewal(res.renewal ?? null);
       setHistory(res.history ?? []);
+      console.error("[structure:init]", JSON.stringify({ unitId, ok: res.ok, draft: res.draft?.id ?? null, approved: res.approved?.id ?? null, renewal: res.renewal }));
       const open = res.draft ?? null;
       const stored = readStructureDraft(unitId);
       const pending = readPendingTemplate(unitId, scope);
@@ -1585,12 +1840,12 @@ export function StructureWorkspace({
         // let the normal editing path take over: edit() queues photo uploads and
         // the draft effect writes the local draft under this unit.
         clearPendingTemplate(unitId);
-        edit(normalizeDocument(pending.document));
+        edit(syncDocumentHolders(normalizeDocument(pending.document)));
         setStructureId(stored?.structureId ?? open?.id ?? null);
         setTemplateKey(pending.templateKey);
-        // A reviewer may open a unit that has only a published chart. Carry that
-        // term forward so an applied sample can be saved as the next revision.
-        setTermLabel(stored?.termLabel ?? open?.termLabel ?? res.approved?.termLabel ?? "");
+        // A published chart is a template for the next structure, not a term to
+        // carry forward; only a local edit or an open draft may supply a label.
+        setTermLabel(stored?.termLabel ?? open?.termLabel ?? "");
         setStartsOn(stored?.startsOn ?? open?.startsOn ?? res.approved?.startsOn ?? "");
         setEndsOn(stored?.endsOn ?? open?.endsOn ?? res.approved?.endsOn ?? "");
         setNote(stored?.note ?? open?.note ?? "");
@@ -1608,43 +1863,50 @@ export function StructureWorkspace({
         return;
       }
       const serverTime = open?.updatedAt ? Date.parse(open.updatedAt) : 0;
+      // Only a dirty draft with the same server id as the open revision may
+      // come back from localStorage. An id mismatch means the draft was saved,
+      // submitted or replaced in another tab, so the server copy wins.
       const restore =
         stored !== null &&
-        (stored.dirty ||
-          (!open && stored.document.committees.length > 0) ||
-          stored.localUpdatedAt > (Number.isFinite(serverTime) ? serverTime : 0));
+        stored.dirty === true &&
+        stored.structureId === (open?.id ?? null) &&
+        stored.localUpdatedAt >= (Number.isFinite(serverTime) ? serverTime : 0);
       setDraft(open);
       if (restore && stored) {
+        bumpVersion();
         setStructureId(stored.structureId);
-        setDoc(normalizeDocument(stored.document));
+        setDoc(syncDocumentHolders(normalizeDocument(stored.document)));
         setTemplateKey(stored.templateKey ?? null);
         setTermLabel(stored.termLabel ?? "");
         setStartsOn(stored.startsOn ?? "");
         setEndsOn(stored.endsOn ?? "");
         setNote(stored.note ?? "");
         setUpdatedAt(stored.serverUpdatedAt);
-        setDirty(stored.dirty);
+        setDirty(true);
         setPast([]);
         setFuture([]);
-        setAutosave(stored.dirty ? "off" : "idle");
+        setAutosave("off");
         setSelected(null);
-      } else if (open) {
-        setStructureId(open.id);
-        setDoc(open.document);
-        setTemplateKey(open.templateKey);
-        setTermLabel(open.termLabel);
-        setStartsOn(open.startsOn);
-        setEndsOn(open.endsOn);
-        setNote(open.note ?? "");
-        setUpdatedAt(open.updatedAt ?? null);
-        setAutosave("idle");
-      } else if (res.approved) {
-        // Nothing under this officer yet but something is published: start the
-        // next term from what is live rather than from a blank page.
-        setDoc(res.approved.document);
-        setTermLabel(res.approved.termLabel);
-        setStartsOn(res.approved.startsOn);
-        setEndsOn(res.approved.endsOn);
+      } else {
+        if (stored) clearStructureDraft(unitId);
+        if (open) {
+          applyServerSummary(open);
+        } else if (res.approved) {
+          // Nothing under this officer yet but something is published: start the
+          // next term from the live chart, but ask for a fresh term label.
+          bumpVersion();
+          setDoc(syncDocumentHolders(normalizeDocument(res.approved.document)));
+          setTemplateKey(res.approved.templateKey ?? null);
+          setTermLabel("");
+          setStartsOn(res.approved.startsOn);
+          setEndsOn(res.approved.endsOn);
+          setNote(res.approved.note ?? "");
+          setUpdatedAt(null);
+          setDirty(false);
+          setPast([]);
+          setFuture([]);
+          setAutosave("idle");
+        }
       }
       setReadyUnitId(unitId);
     })();
@@ -1660,20 +1922,13 @@ export function StructureWorkspace({
     void (async () => {
       try {
         const res = await fetchStructure(unitId);
+        if (!res.ok) return;
         const open = res.draft ?? null;
+        setApproved(res.approved ?? null);
+        setRenewal(res.renewal ?? null);
+        setHistory(res.history ?? []);
         if (!open || open.updatedAt === updatedAtRef.current) return;
-        setDraft(open);
-        setDoc(normalizeDocument(open.document));
-        setStructureId(open.id);
-        setTemplateKey(open.templateKey);
-        setTermLabel(open.termLabel);
-        setStartsOn(open.startsOn);
-        setEndsOn(open.endsOn);
-        setNote(open.note ?? "");
-        setUpdatedAt(open.updatedAt ?? null);
-        setDirty(false);
-        setPast([]);
-        setFuture([]);
+        applyServerSummary(open);
         setAutosave("saved");
         setStatus("Synced with the live structure.");
       } catch {
@@ -1743,7 +1998,8 @@ export function StructureWorkspace({
     (next: StructureDocument, markDirty: boolean) => {
       if (readyUnitId !== unitId) return;
       const stored: StoredStructureDraft = {
-        document: next,
+        version: DRAFT_STORAGE_VERSION,
+        document: syncDocumentHolders(next),
         termLabel: effectiveTermLabel,
         startsOn,
         endsOn,
@@ -1752,6 +2008,7 @@ export function StructureWorkspace({
         structureId,
         serverUpdatedAt: updatedAt,
         localUpdatedAt: Date.now(),
+        expiresAt: Date.now() + DRAFT_TTL_MS,
         dirty: markDirty,
       };
       try {
@@ -1768,14 +2025,13 @@ export function StructureWorkspace({
   }, [doc, dirty, persistDraft]);
 
   function edit(next: StructureDocument) {
-    queuePhotoPersists(doc, next, unitId);
+    const synced = syncDocumentHolders(normalizeDocument(next));
+    queuePhotoPersists(doc, synced, unitId);
     setPast((prev) => [...prev.slice(-39), doc]);
     setFuture([]);
-    setDoc(next);
-    setDirty(true);
-    setSave({ kind: "idle" });
-    setConflict(null);
-    persistDraft(next, true);
+    setDoc(synced);
+    markDirty();
+    persistDraft(synced, true);
   }
 
   function undo() {
@@ -1784,8 +2040,7 @@ export function StructureWorkspace({
     setPast(past.slice(0, -1));
     setFuture([doc, ...future].slice(0, 40));
     setDoc(restored);
-    setDirty(true);
-    setSave({ kind: "idle" });
+    markDirty();
     setSelected(null);
   }
 
@@ -1795,12 +2050,20 @@ export function StructureWorkspace({
     setFuture(later);
     setPast([...past.slice(-39), doc]);
     setDoc(restored);
-    setDirty(true);
-    setSave({ kind: "idle" });
+    markDirty();
     setSelected(null);
   }
 
-  function rememberSavedDraft(res: SaveResult) {
+  type DraftSnapshot = {
+    doc: StructureDocument;
+    termLabel: string;
+    startsOn: string;
+    endsOn: string;
+    note: string;
+    templateKey: string | null;
+  };
+
+  function rememberSavedDraft(res: SaveResult, saved: DraftSnapshot) {
     const id = res.structureId;
     if (!id) return;
     const nextStatus = (res.status as StructureSummary["status"] | undefined) ?? "draft";
@@ -1810,15 +2073,15 @@ export function StructureWorkspace({
       authorKind: previous?.authorKind ?? (capability.isReviewer ? "usg" : "lsg"),
       status: nextStatus,
       revision: res.revision ?? previous?.revision ?? 1,
-      templateKey: templateKey ?? previous?.templateKey ?? null,
-      termLabel: effectiveTermLabel,
-      startsOn: startsOn || previous?.startsOn || "",
-      endsOn: endsOn || previous?.endsOn || "",
-      document: doc,
-      note: note.trim() || null,
+      templateKey: saved.templateKey ?? previous?.templateKey ?? null,
+      termLabel: saved.termLabel,
+      startsOn: saved.startsOn || previous?.startsOn || "",
+      endsOn: saved.endsOn || previous?.endsOn || "",
+      document: saved.doc,
+      note: saved.note.trim() || null,
       submittedBy: previous?.submittedBy ?? null,
       submittedAt:
-        nextStatus === "submitted"
+        nextStatus === "pending"
           ? previous?.submittedAt ?? new Date().toISOString()
           : previous?.submittedAt ?? null,
       decidedBy: previous?.decidedBy ?? null,
@@ -1838,52 +2101,68 @@ export function StructureWorkspace({
    * label is optional; a blank label is saved as "Current term".
    */
   useEffect(() => {
-    if (!dirty || conflict || !capability.canEdit) return;
-    if (!startsOn || !endsOn) return;
-    if (checkDocument(doc)) return;
+    if (!dirty || conflict || !capability.canEdit || autosave === "saving") return;
+    if (validationProblem(doc, effectiveTermLabel, startsOn, endsOn)) return;
 
     const timer = window.setTimeout(() => {
-      void (async () => {
-        if (savingRef.current) return;
-        savingRef.current = true;
+      void withSaveLock(async () => {
+        if (autosaveCancelledRef.current || !dirtyRef.current || conflictRef.current || !capability.canEdit) return;
+        const version = saveVersionRef.current;
+        const epoch = serverEpochRef.current;
+        const saved: DraftSnapshot = {
+          doc: syncDocumentHolders(doc),
+          termLabel: effectiveTermLabel,
+          startsOn,
+          endsOn,
+          note,
+          templateKey,
+        };
         setAutosave("saving");
         try {
           const res = await saveDraft({
             unitId,
-            templateKey: templateKey ?? undefined,
-            termLabel: effectiveTermLabel,
-            startsOn,
-            endsOn,
-            document: doc,
-            note: note.trim() || undefined,
-            expectedUpdatedAt: updatedAt ?? undefined,
+            templateKey: saved.templateKey ?? undefined,
+            termLabel: saved.termLabel.trim() || DEFAULT_TERM_LABEL,
+            startsOn: saved.startsOn,
+            endsOn: saved.endsOn,
+            document: saved.doc,
+            note: saved.note.trim() || undefined,
+            expectedUpdatedAt: updatedAtRef.current ?? undefined,
           });
           if (!res.ok) {
+            if (epoch !== serverEpochRef.current) return;
             if (res.reason === "conflict") {
               setConflict({ updatedAt: typeof res.updatedAt === "string" ? res.updatedAt : "" });
             }
             setAutosave("off");
             return;
           }
+          if (epoch !== serverEpochRef.current) return;
           if (res.structureId) setStructureId(res.structureId);
           if (res.updatedAt) setUpdatedAt(res.updatedAt);
-          rememberSavedDraft(res);
+          if (version !== saveVersionRef.current) {
+            // The server has this save, but the officer typed newer changes
+            // while it was in flight. Keep dirty and schedule them next.
+            setAutosave("idle");
+            setStatus("Saved an earlier revision; your newest changes are still unsaved.");
+            return;
+          }
+          rememberSavedDraft(res, saved);
           setDirty(false);
           setAutosave("saved");
           setSave({ kind: "saved", revision: res.revision ?? 0 });
         } catch {
-          setAutosave("off");
-        } finally {
-          savingRef.current = false;
+          if (epoch === serverEpochRef.current) setAutosave("off");
         }
-      })();
+      });
     }, 1600);
 
     return () => window.clearTimeout(timer);
-    // `updatedAt` is intentionally not a dependency: a save that lands updates it,
-    // and re-running on that change would schedule an identical save.
+    // `updatedAt` is deliberately not a dependency: applying the token this save
+    // returns would reschedule the identical save. `saveVersion` and `autosave`
+    // re-arm the timer only after a newer edit or a completed in-flight save.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc, dirty, conflict, effectiveTermLabel, startsOn, endsOn, note, templateKey, unitId, capability.canEdit]);
+  }, [doc, dirty, conflict, autosave, saveVersion, effectiveTermLabel, startsOn, endsOn, note, templateKey, unitId, capability.canEdit]);
 
   // Ctrl/Cmd+Z and Ctrl/Cmd+Y, except while typing in a field.
   useEffect(() => {
@@ -1928,27 +2207,38 @@ export function StructureWorkspace({
   );
 
   async function persist(): Promise<string | null> {
-    try {
-      const found = checkDocument(doc);
-      setProblem(found ? found.message : null);
+    autosaveCancelledRef.current = true;
+    return withSaveLock(async () => {
+      try {
+      const found = validationProblem(doc, effectiveTermLabel, startsOn, endsOn);
+      setProblem(found);
       if (found) return null;
 
-      if (!startsOn || !endsOn) {
-        setProblem("A term needs both a start and an end date.");
-        return null;
-      }
-
-      setSave({ kind: "saving" });
-      const res = await saveDraft({
-        unitId,
-        templateKey: templateKey ?? undefined,
+      const version = saveVersionRef.current;
+      const epoch = serverEpochRef.current;
+      const saved: DraftSnapshot = {
+        doc: syncDocumentHolders(doc),
         termLabel: effectiveTermLabel,
         startsOn,
         endsOn,
-        document: doc,
-        note: note.trim() || undefined,
-        expectedUpdatedAt: updatedAt ?? undefined,
+        note,
+        templateKey,
+      };
+      setSave({ kind: "saving" });
+      const res = await saveDraft({
+        unitId,
+        templateKey: saved.templateKey ?? undefined,
+        termLabel: saved.termLabel,
+        startsOn: saved.startsOn,
+        endsOn: saved.endsOn,
+        document: saved.doc,
+        note: saved.note.trim() || undefined,
+        expectedUpdatedAt: updatedAtRef.current ?? undefined,
       });
+
+      // A renew, submit or conflict reload replaced the server view while this
+      // request was in flight. Its answer no longer describes what is on screen.
+      if (epoch !== serverEpochRef.current) return null;
 
       if (!res.ok) {
         if (res.reason === "conflict") {
@@ -1963,18 +2253,28 @@ export function StructureWorkspace({
 
       if (res.structureId) setStructureId(res.structureId);
       if (res.updatedAt) setUpdatedAt(res.updatedAt);
-      setTermLabel(effectiveTermLabel);
-      rememberSavedDraft(res);
+      if (version !== saveVersionRef.current) {
+        // The save reached the server, but newer local edits were typed while it
+        // was in flight. Do not let the submit that called this send old bytes.
+        setSave({ kind: "idle" });
+        setAutosave("idle");
+        setStatus("Saved an earlier revision; your newest changes are still unsaved.");
+        return null;
+      }
+      rememberSavedDraft(res, saved);
       setConflict(null);
       setAutosave("saved");
       setSave({ kind: "saved", revision: res.revision ?? 0 });
       setDirty(false);
       setStatus(null);
       return res.structureId ?? structureId;
-    } catch (e) {
-      setSave({ kind: "error", message: e instanceof Error ? e.message : "We could not save that." });
-      return null;
-    }
+      } catch (e) {
+        setSave({ kind: "error", message: e instanceof Error ? e.message : "We could not save that." });
+        return null;
+      } finally {
+        autosaveCancelledRef.current = false;
+      }
+    });
   }
 
   async function onRenew() {
@@ -1995,18 +2295,10 @@ export function StructureWorkspace({
         return;
       }
 
-      setStructureId(after.draft?.id ?? null);
-      setDoc(after.draft?.document ?? emptyDocument);
-      setTemplateKey(after.draft?.templateKey ?? null);
-      setTermLabel(after.draft?.termLabel ?? "");
-      setStartsOn(after.draft?.startsOn ?? "");
-      setEndsOn(after.draft?.endsOn ?? "");
-      setNote("");
+      applyServerSummary(after.draft ?? null);
       setApproved(after.approved ?? null);
       setRenewal(after.renewal ?? null);
       setHistory(after.history ?? []);
-      setDraft(after.draft ?? null);
-      setDirty(false);
       setStatus("Renewed. The next term is open as a draft, carried forward from what was live.");
     } catch (e) {
       setSave({ kind: "error", message: e instanceof Error ? e.message : "We could not renew that." });
@@ -2029,14 +2321,12 @@ export function StructureWorkspace({
         setSave({ kind: "error", message: structureError(after) });
         return;
       }
-      setStructureId(after.draft?.id ?? null);
-      setDoc(after.draft?.document ?? doc);
+      applyServerSummary(after.draft ?? null, doc);
       setApproved(after.approved ?? null);
       setRenewal(after.renewal ?? null);
       setHistory(after.history ?? []);
-      setDraft(after.draft ?? null);
       setStatus(
-        after.draft?.status === "submitted"
+        after.draft?.status === "pending"
           ? "Sent for review. You can keep editing until a reviewer decides."
           : "Approved and published.",
       );
@@ -2102,20 +2392,37 @@ export function StructureWorkspace({
           }}
           onSaveCurrent={async () => {
             try {
-              const found = checkDocument(doc);
+              // A template is a skeleton: it must pass the same document checks
+              // as a draft, but it never carries this council's officers.
+              const templateDoc = syncDocumentHolders(doc, []);
+              const found = documentProblem(templateDoc);
               if (found) {
-                setProblem(found.message);
+                setProblem(found);
                 return;
               }
-              const name = window.prompt("Template name", `${unitName} structure`);
-              if (!name) return;
+              const rawName = window.prompt("Template name", `${unitName} structure`);
+              if (!rawName) return;
+              const name = rawName.trim();
+              const key = name
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, "")
+                .slice(0, 60);
+              // `import_structure_template` checks 2..80 for the name and 2..60
+              // for the key after trimming; catch both before the round trip.
+              if (name.length < 2 || name.length > 80 || key.length < 2) {
+                setProblem(
+                  "Use a template name of 2 to 80 characters with at least two letters or numbers for its key.",
+                );
+                return;
+              }
               const res = await saveTemplate({
-                key: name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60),
-                name: name.trim(),
+                key,
+                name,
                 category: "custom",
-                document: doc,
+                document: templateDoc,
               });
-              setProblem(res.ok ? `Saved as "${name.trim()}".` : structureError(res));
+              setProblem(res.ok ? `Saved as "${name}".` : structureError(res));
             } catch (e) {
               setProblem(e instanceof Error ? e.message : "We could not save that template.");
             }
@@ -2161,7 +2468,7 @@ export function StructureWorkspace({
               value={termLabel}
               onChange={(v) => {
                 setTermLabel(v);
-                setDirty(true);
+                markDirty();
               }}
               placeholder="A.Y. 2026-2027"
             />
@@ -2171,7 +2478,7 @@ export function StructureWorkspace({
               value={startsOn}
               onChange={(v) => {
                 setStartsOn(v);
-                setDirty(true);
+                markDirty();
               }}
             />
             <Field
@@ -2180,7 +2487,7 @@ export function StructureWorkspace({
               value={endsOn}
               onChange={(v) => {
                 setEndsOn(v);
-                setDirty(true);
+                markDirty();
               }}
             />
           </div>
@@ -2232,24 +2539,15 @@ export function StructureWorkspace({
                   size="sm"
                   onClick={async () => {
                     const after = await fetchStructure(unitId);
-                    setHistory(after.history ?? []);
-                    setDraft(after.draft ?? null);
-                    if (after.draft) {
-                      setDoc(after.draft.document);
-                      setUpdatedAt(after.draft.updatedAt ?? null);
-                      setTermLabel(after.draft.termLabel);
-                      setStartsOn(after.draft.startsOn);
-                      setEndsOn(after.draft.endsOn);
-                      setNote(after.draft.note ?? "");
-                      setStructureId(after.draft.id);
-                      setApproved(after.approved ?? null);
+                    if (!after.ok) {
+                      setProblem(structureError(after));
+                      return;
                     }
-                    setConflict(null);
-                    setDirty(false);
-                    setPast([]);
-                    setFuture([]);
-                    setAutosave("idle");
-                    setSelected(null);
+                    applyServerSummary(after.draft ?? null, after.approved?.document);
+                    setApproved(after.approved ?? null);
+                    setRenewal(after.renewal ?? null);
+                    setHistory(after.history ?? []);
+                    setStatus("Loaded the saved version. Your local edits were discarded.");
                   }}
                 >
                   Reload theirs
@@ -2259,8 +2557,12 @@ export function StructureWorkspace({
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    bumpVersion();
                     setConflict(null);
                     setAutosave("idle");
+                    setSave({ kind: "idle" });
+                    // The next save deliberately sends no expected timestamp; the
+                    // officer has seen the conflict and chosen their draft.
                     setUpdatedAt(null);
                   }}
                 >
@@ -2302,7 +2604,7 @@ export function StructureWorkspace({
                 total={doc.committees.length}
                 drag={committeeReorder.rowProps(c.key, ci)}
                 onChange={(next) => patchCommittee(ci, next)}
-                onRemove={() => edit({ committees: doc.committees.filter((_, i) => i !== ci) })}
+                onRemove={() => edit(withoutCommittee(doc, c.key))}
                 onAddPosition={() => patchCommittee(ci, { ...c, positions: [...c.positions, emptyPosition()] })}
                 onMovePosition={(from, to) => {
                   const next = c.positions.slice();
@@ -2337,7 +2639,7 @@ export function StructureWorkspace({
             value={note}
             onChange={(v) => {
               setNote(v);
-              setDirty(true);
+              markDirty();
             }}
           />
 
