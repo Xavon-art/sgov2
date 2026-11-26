@@ -94,6 +94,7 @@ Gate 3 status
 - Applied migration: supabase/migrations/20260101999999_reset_operational_data_scope_2.sql
 - All 70 operational tables are empty; smartgov.applied_migrations preserved (122 rows).
 - Migration recorded in supabase_migrations.schema_migrations.
+- Owner re-creation: use the normal public registration flow at /create (governance model -> institution -> units -> account -> verification). The owner account is created as pending and activated through the emailed OTP; no hard-coded password or manual SQL account creation is required.
 - Backups verified before reset:
   C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126.sql
   C:\Users\Julius M. Matro\AppData\Local\Temp\opencode\smartgov-backups\20261126\smartgov-xavon_20261126_data.sql
