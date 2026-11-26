@@ -165,21 +165,6 @@ export function ManageClient({
         </div>
       ) : null}
 
-      {canManage ? (
-        <div className="rounded-2xl border border-line bg-paper/70 p-6 sm:p-7">
-          <p className="eyebrow">More</p>
-          <h2 className="mt-1 text-[1.25rem] leading-tight">Other management tools</h2>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {!centralized ? (
-              <Link href="/usg/manage?tab=people&view=officers" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">People &amp; Units</Link>
-            ) : null}
-            <Link href="/usg/forms" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Forms</Link>
-            <Link href="/usg/request?tab=personal" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Personal requests</Link>
-            <Link href="/usg/events" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Events</Link>
-            <Link href="/usg/messages" className="pressable inline-flex items-center gap-1.5 rounded-full border border-line-strong px-4 py-2 text-[0.875rem] font-medium text-ink hover:border-ink/40 hover:bg-ink/[0.035]">Inbox</Link>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
